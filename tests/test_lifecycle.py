@@ -1,5 +1,9 @@
+import json
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
+
+import psutil
+import pytest
 
 from comfyui_remote_panel.comfy import ComfyClient
 from comfyui_remote_panel.config import Config
@@ -55,3 +59,67 @@ def test_control_snapshot_disables_conflicting_actions(tmp_path):
     assert busy["can_start"] is False
     assert busy["can_stop"] is False
     assert busy["can_restart"] is False
+
+
+def test_recorded_process_requires_all_four_identity_fields(tmp_path, monkeypatch):
+    manager = lifecycle(tmp_path)
+    executable = str(tmp_path / "python.exe")
+    command_line = [executable, "-s", "ComfyUI/main.py"]
+    payload = {
+        "pid": 1234,
+        "create_time": 100.0,
+        "executable": executable,
+        "command_line": command_line,
+    }
+    manager.record_path.parent.mkdir(parents=True)
+
+    process = Mock(pid=1234)
+    process.create_time.return_value = 100.0
+    process.exe.return_value = executable
+    process.cmdline.return_value = command_line
+    monkeypatch.setattr(psutil, "Process", Mock(return_value=process))
+
+    manager.record_path.write_text(json.dumps(payload), encoding="utf-8")
+    assert manager._recorded_process() is process
+
+    for field, unsafe_value in (
+        ("create_time", 101.0),
+        ("executable", str(tmp_path / "other.exe")),
+        ("command_line", [executable, "other.py"]),
+    ):
+        unsafe_payload = {**payload, field: unsafe_value}
+        manager.record_path.write_text(json.dumps(unsafe_payload), encoding="utf-8")
+        assert manager._recorded_process() is None
+
+
+@pytest.mark.asyncio
+async def test_stop_never_terminates_recorded_descendants(tmp_path, monkeypatch, caplog):
+    manager = lifecycle(tmp_path)
+    manager._is_online = AsyncMock(return_value=False)
+
+    process = Mock(pid=1234)
+    child = Mock(pid=5678)
+    child.create_time.return_value = 200.0
+    child.is_running.return_value = True
+    process.children.return_value = [child]
+    monkeypatch.setattr(manager, "_recorded_process", Mock(return_value=process))
+    monkeypatch.setattr(psutil, "wait_procs", Mock(return_value=([process], [])))
+
+    manager.record_path.parent.mkdir(parents=True)
+    manager.record_path.write_text("{}", encoding="utf-8")
+    await manager._stop()
+
+    process.terminate.assert_called_once_with()
+    process.kill.assert_not_called()
+    child.terminate.assert_not_called()
+    child.kill.assert_not_called()
+    assert "descendant processes remain" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_stop_refuses_listener_fallback_without_a_record(tmp_path, monkeypatch):
+    manager = lifecycle(tmp_path)
+    monkeypatch.setattr(manager, "_recorded_process", Mock(return_value=None))
+
+    with pytest.raises(Exception, match="进程记录"):
+        await manager._stop()

@@ -7,7 +7,6 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import psutil
 
@@ -145,27 +144,30 @@ class ComfyLifecycle:
         raise LifecycleError("等待 ComfyUI 启动超时；进程可能仍在加载，请稍后刷新")
 
     async def _stop(self) -> None:
-        process = self._recorded_process() or self._configured_listener_process()
+        process = self._recorded_process()
         if process is None:
-            raise LifecycleError("无法安全确认 ComfyUI 进程；未执行关闭")
+            raise LifecycleError("无法通过进程记录安全确认 ComfyUI 主进程；未执行关闭")
+
+        descendants = self._record_descendants(process)
         try:
-            children = process.children(recursive=True)
             process.terminate()
             _, alive = psutil.wait_procs([process], timeout=self.shutdown_timeout)
             if alive:
                 process.kill()
-                psutil.wait_procs(alive, timeout=5)
-            for child in children:
-                try:
-                    if child.is_running():
-                        child.terminate()
-                except psutil.Error:
-                    pass
-            psutil.wait_procs(children, timeout=3)
+                _, alive = psutil.wait_procs(alive, timeout=5)
+            if alive:
+                raise LifecycleError("已确认的 ComfyUI 主进程未能停止；未处理任何子进程")
         except (psutil.AccessDenied, psutil.Error) as exc:
             raise LifecycleError("没有权限关闭已确认的 ComfyUI 进程") from exc
-        finally:
-            self._remove_record()
+
+        self._remove_record()
+        surviving_pids = self._surviving_descendant_pids(descendants)
+        if surviving_pids:
+            log.warning(
+                "ComfyUI main process stopped but descendant processes remain; "
+                "refusing to terminate them automatically: pids=%s",
+                surviving_pids,
+            )
 
         deadline = time.monotonic() + min(self.shutdown_timeout, 10)
         while time.monotonic() < deadline:
@@ -191,7 +193,8 @@ class ComfyLifecycle:
         payload = {
             "pid": process.pid,
             "create_time": process.create_time(),
-            "executable": str(self._configured_executable()),
+            "executable": process.exe(),
+            "command_line": process.cmdline(),
         }
         temporary = self.record_path.with_suffix(".tmp")
         temporary.write_text(json.dumps(payload), encoding="utf-8")
@@ -207,33 +210,47 @@ class ComfyLifecycle:
         try:
             payload = json.loads(self.record_path.read_text(encoding="utf-8"))
             process = psutil.Process(int(payload["pid"]))
-            if abs(process.create_time() - float(payload["create_time"])) > 1:
+            if process.create_time() != float(payload["create_time"]):
                 return None
-            if not self._matches(process):
+            if not self._matches_record(process, payload) or not self._matches(process):
                 return None
             return process
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, psutil.Error):
             return None
 
-    def _configured_listener_process(self) -> psutil.Process | None:
-        parsed = urlsplit(self.comfy.base_url)
-        port = parsed.port or 80
+    def _matches_record(self, process: psutil.Process, payload: dict) -> bool:
         try:
-            connections = psutil.net_connections(kind="tcp")
-        except (psutil.AccessDenied, psutil.Error):
-            return None
-        for connection in connections:
-            if not connection.pid or connection.status != psutil.CONN_LISTEN or not connection.laddr:
-                continue
-            if connection.laddr.port != port:
-                continue
+            recorded_executable = Path(payload["executable"]).resolve()
+            actual_executable = Path(process.exe()).resolve()
+            if os.path.normcase(str(actual_executable)) != os.path.normcase(str(recorded_executable)):
+                return False
+            recorded_command_line = payload["command_line"]
+            return (
+                isinstance(recorded_command_line, list)
+                and all(isinstance(value, str) for value in recorded_command_line)
+                and process.cmdline() == recorded_command_line
+            )
+        except (OSError, TypeError, psutil.Error):
+            return False
+
+    def _record_descendants(self, process: psutil.Process) -> list[tuple[psutil.Process, float]]:
+        try:
+            return [(child, child.create_time()) for child in process.children(recursive=True)]
+        except psutil.Error as exc:
+            log.warning("Could not inspect ComfyUI descendants before stopping the main process: %s", exc)
+            return []
+
+    def _surviving_descendant_pids(
+        self, descendants: list[tuple[psutil.Process, float]]
+    ) -> list[int]:
+        surviving: list[int] = []
+        for child, create_time in descendants:
             try:
-                process = psutil.Process(connection.pid)
-                if self._matches(process):
-                    return process
+                if child.is_running() and child.create_time() == create_time:
+                    surviving.append(child.pid)
             except psutil.Error:
                 continue
-        return None
+        return surviving
 
     def _matches(self, process: psutil.Process) -> bool:
         try:
