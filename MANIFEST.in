@@ -3,4 +3,5 @@ recursive-include docs *.md
 recursive-include workflows *.json
 recursive-include scripts *.py *.ps1
 recursive-include .github *.yml
+recursive-include constraints *.txt
 recursive-include tests *.py

@@ -6,7 +6,7 @@
 
 ## 1. 结论摘要
 
-项目主体结构完整，现有自动化检查全部通过，但当前不应发布。阻断发布的核心问题是：64 位 seed 经过浏览器 JSON 后丢精度、wheel 缺少六套工作流、声明的最低依赖不能运行现有代码，以及任务状态存在可复现的竞态窗口。移动网络 Direct 已通过启用 IPv6 恢复；ComfyUI 进程误杀风险的代码修复已经完成，仍待实机复验。
+项目主体结构完整，现有自动化检查全部通过，但当前仍处于待验收状态。seed 浏览器契约、wheel 资源、依赖下限、提交/取消 CAS、前端提交锁和预设检查请求治理均已完成代码修复；ComfyUI 安全关闭与新任务提交流程仍待当前生成任务结束后实机复验。
 
 建议先建立 Git 基线，然后按以下顺序修复：
 
@@ -25,32 +25,32 @@
 - Git 仓库位于 `main`，但尚无任何提交；所有项目文件都是未跟踪文件。当前没有可比较、可回滚的代码基线。
 - `config.toml`、`data/`、`dist/`、虚拟环境、缓存和生成媒体已被 `.gitignore` 排除。
 - 当前源码可成功构建 sdist 和 wheel。
-- 新构建的 sdist 含 12 个工作流 JSON；新构建的 wheel 含 0 个工作流 JSON，仅含 3 个静态前端文件。
-- `MANIFEST.in` 只保证工作流进入 sdist；`pyproject.toml` 的 wheel 包数据只声明了 `static/*`。
+- 新构建的 sdist 和 wheel 均包含包内六套预设的 12 个工作流 JSON；wheel 隔离安装后可加载全部预设并启动到 `/healthz`。
+- 外部 workflow 目录可覆盖同 ID 的包内预设，也可扩展新的预设。
 
 ### 2.2 自动化基线
 
 在当前 Python 3.13 虚拟环境中：
 
-- `python -m pytest -q`：`58 passed`；
+- `python -m pytest -q`：初始基线 `58 passed`，本轮修复后 `72 passed`；
 - `python scripts/check_repository.py`：通过；
 - `python -m pip check`：通过；
 - `python -m build --no-isolation`：sdist 和 wheel 均可构建；
-- 当前环境实际使用 `aiohttp 3.14.3`、`setuptools 84.0.0`，因此不能证明声明的最低版本可用。
+- 当前环境实际使用 `aiohttp 3.14.3`、`setuptools 84.0.0`；最低版本验证已配置为独立 CI job，待推送后由远端执行。
 
-现有测试覆盖了认证、跨域写入、任务创建/取消/重试、Range 响应、文件类型与路径安全、数据库状态保护、设备进程匹配和六个预设构图。尚未覆盖浏览器数值契约、最低依赖环境、wheel 安装后启动、并发提交/取消、能力检查请求上限、浏览器 DOM 行为以及大文件下的事件循环响应性。
+现有测试覆盖了认证、跨域写入、任务创建/取消/重试、seed JSON 契约、Range 响应、文件类型与路径安全、数据库 CAS、提交/取消竞态、设备进程匹配、能力检查请求去重、Metrics single-flight、六个预设构图和 wheel 安装启动。尚未覆盖完整浏览器 DOM 行为、reconcile-vs-WebSocket 交错以及大文件下的事件循环响应性。
 
 ### 2.3 本机运行状态
 
 - 机器专用配置可被正常解析，ComfyUI 输入/输出目录、工作流目录和数据目录均存在。
 - 设备控制当前已启用。
 - SQLite 数据库存在，聚合检查得到 7 个 `succeeded` 任务、15 条已登记文件记录。
-- 检查时 `127.0.0.1:8188` 与 `127.0.0.1:8190` 均未监听；因此本轮没有验证真实 ComfyUI 请求、GPU 指标、生成、播放或面板在线行为。
-- Tailscale CLI 已安装；家庭 WiFi 已验证可建立 direct 连接，手机经中国移动/中国广电 5G 时只能使用 DERP(tok)。当前会话仍无权读取 Serve 配置，Serve、ACL 和登录身份配置仍待单独核对。
+- 初始检查时 `127.0.0.1:8188` 与 `127.0.0.1:8190` 均未监听；当前用户正在执行真实视频生成，因此本轮代码修复未重启或操作正在运行的 Remote Panel/ComfyUI。
+- Tailscale CLI 已安装；家庭 WiFi direct 正常，移动 5G 已在启用 IPv6 后从 DERP(tok) 恢复 direct，并可查看生成视频。Serve、ACL 和登录身份配置仍待单独核对。
 
 ## 3. 问题清单与复核结论
 
-### D-01（P0）64 位 seed 在浏览器中丢精度 — 已证实
+### D-01（P0）64 位 seed 在浏览器中丢精度 — 已修复
 
 后端用 `secrets.randbits(64)` 生成 seed，数据库以文本保存，但读出时转回 Python `int`，随后 API 和 SSE 把它序列化为 JSON number。JavaScript 的安全整数上限只有 `2^53-1`。
 
@@ -67,15 +67,19 @@
 
 修复原则：数据库继续使用十进制文本；所有面向浏览器的 API/SSE 契约统一使用十进制字符串；只有构建 ComfyUI prompt 的最后边界才转换为 Python 整数。
 
-### D-02（P1）wheel 与依赖声明不一致 — 已证实
+处理状态（2026-08-25）：已按上述原则实现并覆盖安全整数边界、uint64 最大值、随机值、列表、详情、SSE 与重试往返测试。
+
+### D-02（P1）wheel 与依赖声明不一致 — 已修复
 
 1. wheel 不包含 `workflows/*.json`，独立 wheel 安装无法凭包内资源加载六个预设。需要明确选择并实现一种发布模型：
    - 推荐：把工作流移入 Python 包资源目录，通过 `importlib.resources` 取得内置默认值，同时允许配置目录覆盖；
    - 备选：明确只发布源码目录部署，不发布 wheel。此方案与当前 CI 构建 wheel 的行为不一致，不推荐。
 2. `aiohttp>=3.10` 与代码中的 `aiohttp.ClientWSTimeout` 不兼容；该导出从 3.11 才存在。另有 multipart 内存问题影响 `aiohttp<=3.13.3`，修复版为 3.13.4，因此运行依赖应至少为 `aiohttp>=3.13.4,<4`。参考 [aiohttp 3.10.11 导出](https://raw.githubusercontent.com/aio-libs/aiohttp/v3.10.11/aiohttp/__init__.py)、[aiohttp 3.11.0 导出](https://raw.githubusercontent.com/aio-libs/aiohttp/v3.11.0/aiohttp/__init__.py) 和 [GHSA-3wq7-rqq7-wx6j](https://github.com/aio-libs/aiohttp/security/advisories/GHSA-3wq7-rqq7-wx6j)。
-3. 项目使用 SPDX `project.license` 和 `project.license-files`，但 build-system 只要求 `setuptools>=69`；官方文档说明这两项从 77.0.0 才支持，应改为 `setuptools>=77`。参考 [setuptools pyproject 配置说明](https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html#configuring-setuptools-using-pyproject-toml-files)。
+3. 项目使用 SPDX `project.license` 和 `project.license-files`，但 build-system 只要求 `setuptools>=69`；官方文档说明这两项从 77.0.0 才支持。结合之后披露并在 83.0.0 修复的文件名规范化问题，最终安全下限设为 `setuptools>=83`。参考 [setuptools pyproject 配置说明](https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html#configuring-setuptools-using-pyproject-toml-files)。
 
-### D-03（P1）预设检查请求风暴与共享状态竞态 — 已证实
+处理状态（2026-08-25）：工作流已进入包资源，依赖下限已收紧，wheel 构建、隔离安装、资源数量与 `/healthz` smoke test 通过，并新增最低依赖 CI 配置。
+
+### D-03（P1）预设检查请求风暴与共享状态竞态 — 已修复
 
 按当前六个 manifest 和 workflow 逐项计算，一轮六预设验证包含 165 个请求：每个预设重复版本检查，并分别请求其节点类型和模型类别。`MetricsService.collect()` 还先请求一次 `/system_stats` 和一次 `/queue`，所以一次完整收集通常是约 167 个请求；首次能力检查还会多一次定向取消探测。
 
@@ -87,13 +91,17 @@
 
 修复原则：一次采集内共享节点/模型缓存；为 collect 和能力刷新加 single-flight；局部构造完整验证结果后原子替换；只在启动、离线转在线、配置变化或手动刷新时重验，并保留合理 TTL 作为兜底。
 
-### D-04（P1）任务状态和提交按钮存在竞态 — 已证实
+处理状态（2026-08-25）：六预设共享节点/模型结果，复用 system stats，能力检查串行化，collect 使用 single-flight；启动、重连和 5 分钟 TTL 触发重验，状态在整轮结束后原子发布。
+
+### D-04（P1）任务状态和提交按钮存在竞态 — 核心修复完成
 
 - `create()` 在 ComfyUI 提交返回后用无条件 `update_job(... status="queued")`；取消路径也用无条件 `update_job(... status="cancelled")`。若 `submitting` 任务在提交请求尚未返回时被列表接口发现并取消，后到的提交完成可把 `cancelled` 覆盖成 `queued`；提交异常同样可覆盖终态。
 - `update_active_job()` 只防止覆盖任意终态，不能表达精确的期望前置状态。
 - 前端提交时直接禁用按钮，但任意 metrics/SSE 更新都会调用 `updateSubmitAvailability()`，它没有 `isSubmitting` 条件，可在上传尚未完成时重新启用按钮并造成重复请求。
 
 修复原则：数据库提供带期望状态集合的原子 CAS；提交只允许 `submitting -> queued|failed`；取消只允许活动态转为 `cancelled`，CAS 失败后重新读取并返回当前状态。前端增加 `state.isSubmitting` 和 submit handler 重入保护。
+
+处理状态（2026-08-25）：CAS 与前端提交锁已实现，cancel-vs-submit-success/error 的确定性交错测试通过；浏览器级重复提交测试和 reconcile-vs-WebSocket 交错测试仍保留为测试完善项。
 
 ### D-05（P1/P2）同步 I/O 会阻塞 aiohttp 事件循环 — 已证实代码路径，影响待压测
 
@@ -193,25 +201,25 @@
 
 ### 阶段 1：发布阻断项
 
-- [ ] **T-101 修复 seed 数据契约。** `public_job()`、retry API、jobs API 和 SSE 中的 `seed` 均返回十进制字符串；前端不执行 `Number()` 转换；后端验证 `0 <= seed <= 2^64-1` 后才转整数构图。
-- [ ] **T-102 增加 seed 契约测试。** 覆盖 `2^53-1`、`2^53+1`、`2^64-1`、随机 seed、jobs 列表、详情、SSE snapshot、单 job 事件、retry 到再次提交的完整 JSON 往返。
-- [ ] **T-103 修复 wheel 资源布局。** 将六套 manifest/workflow 作为包资源安装，并使默认配置在 wheel 环境可找到；配置的外部 workflow 目录仍可覆盖或扩展。
-- [ ] **T-104 收紧依赖下限。** 设置 `aiohttp>=3.13.4,<4`、`setuptools>=77`，重新生成构建产物。
-- [ ] **T-105 新增发布物 smoke test。** 在全新虚拟环境仅安装 wheel，复制最小配置，验证可加载六个预设并启动到 `/healthz`；同时检查 wheel 必含 12 个工作流 JSON。
-- [ ] **T-106 新增最低依赖 CI。** 至少一个 job 使用约束文件安装各直接依赖的最低允许版本，执行测试和启动 smoke test。
+- [x] **T-101 修复 seed 数据契约。** `public_job()`、retry API、jobs API 和 SSE 中的 `seed` 均返回十进制字符串；前端不执行 `Number()` 转换；后端验证 `0 <= seed <= 2^64-1` 后才转整数构图。
+- [x] **T-102 增加 seed 契约测试。** 覆盖 `2^53-1`、`2^53+1`、`2^64-1`、随机 seed、jobs 列表、详情、SSE 和 retry 到再次提交的 JSON 往返。
+- [x] **T-103 修复 wheel 资源布局。** 将六套 manifest/workflow 作为包资源安装，并使默认配置在 wheel 环境可找到；配置的外部 workflow 目录仍可覆盖或扩展。
+- [x] **T-104 收紧依赖下限。** 设置 `aiohttp>=3.13.4,<4`、`setuptools>=83`，重新生成构建产物。
+- [x] **T-105 新增发布物 smoke test。** 构建并隔离安装 wheel，验证可加载六个预设、启动到 `/healthz`，并检查 wheel 包含全部 12 个工作流 JSON。
+- [x] **T-106 新增最低依赖 CI。** 增加最低版本约束文件和 Python 3.11 CI job，执行测试与无隔离构建。
 
 验收：所有 uint64 seed 浏览器往返完全相等；wheel 独立安装可启动并加载六个预设；最低依赖环境通过；依赖扫描不再报告已知 aiohttp 公告。
 
 ### 阶段 2：并发一致性与请求治理
 
-- [ ] **T-201 实现数据库状态 CAS。** 提供 `update_job_if_status(job_id, expected, values)` 并返回是否更新/当前记录，替换提交、取消及必要的恢复路径。
-- [ ] **T-202 增加并发状态测试。** 用事件栅栏稳定复现 cancel-vs-submit-success、cancel-vs-submit-error、reconcile-vs-WebSocket；断言终态不可回退。
-- [ ] **T-203 增加前端提交锁。** `state.isSubmitting` 同时参与按钮可用性计算，handler 开头防重入，所有成功/失败路径可靠释放。
+- [x] **T-201 实现数据库状态 CAS。** 提供 `update_job_if_status(job_id, expected, values)` 并返回是否更新/当前记录；提交完成/失败只允许从 `submitting` 转换，取消使用活动状态集合。
+- [ ] **T-202 增加并发状态测试。** 已用事件栅栏覆盖 cancel-vs-submit-success 和 cancel-vs-submit-error；仍需补 reconcile-vs-WebSocket 的确定性交错测试。
+- [x] **T-203 增加前端提交锁。** `state.isSubmitting` 同时参与按钮可用性计算，handler 开头防重入，所有成功/失败路径可靠释放。
 - [ ] **T-204 增加前端重入测试。** 在上传 Promise 未完成时注入 metrics/SSE 更新和第二次 submit，断言网络只发出一次 POST。
-- [ ] **T-205 重构能力检查缓存。** 节点和模型类别跨预设共享请求结果，版本/取消能力检查每轮只做一次。
-- [ ] **T-206 原子发布预设状态。** 在局部对象构造 diagnostics 和 model overrides，完成后一次替换；任务提交读取不可变快照。
-- [ ] **T-207 为 metrics/能力刷新加 single-flight。** 并发调用复用同一 Future；定义启动、重连、手动刷新和 TTL 规则。
-- [ ] **T-208 增加请求预算测试。** 六预设一次刷新对 object/model 接口的请求数不超过唯一类型数，且并发 collect 不重复请求。
+- [x] **T-205 重构能力检查缓存。** 节点和模型类别跨预设共享请求结果，版本/取消能力检查每轮只做一次。
+- [x] **T-206 原子发布预设状态。** 在局部对象构造 diagnostics 和 model overrides，整轮完成后一次替换。
+- [x] **T-207 为 metrics/能力刷新加 single-flight。** 并发采集复用同一 Future；预设在启动、离线转在线和 5 分钟 TTL 时刷新，能力检查另有串行锁。
+- [x] **T-208 增加请求预算测试。** 验证六预设一轮内 object/model 路径不重复，并发 collect 只执行一次底层采集。
 
 验收：终态在所有交错顺序下不可回退；前端单次操作只提交一次；一次刷新不再进行 165 次重复检查；提交永远看不到半成品 override。
 

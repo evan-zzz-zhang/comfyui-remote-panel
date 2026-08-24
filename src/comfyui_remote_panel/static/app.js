@@ -1,4 +1,4 @@
-const state = { jobs: new Map(), presets: new Map(), metrics: null, eventSource: null, retryRoles: [], previewUrls: [] };
+const state = { jobs: new Map(), presets: new Map(), metrics: null, eventSource: null, retryRoles: [], previewUrls: [], isSubmitting: false };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -49,7 +49,7 @@ function fillSelect(select, values, selected) {
 function updateSubmitAvailability() {
   const preset = selectedPreset();
   const runtime = state.metrics?.presets?.[preset?.id];
-  $("#submit-button").disabled = !preset || !(runtime ? runtime.available : preset.available);
+  $("#submit-button").disabled = state.isSubmitting || !preset || !(runtime ? runtime.available : preset.available);
 }
 function applyPreset(presetId, overrides = {}) {
   const preset = state.presets.get(presetId) || [...state.presets.values()][0];
@@ -283,6 +283,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   form.addEventListener("submit", async event => {
     event.preventDefault();
+    if (state.isSubmitting) return;
     const message = $("#form-message"), button = $("#submit-button");
     const hasReferenceImage = selectedPreset()?.family === "ref2va"
       ? Boolean(refImages.files.length || state.retryRoles.some(role => mediaKindFromRole(role) === "image"))
@@ -290,6 +291,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (aspect.value === "reference" && !hasReferenceImage) {
       message.className = "form-message error"; message.textContent = "参考图比例需要先上传参考图"; return;
     }
+    state.isSubmitting = true;
     message.className = "form-message"; message.textContent = "正在安全上传并提交…"; button.disabled = true;
     try {
       const currentPreset = $("#preset-select").value;
@@ -299,7 +301,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       $$(".upload-card img").forEach(image => image.removeAttribute("src"));
       clearMediaPreviews(); clearRetry(); applyPreset(currentPreset); updateLoad(); setView("jobs");
     } catch (error) { message.className = "form-message error"; message.textContent = error.message; }
-    finally { updateSubmitAvailability(); }
+    finally { state.isSubmitting = false; updateSubmitAvailability(); }
   });
 
   $("#jobs-list").addEventListener("click", async event => {

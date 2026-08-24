@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import io
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from aiohttp import FormData, web
 from PIL import Image
 
-from comfyui_remote_panel.app import create_app
+from comfyui_remote_panel.app import _write_sse, create_app
 from comfyui_remote_panel.config import Config
 from comfyui_remote_panel.jobs import safe_summary
 
@@ -144,12 +145,25 @@ async def test_create_uses_same_panel_and_prompt_id(panel_client, comfy_server):
     response = await panel_client.post("/api/jobs", data=form, headers=LOGIN)
     assert response.status == 201, await response.text()
     job = await response.json()
+    assert isinstance(job["seed"], str)
     submitted = comfy_server.app["submitted"][-1]
     assert submitted["prompt_id"] == job["id"]
     assert submitted["prompt"]["127"]["inputs"]["unet_name"] == r"MiniMax-H3\minimax_h3_fl2va_pruned_int8_convrot.safetensors"
     assert submitted["prompt"]["128"]["inputs"]["clip_name"] == r"MiniMax-H3\qwen3vl_32b_minimax_h3_int8_convrot.safetensors"
     assert "first_frame" not in submitted["prompt"]["136"]["inputs"]
     assert "last_frame" not in submitted["prompt"]["136"]["inputs"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("seed", [2**53 - 1, 2**53 + 1])
+async def test_seed_json_contract_preserves_browser_boundary_values(panel_client, seed):
+    form = FormData(default_to_multipart=True)
+    form.add_field("prompt", "测试 seed JSON 契约")
+    form.add_field("seed", str(seed))
+    response = await panel_client.post("/api/jobs", data=form, headers=LOGIN)
+
+    assert response.status == 201
+    assert (await response.json())["seed"] == str(seed)
 
 
 @pytest.mark.asyncio
@@ -216,6 +230,37 @@ async def test_cancel_targets_only_requested_job(panel_client, comfy_server):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("submit_fails", [False, True])
+async def test_cancelled_submission_cannot_return_to_queued_or_failed(panel_client, submit_fails):
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def delayed_submit(*_args, **_kwargs):
+        started.set()
+        await release.wait()
+        if submit_fails:
+            raise RuntimeError("late submission result")
+        return {"prompt_id": _args[0]}
+
+    panel_client.app["comfy"].submit = delayed_submit
+    panel_client.app["comfy"].cancel = AsyncMock(return_value=True)
+    form = FormData(default_to_multipart=True)
+    form.add_field("prompt", "测试提交与取消竞态")
+    create_task = asyncio.create_task(panel_client.post("/api/jobs", data=form, headers=LOGIN))
+
+    await asyncio.wait_for(started.wait(), timeout=2)
+    [submitting] = await panel_client.app["db"].active_jobs()
+    cancelled = await panel_client.post(f"/api/jobs/{submitting['id']}/cancel", headers=LOGIN)
+    assert (await cancelled.json())["status"] == "cancelled"
+
+    release.set()
+    created = await create_task
+    assert created.status == 201
+    assert (await created.json())["status"] == "cancelled"
+    assert (await panel_client.app["db"].get_job(submitting["id"]))["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
 async def test_queue_position_includes_non_panel_jobs(panel_client, comfy_server):
     form = FormData(default_to_multipart=True)
     form.add_field("prompt", "测试完整队列位置")
@@ -233,12 +278,20 @@ async def test_retry_returns_draft_then_user_submits_new_job(panel_client, comfy
     form.add_field("seed", "18446744073709551615")
     response = await panel_client.post("/api/jobs", data=form, headers=LOGIN)
     original = await response.json()
+    detail = await panel_client.get(f"/api/jobs/{original['id']}", headers=LOGIN)
+    listed = await panel_client.get("/api/jobs", headers=LOGIN)
+    assert (await detail.json())["seed"] == str(2**64 - 1)
+    assert (await listed.json())["items"][0]["seed"] == str(2**64 - 1)
+    stream = Mock(write=AsyncMock())
+    await _write_sse(stream, "job", original)
+    event_payload = stream.write.await_args.args[0].decode("utf-8")
+    assert json.loads(event_payload.split("data: ", 1)[1])["seed"] == str(2**64 - 1)
     await panel_client.app["db"].update_job(original["id"], status="failed")
     response = await panel_client.post(f"/api/jobs/{original['id']}/retry", headers=LOGIN)
     draft = await response.json()
     assert response.status == 200
     assert draft["retry_source_id"] == original["id"]
-    assert draft["seed"] == original["seed"] == 2**64 - 1
+    assert draft["seed"] == original["seed"] == str(2**64 - 1)
     assert len(comfy_server.app["submitted"]) == 1
 
     retry_form = FormData(default_to_multipart=True)

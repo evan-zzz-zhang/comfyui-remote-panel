@@ -75,8 +75,18 @@ class Preset:
                 if value is None:
                     result[name] = None
                     continue
-                if not isinstance(value, int) or isinstance(value, bool):
+                if isinstance(value, int) and not isinstance(value, bool):
+                    seed = value
+                elif isinstance(value, str) and value.isascii() and value.isdigit():
+                    seed = int(value)
+                else:
                     raise PresetError("种子必须是整数")
+                if seed < spec["minimum"]:
+                    raise PresetError(f"{name} 低于允许范围")
+                if seed > spec["maximum"]:
+                    raise PresetError(f"{name} 超出允许范围")
+                result[name] = str(seed)
+                continue
             elif spec["type"] == "integer":
                 if not isinstance(value, int) or isinstance(value, bool):
                     raise PresetError(f"{name} 必须是整数")
@@ -106,6 +116,8 @@ class Preset:
             prompt[node_id]["inputs"].update(inputs)
         for name, spec in self.manifest["parameters"].items():
             value = normalized[name]
+            if name == "seed":
+                value = int(value)
             if spec["type"] == "enum":
                 value = spec["values"][value]
                 if value == "__reference_image__":
@@ -177,10 +189,11 @@ class Preset:
         return reference_source
 
 
-def load_presets(root: Path) -> dict[str, Preset]:
+BUILTIN_WORKFLOW_DIR = Path(__file__).with_name("workflows")
+
+
+def _load_presets_from(root: Path) -> dict[str, Preset]:
     presets: dict[str, Preset] = {}
-    if not root.is_dir():
-        raise PresetError(f"workflow directory does not exist: {root}")
     for manifest_path in sorted(root.glob("*/manifest.json")):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         directory = manifest_path.parent
@@ -191,6 +204,13 @@ def load_presets(root: Path) -> dict[str, Preset]:
         if preset.id in presets:
             raise PresetError(f"duplicate preset id: {preset.id}")
         presets[preset.id] = preset
+    return presets
+
+
+def load_presets(root: Path | None = None) -> dict[str, Preset]:
+    presets = _load_presets_from(BUILTIN_WORKFLOW_DIR)
+    if root is not None and root.is_dir() and root.resolve() != BUILTIN_WORKFLOW_DIR.resolve():
+        presets.update(_load_presets_from(root))
     if not presets:
         raise PresetError("no workflow presets found")
     return presets

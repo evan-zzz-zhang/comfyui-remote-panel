@@ -143,7 +143,7 @@ def create_app(config: Config) -> web.Application:
             if "steps" in fields:
                 fields["steps"] = int(fields["steps"])
             seed_text = fields.get("seed", "").strip()
-            fields["seed"] = int(seed_text) if seed_text else None
+            fields["seed"] = seed_text or None
             job = await app["jobs"].create(fields, uploaded, job_id)
             return web.json_response(app["jobs"].public_job(job), status=201)
         except (ValueError, PresetError, FileValidationError) as exc:

@@ -40,13 +40,21 @@ class MetricsService:
         self.snapshot: dict[str, Any] = {}
         self._stop = asyncio.Event()
         self._last_preset_check = 0.0
+        self._was_comfy_online = False
+        self._collect_task: asyncio.Task[dict[str, Any]] | None = None
 
     async def collect(self) -> dict[str, Any]:
+        if self._collect_task is None or self._collect_task.done():
+            self._collect_task = asyncio.create_task(self._collect_once())
+        return await asyncio.shield(self._collect_task)
+
+    async def _collect_once(self) -> dict[str, Any]:
         memory = psutil.virtual_memory()
         disk = shutil.disk_usage(self.data_dir)
         comfy_online = False
         queue_count = None
         comfy_version = None
+        stats: dict[str, Any] = {}
         fallback_gpus: list[dict[str, Any]] = []
         try:
             stats, queue = await asyncio.gather(self.comfy.system_stats(), self.comfy.queue())
@@ -73,10 +81,13 @@ class MetricsService:
             gpus = fallback_gpus
 
         now = time.time()
-        if comfy_online and now - self._last_preset_check >= 30:
+        should_check_presets = comfy_online and (
+            not self._was_comfy_online or now - self._last_preset_check >= 300
+        )
+        if should_check_presets:
             self._last_preset_check = now
-            for preset in self.presets.values():
-                await self.comfy.validate_preset(preset)
+            await self.comfy.validate_presets(list(self.presets.values()), stats)
+        self._was_comfy_online = comfy_online
 
         self.snapshot = {
             "timestamp": now,

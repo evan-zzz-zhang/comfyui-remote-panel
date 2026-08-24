@@ -16,7 +16,7 @@ async def test_database_lifecycle_and_big_seed(tmp_path):
     }
     await db.create_job(record, [])
     job = await db.get_job("id")
-    assert job["seed"] == 2**64 - 1
+    assert job["seed"] == str(2**64 - 1)
     assert job["status"] == "submitting"
     await db.update_job("id", status="running", started_at=time.time(), progress_value=4, progress_max=8)
     job = await db.get_job("id")
@@ -64,3 +64,22 @@ async def test_active_update_cannot_overwrite_terminal_status(tmp_path):
     job = await db.update_active_job("job", status="failed", error_summary="late event")
     assert job["status"] == "cancelled"
     assert job["error_summary"] is None
+
+
+@pytest.mark.asyncio
+async def test_compare_and_set_requires_exact_expected_status(tmp_path):
+    db = Database(tmp_path / "jobs.db")
+    await db.initialize()
+    await db.create_job({
+        "id": "job", "preset_id": "preset", "status": "submitting", "mode": "纯文字",
+        "prompt": "test", "duration_seconds": 5, "aspect_ratio": "9:16",
+        "megapixels": 0.4, "seed": "9007199254740993",
+    }, [])
+
+    updated, job = await db.update_job_if_status("job", {"queued"}, status="failed")
+    assert updated is False
+    assert job["status"] == "submitting"
+
+    updated, job = await db.update_job_if_status("job", {"submitting"}, status="cancelled")
+    assert updated is True
+    assert job["status"] == "cancelled"

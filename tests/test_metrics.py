@@ -1,0 +1,79 @@
+import asyncio
+from pathlib import Path
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+
+from comfyui_remote_panel.comfy import ComfyClient
+from comfyui_remote_panel.metrics import MetricsService
+from comfyui_remote_panel.preset import load_presets
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.mark.asyncio
+async def test_batch_preset_validation_deduplicates_requests_and_publishes_atomically():
+    presets = list(load_presets(ROOT / "workflows").values())
+    client = ComfyClient("http://127.0.0.1:8188", "0.26.0", "test")
+    first_request = asyncio.Event()
+    release = asyncio.Event()
+    calls: list[str] = []
+    models = {
+        str(dependency["name"])
+        for preset in presets
+        for dependency in preset.manifest["dependencies"]
+    }
+
+    async def request(_method, path, **_kwargs):
+        calls.append(path)
+        if path.startswith("/api/jobs/"):
+            return {"cancelled": False}
+        if path.startswith("/object_info/"):
+            if not first_request.is_set():
+                first_request.set()
+                await release.wait()
+            node_type = path.rsplit("/", 1)[-1]
+            return {node_type: {"input": {}}}
+        if path.startswith("/models/"):
+            return sorted(models)
+        raise AssertionError(path)
+
+    client._json = request
+    presets[0].model_overrides = {"sentinel": {"value": "unchanged"}}
+    validation = asyncio.create_task(client.validate_presets(
+        presets, {"system": {"comfyui_version": "0.30.0"}}
+    ))
+    await asyncio.wait_for(first_request.wait(), timeout=2)
+    assert presets[0].model_overrides == {"sentinel": {"value": "unchanged"}}
+    release.set()
+    await validation
+
+    object_calls = [path for path in calls if path.startswith("/object_info/")]
+    model_calls = [path for path in calls if path.startswith("/models/")]
+    assert len(object_calls) == len(set(object_calls))
+    assert len(model_calls) == len(set(model_calls))
+    assert len([path for path in calls if path.startswith("/api/jobs/")]) == 1
+    assert all(preset.available for preset in presets)
+    assert "sentinel" not in presets[0].model_overrides
+
+
+@pytest.mark.asyncio
+async def test_metrics_collect_is_single_flight(tmp_path):
+    service = MetricsService(
+        Mock(), Mock(), {}, Mock(), tmp_path, 3, 1,
+    )
+    release = asyncio.Event()
+
+    async def collect_once():
+        await release.wait()
+        return {"ok": True}
+
+    service._collect_once = AsyncMock(side_effect=collect_once)
+    first = asyncio.create_task(service.collect())
+    second = asyncio.create_task(service.collect())
+    await asyncio.sleep(0)
+    release.set()
+
+    assert await asyncio.gather(first, second) == [{"ok": True}, {"ok": True}]
+    service._collect_once.assert_awaited_once_with()

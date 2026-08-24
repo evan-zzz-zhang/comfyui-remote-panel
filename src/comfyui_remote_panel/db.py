@@ -125,6 +125,12 @@ class Database:
         return await self.get_job(job_id)
 
     async def update_active_job(self, job_id: str, **values: Any) -> dict[str, Any] | None:
+        _, job = await self.update_job_if_status(job_id, ACTIVE_STATUSES, **values)
+        return job
+
+    async def update_job_if_status(
+        self, job_id: str, expected: set[str], **values: Any
+    ) -> tuple[bool, dict[str, Any] | None]:
         allowed = {
             "status", "queue_position", "stage", "progress_value", "progress_max",
             "error_code", "error_summary", "started_at", "finished_at",
@@ -134,15 +140,18 @@ class Database:
             raise ValueError(f"unsupported job fields: {sorted(unknown)}")
         values["updated_at"] = time.time()
         assignments = ", ".join(f"{key} = ?" for key in values)
-        active = sorted(ACTIVE_STATUSES)
-        placeholders = ",".join("?" for _ in active)
+        statuses = sorted(expected)
+        if not statuses:
+            raise ValueError("expected statuses must not be empty")
+        placeholders = ",".join("?" for _ in statuses)
         async with self._lock:
             with self._connect() as db:
-                db.execute(
+                cursor = db.execute(
                     f"UPDATE jobs SET {assignments} WHERE id = ? AND status IN ({placeholders})",
-                    (*values.values(), job_id, *active),
+                    (*values.values(), job_id, *statuses),
                 )
-        return await self.get_job(job_id)
+                updated = cursor.rowcount == 1
+        return updated, await self.get_job(job_id)
 
     async def add_file(self, job_id: str, role: str, path: Path, size_bytes: int) -> None:
         async with self._lock:
@@ -154,7 +163,6 @@ class Database:
 
     def _job_from_row(self, row: sqlite3.Row, files: list[dict[str, Any]]) -> dict[str, Any]:
         item = dict(row)
-        item["seed"] = int(item["seed"])
         item["files"] = files
         item["size_bytes"] = sum(f["size_bytes"] for f in files)
         value, maximum = item.get("progress_value"), item.get("progress_max")

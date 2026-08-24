@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=83"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -12,7 +12,7 @@ license = "MIT"
 license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "ComfyUI Remote Panel contributors" }]
 dependencies = [
-  "aiohttp>=3.10,<4",
+  "aiohttp>=3.13.4,<4",
   "Pillow>=10,<13",
   "psutil>=5.9,<8",
 ]
@@ -36,7 +36,7 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-comfyui_remote_panel = ["static/*"]
+comfyui_remote_panel = ["static/*", "workflows/*/*.json"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

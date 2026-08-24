@@ -22,3 +22,13 @@ jobs:
       - run: python scripts/check_repository.py
       - run: python -m build
 
+  minimum-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -c constraints/minimum.txt -e ".[test]"
+      - run: python -m pytest
+      - run: python -m build --no-isolation

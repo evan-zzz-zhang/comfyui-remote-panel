@@ -1,8 +1,9 @@
+import json
 from pathlib import Path
 
 import pytest
 
-from comfyui_remote_panel.preset import PresetError, load_presets
+from comfyui_remote_panel.preset import BUILTIN_WORKFLOW_DIR, PresetError, load_presets
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -109,6 +110,25 @@ def test_all_six_presets_load_and_keep_their_real_defaults():
     for preset_id, (scheduler, sampler, steps) in expected.items():
         normalized = presets[preset_id].validate_parameters(values())
         assert (normalized["scheduler"], normalized["sampler"], normalized["steps"]) == (scheduler, sampler, steps)
+
+
+def test_packaged_presets_are_available_without_external_directory(tmp_path):
+    presets = load_presets(tmp_path / "missing-workflows")
+    assert len(presets) == 6
+    assert BUILTIN_WORKFLOW_DIR.is_dir()
+
+
+def test_external_workflow_overrides_packaged_preset(tmp_path):
+    source = BUILTIN_WORKFLOW_DIR / "h3-fl2va-v4step600"
+    override = tmp_path / "override"
+    target = override / "h3-fl2va-v4step600"
+    target.mkdir(parents=True)
+    manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+    manifest["name"] = "External override"
+    (target / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (target / "workflow.json").write_text((source / "workflow.json").read_text(encoding="utf-8"), encoding="utf-8")
+
+    assert load_presets(override)["h3-fl2va-v4step600"].manifest["name"] == "External override"
 
 
 def test_ref2va_maps_two_uploaded_images_to_reference_slots():

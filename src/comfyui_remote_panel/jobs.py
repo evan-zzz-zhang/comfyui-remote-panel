@@ -62,7 +62,7 @@ class JobService:
         normalized = preset.validate_parameters(fields)
         seed = normalized.get("seed")
         if seed is None:
-            seed = secrets.randbits(64)
+            seed = str(secrets.randbits(64))
             normalized["seed"] = seed
         effective_uploads = list(uploaded)
         copied: list[dict[str, Any]] = []
@@ -113,14 +113,16 @@ class JobService:
             media_names = {file["role"]: self.files.comfy_input_name(Path(file["path"])) for file in effective_uploads}
             prompt = preset.build_prompt(normalized, job_id, media_names)
             await self.comfy.submit(job_id, prompt)
-            job = await self.db.update_job(job_id, status="queued", stage="等待执行", queue_position=None)
+            _, job = await self.db.update_job_if_status(
+                job_id, {"submitting"}, status="queued", stage="等待执行", queue_position=None
+            )
         except (PresetError, FileValidationError):
             self.files.cleanup_untracked(copied)
             raise
         except Exception as exc:
             summary = safe_summary(exc, "任务提交失败")
-            job = await self.db.update_job(
-                job_id,
+            _, job = await self.db.update_job_if_status(
+                job_id, {"submitting"},
                 status="failed",
                 error_code="submission_failed",
                 error_summary=summary,
@@ -157,8 +159,12 @@ class JobService:
             return job
         acted = await self.comfy.cancel(job_id)
         if acted:
-            job = await self.db.update_job(job_id, status="cancelled", stage="已取消", finished_at=time.time(), queue_position=None)
-            self.events.publish("job", self.public_job(job))
+            updated, job = await self.db.update_job_if_status(
+                job_id, ACTIVE_STATUSES, status="cancelled", stage="已取消",
+                finished_at=time.time(), queue_position=None,
+            )
+            if updated:
+                self.events.publish("job", self.public_job(job))
         return job
 
     async def delete(self, job_id: str) -> None:
@@ -347,6 +353,7 @@ class JobService:
         if job is None:
             return None
         result = {key: value for key, value in job.items() if key != "files"}
+        result["seed"] = str(result["seed"])
         preset = self.presets.get(job["preset_id"])
         result["preset_name"] = preset.manifest["name"] if preset else job["preset_id"]
         input_files = [file for file in job.get("files", []) if self.files.role_kind(file["role"]) is not None]
