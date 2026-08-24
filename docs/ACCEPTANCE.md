@@ -38,3 +38,12 @@ CI release gates remain: Windows/Linux, Python 3.11/3.13, tests, source build, a
 - Tailscale HTTPS 在手机端已由用户实测通过；本机 Schannel 客户端因凭据初始化错误未能重复该项，不据此判定服务失败。
 
 本轮未提交新的生成任务。任务提交、重试、取消与恢复的完整真实模型回归仍保留在发布验收清单中。
+
+## 2026-08-25 资源边界与前端验收记录
+
+- 78 项 Python 自动化测试通过；仓库安全扫描、JavaScript 语法检查、sdist 与 wheel 构建通过。
+- SQLite 本机基准：1k/10k 任务下列表 1.0/1.1 ms、恢复查询 7.9/72.0 ms、聚合 0.9/0.9 ms；72 ms 恢复查询已移入 worker。
+- 本地浏览器延迟上传期间双击提交并触发 metrics 更新，服务端只收到 1 次 POST。
+- 历史分页从 20 条加载到 25 条；任务列表不含预加载 video；SSE 健康 5 秒内 metrics 仅请求 1 次。
+- 375 px 移动视口下底部导航和提交按钮可见，页面无横向溢出。
+- 当前前台 Remote Panel 由高权限进程运行，本轮无法从当前会话替换；新代码需要下一次正常重启面板后才会迁移 schema v3 并生效。未停止或重启 ComfyUI。
