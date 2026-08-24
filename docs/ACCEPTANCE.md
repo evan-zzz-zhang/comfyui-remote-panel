@@ -26,3 +26,15 @@
 - 确认未启用 Funnel 或端口映射，原工作流、已有输出和 H3 Ledger 未受影响。
 
 CI release gates remain: Windows/Linux, Python 3.11/3.13, tests, source build, and repository secret/media scan.
+
+## 2026-08-25 阶段验收记录
+
+- Remote Panel 已重新启动并加载本轮修复，继续只监听 `127.0.0.1:8190`；`/healthz` 返回 200。
+- 匿名 jobs API 返回 403，授权首页返回 200，跨来源设备控制写请求返回 403。
+- 六套预设均可加载；现有 8 条任务通过 jobs API 返回，seed 全部为十进制字符串。
+- 真实 ComfyUI 启动成功；进程记录包含 PID、create time、executable、command line，四项与运行中主进程完全一致。
+- 新版 Remote Panel 远程关闭 ComfyUI 成功：只关闭记录的主 PID，8188 停止监听，进程记录被移除，8190 保持健康且浏览器进程未缺失。
+- IPv6 开启后，移动 5G 已恢复 Tailscale Direct，并可查看已生成视频。
+- Tailscale HTTPS 在手机端已由用户实测通过；本机 Schannel 客户端因凭据初始化错误未能重复该项，不据此判定服务失败。
+
+本轮未提交新的生成任务。任务提交、重试、取消与恢复的完整真实模型回归仍保留在发布验收清单中。
