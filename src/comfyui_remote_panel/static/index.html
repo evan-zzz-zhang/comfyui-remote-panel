@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#11130f">
   <meta name="description" content="安全、轻量的 MiniMax H3 远程生成面板">
   <title>H3 远程生成</title>
-  <link rel="stylesheet" href="/static/app.css?v=0.2.1">
+  <link rel="stylesheet" href="/static/app.css?v=0.3.0">
 </head>
 <body>
   <header class="topbar">
@@ -65,7 +65,7 @@
 
         <label class="field prompt-field">
           <span>提示词 <small>必填</small></span>
-          <textarea name="prompt" rows="6" required placeholder="描述主体、动作、镜头运动，以及对白、环境声或音乐……"></textarea>
+          <textarea name="prompt" rows="6" maxlength="10000" required placeholder="描述主体、动作、镜头运动，以及对白、环境声或音乐……"></textarea>
         </label>
 
         <div class="parameter-grid">
@@ -104,6 +104,7 @@
       </div>
       <div id="jobs-list" class="jobs-list"></div>
       <div id="jobs-empty" class="empty-state"><span>◎</span><h3>还没有任务</h3><p>从“生成”页提交第一个镜头。</p></div>
+      <button id="load-more-jobs" class="primary-button hidden" type="button">加载更多任务</button>
     </section>
 
     <section id="view-device" class="view" aria-labelledby="nav-device">
@@ -145,7 +146,7 @@
   <div id="video-modal" class="video-modal hidden" role="dialog" aria-modal="true" aria-labelledby="video-title">
     <div class="video-dialog">
       <div class="video-dialog-head"><strong id="video-title">视频预览</strong><button id="video-close" type="button" aria-label="关闭视频">×</button></div>
-      <video id="video-player" controls playsinline preload="metadata"></video>
+      <video id="video-player" controls playsinline preload="none"></video>
       <p>播放结束后播放器会保留，可拖动进度或重新播放。</p>
     </div>
   </div>
@@ -155,6 +156,6 @@
     <button id="nav-jobs" data-view="jobs"><span>▤</span>任务<i id="job-badge" class="hidden">0</i></button>
     <button id="nav-device" data-view="device"><span>◉</span>设备</button>
   </nav>
-  <script src="/static/app.js?v=0.2.1" defer></script>
+  <script src="/static/app.js?v=0.3.0" defer></script>
 </body>
 </html>

@@ -1,10 +1,10 @@
-const state = { jobs: new Map(), presets: new Map(), metrics: null, eventSource: null, retryRoles: [], previewUrls: [], isSubmitting: false };
+const state = { jobs: new Map(), presets: new Map(), metrics: null, eventSource: null, retryRoles: [], previewUrls: [], isSubmitting: false, jobsPage: 1, jobsHasMore: false, pollTimer: null, pollDelay: 2000, deviceTimer: null, deviceChecks: 0 };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
 const statusLabels = {
   submitting: "提交中", queued: "排队中", running: "生成中", succeeded: "已完成",
-  failed: "失败", cancelled: "已取消", interrupted: "意外中断", deleting: "删除中"
+  failed: "失败", cancelled: "已取消", interrupted: "意外中断", output_missing: "输出缺失", deleting: "删除中"
 };
 
 function formatBytes(value) {
@@ -79,24 +79,49 @@ function renderJobs() {
   const jobs = [...state.jobs.values()].sort((a, b) => b.created_at - a.created_at);
   $("#jobs-empty").classList.toggle("hidden", jobs.length > 0);
   $("#jobs-list").innerHTML = jobs.map(jobCard).join("");
+  updateJobsSummary();
+}
+
+function updateJobsSummary() {
+  const jobs = [...state.jobs.values()];
+  $("#jobs-empty").classList.toggle("hidden", jobs.length > 0);
   const active = jobs.filter(job => ["submitting", "queued", "running"].includes(job.status)).length;
   $("#job-badge").textContent = active;
   $("#job-badge").classList.toggle("hidden", !active);
+  $("#load-more-jobs").classList.toggle("hidden", !state.jobsHasMore);
+}
+
+function upsertJob(job) {
+  state.jobs.set(job.id, job);
+  const list = $("#jobs-list");
+  const existing = list.querySelector(`[data-job="${CSS.escape(job.id)}"]`);
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = jobCard(job).trim();
+  const card = wrapper.firstElementChild;
+  if (existing) existing.replaceWith(card);
+  else list.prepend(card);
+  updateJobsSummary();
+}
+
+function removeJob(id) {
+  state.jobs.delete(id);
+  $("#jobs-list").querySelector(`[data-job="${CSS.escape(id)}"]`)?.remove();
+  updateJobsSummary();
 }
 
 function jobCard(job) {
   const active = ["submitting", "queued", "running"].includes(job.status);
   const progress = job.progress_percent ?? (job.status === "succeeded" ? 100 : 0);
   const queueText = job.status === "queued" && job.queue_position ? ` · 第 ${job.queue_position} 位` : "";
-  const video = job.has_video ? `<button class="job-preview" data-action="play" data-id="${job.id}" type="button" aria-label="播放视频"><video muted playsinline preload="metadata" src="/api/jobs/${job.id}/video#t=0.1"></video><span>▶</span></button>` : "";
+  const video = job.has_video ? `<button class="job-preview" data-action="play" data-id="${job.id}" type="button" aria-label="播放视频"><span>▶</span></button>` : "";
   const actions = [];
   if (active) actions.push(`<button data-action="cancel" data-id="${job.id}">取消任务</button>`);
-  if (["failed", "cancelled", "interrupted", "succeeded"].includes(job.status)) actions.push(`<button data-action="retry" data-id="${job.id}">载入原参数</button>`);
+  if (["failed", "cancelled", "interrupted", "succeeded", "output_missing"].includes(job.status)) actions.push(`<button data-action="retry" data-id="${job.id}">载入原参数</button>`);
   if (job.has_video) {
     actions.unshift(`<button class="play" data-action="play" data-id="${job.id}">播放视频</button>`);
     actions.push(`<a href="/api/jobs/${job.id}/video?download=1">下载</a>`);
   }
-  if (["failed", "cancelled", "interrupted", "succeeded"].includes(job.status)) actions.push(`<button data-action="delete" data-id="${job.id}">删除</button>`);
+  if (["failed", "cancelled", "interrupted", "succeeded", "output_missing"].includes(job.status)) actions.push(`<button data-action="delete" data-id="${job.id}">删除</button>`);
   return `<article class="job-card" data-job="${job.id}">
     <div class="job-top"><div><span class="job-time">${formatDate(job.created_at)}</span><h3>${escapeHtml(job.mode)} · ${escapeHtml(aspectLabel(job.aspect_ratio))}</h3></div><span class="job-status ${job.status}">${statusLabels[job.status] || job.status}</span></div>
     <p class="job-prompt">${escapeHtml(job.prompt)}</p>
@@ -185,27 +210,72 @@ async function loadPresets() {
   select.innerHTML = result.items.map(preset => `<option value="${escapeHtml(preset.id)}">${escapeHtml(preset.name)}</option>`).join("");
   applyPreset(state.presets.has("h3-fl2va-v4step600") ? "h3-fl2va-v4step600" : result.items[0]?.id);
 }
-async function loadJobs() {
+async function loadJobs(reset = true) {
   try {
-    const response = await fetch("/api/jobs?page_size=100");
+    const page = reset ? 1 : state.jobsPage + 1;
+    const response = await fetch(`/api/jobs?page=${page}&page_size=20`);
     if (!response.ok) throw new Error("任务列表加载失败");
     const result = await response.json();
-    state.jobs = new Map(result.items.map(job => [job.id, job])); renderJobs();
+    if (reset) state.jobs = new Map();
+    result.items.forEach(job => state.jobs.set(job.id, job));
+    state.jobsPage = page; state.jobsHasMore = result.pagination.has_more; renderJobs();
   } catch (_) {}
 }
 async function loadMetrics() {
   try { const response = await fetch("/api/metrics"); if (response.ok) renderMetrics(await response.json()); } catch (_) {}
 }
+async function loadNewestJobs() {
+  try {
+    const response = await fetch("/api/jobs?page=1&page_size=20");
+    if (!response.ok) return;
+    const result = await response.json();
+    result.items.forEach(job => state.jobs.set(job.id, job));
+    state.jobsHasMore = state.jobs.size < result.pagination.total;
+    renderJobs();
+  } catch (_) {}
+}
 function connectEvents() {
   state.eventSource?.close();
   const source = new EventSource("/api/events"); state.eventSource = source;
+  source.onopen = () => { stopPolling(); state.pollDelay = 2000; };
+  source.onerror = () => startPolling();
   source.addEventListener("snapshot", event => {
     const snapshot = JSON.parse(event.data);
-    state.jobs = new Map(snapshot.jobs.map(job => [job.id, job])); renderJobs(); renderMetrics(snapshot.metrics);
+    snapshot.jobs.forEach(job => state.jobs.set(job.id, job)); renderJobs(); renderMetrics(snapshot.metrics);
   });
-  source.addEventListener("job", event => { const job = JSON.parse(event.data); state.jobs.set(job.id, job); renderJobs(); });
-  source.addEventListener("job_deleted", event => { state.jobs.delete(JSON.parse(event.data).id); renderJobs(); });
+  source.addEventListener("job", event => upsertJob(JSON.parse(event.data)));
+  source.addEventListener("job_deleted", event => removeJob(JSON.parse(event.data).id));
   source.addEventListener("metrics", event => renderMetrics(JSON.parse(event.data)));
+}
+function stopPolling() {
+  if (state.pollTimer) window.clearTimeout(state.pollTimer);
+  state.pollTimer = null;
+}
+function startPolling() {
+  if (state.pollTimer) return;
+  const poll = async () => {
+    state.pollTimer = null;
+    if (state.eventSource?.readyState === EventSource.OPEN) { state.pollDelay = 2000; return; }
+    await Promise.all([loadNewestJobs(), loadMetrics()]);
+    state.pollDelay = Math.min(30000, state.pollDelay * 2);
+    state.pollTimer = window.setTimeout(poll, state.pollDelay);
+  };
+  state.pollTimer = window.setTimeout(poll, state.pollDelay);
+}
+function stopDeviceMonitor() {
+  if (state.deviceTimer) window.clearTimeout(state.deviceTimer);
+  state.deviceTimer = null; state.deviceChecks = 0;
+}
+function startDeviceMonitor() {
+  stopDeviceMonitor();
+  const check = async () => {
+    await loadMetrics(); state.deviceChecks += 1;
+    if (!state.metrics?.comfyui?.control?.operation || state.deviceChecks >= 150 || document.hidden || state.eventSource?.readyState === EventSource.OPEN) {
+      stopDeviceMonitor(); return;
+    }
+    state.deviceTimer = window.setTimeout(check, 1000);
+  };
+  state.deviceTimer = window.setTimeout(check, 1000);
 }
 async function apiAction(path, options = {}) {
   const response = await fetch(path, options);
@@ -261,7 +331,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     updateReferenceAspect();
   };
   $$(".bottom-nav button").forEach(button => button.addEventListener("click", () => setView(button.dataset.view)));
-  $("#refresh-jobs").addEventListener("click", loadJobs);
+  $("#refresh-jobs").addEventListener("click", () => loadJobs(true));
+  $("#load-more-jobs").addEventListener("click", () => loadJobs(false));
   $("#clear-retry").addEventListener("click", clearRetry);
   $$(".upload-card input").forEach(input => input.addEventListener("change", () => {
     const card = input.closest(".upload-card"), image = $("img", card), file = input.files[0];
@@ -296,7 +367,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const currentPreset = $("#preset-select").value;
       const job = await apiAction("/api/jobs", { method: "POST", body: new FormData(form) });
-      state.jobs.set(job.id, job); renderJobs(); message.textContent = "任务已加入队列";
+      upsertJob(job); message.textContent = "任务已加入队列";
       form.reset(); $$(".upload-card").forEach(card => card.classList.remove("has-image"));
       $$(".upload-card img").forEach(image => image.removeAttribute("src"));
       clearMediaPreviews(); clearRetry(); applyPreset(currentPreset); updateLoad(); setView("jobs");
@@ -311,7 +382,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (action === "delete" && !window.confirm("确认删除这个任务的输入、视频和面板记录？此操作无法撤销。")) return;
     control.disabled = true;
     try {
-      if (action === "cancel") await apiAction(`/api/jobs/${id}/cancel`, { method: "POST" });
+      if (action === "cancel") upsertJob(await apiAction(`/api/jobs/${id}/cancel`, { method: "POST" }));
       if (action === "retry") {
         const draft = await apiAction(`/api/jobs/${id}/retry`, { method: "POST" });
         form.reset(); $$(".upload-card").forEach(card => card.classList.remove("has-image"));
@@ -330,8 +401,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (state.retryRoles.includes("last")) $("#last-frame-hint").textContent = "沿用原任务图片";
         updateReferenceAspect(); updateLoad(); setView("generate");
       }
-      if (action === "delete") { await apiAction(`/api/jobs/${id}`, { method: "DELETE", headers: {"Content-Type":"application/json"}, body: JSON.stringify({confirm:true}) }); state.jobs.delete(id); }
-      if (action !== "retry") await loadJobs();
+      if (action === "delete") { await apiAction(`/api/jobs/${id}`, { method: "DELETE", headers: {"Content-Type":"application/json"}, body: JSON.stringify({confirm:true}) }); removeJob(id); }
     } catch (error) { window.alert(error.message); control.disabled = false; }
   });
 
@@ -346,11 +416,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       await apiAction(`/api/comfyui/control/${action}`, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({confirm:true}) });
       await loadMetrics();
-      let checks = 0;
-      const monitor = window.setInterval(async () => {
-        await loadMetrics(); checks += 1;
-        if (!state.metrics?.comfyui?.control?.operation || checks >= 150) window.clearInterval(monitor);
-      }, 1000);
+      startDeviceMonitor();
     } catch (error) {
       $("#control-message").className = "control-message error";
       $("#control-message").textContent = error.message;
@@ -361,8 +427,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#video-close").addEventListener("click", closePlayer);
   $("#video-modal").addEventListener("click", event => { if (event.target.id === "video-modal") closePlayer(); });
   document.addEventListener("keydown", event => { if (event.key === "Escape" && !$("#video-modal").classList.contains("hidden")) closePlayer(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) stopDeviceMonitor(); });
 
   try { await loadPresets(); } catch (error) { $("#form-message").className = "form-message error"; $("#form-message").textContent = error.message; }
   await Promise.all([loadJobs(), loadMetrics()]); connectEvents();
-  window.setInterval(() => { loadJobs(); loadMetrics(); }, 10000);
 });
