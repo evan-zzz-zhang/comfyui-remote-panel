@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#11130f">
+  <meta name="description" content="安全、轻量的 MiniMax H3 远程生成面板">
+  <title>H3 远程生成</title>
+  <link rel="stylesheet" href="/static/app.css?v=0.2.1">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">COMFYUI REMOTE</p>
+      <h1>H3 生成台</h1>
+    </div>
+    <div id="connection-pill" class="status-pill status-offline"><span></span>连接中</div>
+  </header>
+
+  <main>
+    <section id="view-generate" class="view active" aria-labelledby="nav-generate">
+      <div class="composer-heading">
+        <div><p class="eyebrow">NEW GENERATION</p><h2>新建任务</h2></div>
+        <span id="active-preset-label">H3 FL2VA</span>
+      </div>
+
+      <form id="job-form" class="panel-form">
+        <input id="retry-source-id" type="hidden" name="retry_source_id" value="">
+        <div id="retry-draft" class="retry-draft hidden"><span>已载入原任务参数和参考图</span><button id="clear-retry" type="button">清除</button></div>
+        <div id="fl2va-media" class="upload-grid">
+          <label class="upload-card">
+            <input id="first-frame" type="file" name="first_frame" accept="image/jpeg,image/png,image/webp">
+            <img alt="首帧预览">
+            <span class="upload-icon">＋</span>
+            <strong id="first-frame-label">首帧</strong>
+            <small id="first-frame-hint">可选</small>
+          </label>
+          <label class="upload-card">
+            <input id="last-frame" type="file" name="last_frame" accept="image/jpeg,image/png,image/webp">
+            <img alt="尾帧预览">
+            <span class="upload-icon">＋</span>
+            <strong id="last-frame-label">尾帧</strong>
+            <small id="last-frame-hint">可选</small>
+          </label>
+        </div>
+
+        <div id="ref2va-media" class="reference-media hidden">
+          <label class="media-picker">
+            <input id="ref-images" type="file" name="ref_images" accept="image/jpeg,image/png,image/webp" multiple>
+            <span>＋</span><div><strong>参考图片</strong><small>最多 9 张 · JPG / PNG / WebP</small></div><b>选择</b>
+          </label>
+          <div id="ref-image-preview" class="media-preview-grid hidden"></div>
+          <label class="media-picker">
+            <input id="ref-videos" type="file" name="ref_videos" accept="video/mp4,video/quicktime,video/webm" multiple>
+            <span>＋</span><div><strong>参考视频</strong><small>最多 3 段 · 建议 24fps、2–15 秒</small></div><b>选择</b>
+          </label>
+          <div id="ref-video-preview" class="media-file-list hidden"></div>
+          <label class="media-picker">
+            <input id="ref-audios" type="file" name="ref_audios" accept="audio/wav,audio/mpeg,audio/flac,audio/ogg,audio/mp4,.m4a" multiple>
+            <span>＋</span><div><strong>参考音频</strong><small>最多 3 段 · WAV / MP3 / FLAC / OGG / M4A</small></div><b>选择</b>
+          </label>
+          <div id="ref-audio-preview" class="media-file-list hidden"></div>
+          <p class="reference-tag-tip">提示词可使用 <code>&lt;Picture 1&gt;</code>、<code>&lt;Video 1&gt;</code>、<code>&lt;Audio 1&gt;</code> 指代对应素材；视频自带音轨会自动一同送入工作流。</p>
+        </div>
+
+        <label class="field prompt-field">
+          <span>提示词 <small>必填</small></span>
+          <textarea name="prompt" rows="6" required placeholder="描述主体、动作、镜头运动，以及对白、环境声或音乐……"></textarea>
+        </label>
+
+        <div class="parameter-grid">
+          <label class="field"><span>时长</span><select name="duration_seconds"></select></label>
+          <label class="field"><span>画幅</span>
+            <select name="aspect_ratio">
+              <option>9:16</option><option id="reference-aspect-option" value="reference" disabled>参考图比例（需参考图）</option><option>16:9</option><option>1:1</option><option>2:3</option>
+              <option>3:2</option><option>3:4</option><option>4:3</option><option>21:9</option>
+            </select>
+          </label>
+          <label class="field wide"><span>分辨率 <b id="mp-value">0.4 MP</b></span><input name="megapixels" type="range" min="0.2" max="1" step="0.1" value="0.4"></label>
+        </div>
+        <p id="load-warning" class="notice hidden">当前组合负载较高，可能耗时很久或显存不足；失败后可原参数重试。</p>
+
+        <details class="advanced">
+          <summary>高级设置 <span>⌄</span></summary>
+          <div class="advanced-grid">
+            <label class="field wide"><span>工作流</span><select name="preset_id" id="preset-select"></select></label>
+            <label class="field"><span>调度器</span><select name="scheduler"></select></label>
+            <label class="field"><span>采样器</span><select name="sampler"></select></label>
+            <label class="field"><span>迭代步数</span><input name="steps" type="number" min="1" max="50" step="1"></label>
+            <label class="field"><span>种子</span><input name="seed" inputmode="numeric" pattern="[0-9]*" placeholder="留空则随机"></label>
+          </div>
+          <p id="preset-description">种子支持 0 至 18446744073709551615；任务会保存实际使用的全部参数。</p>
+        </details>
+
+        <button id="submit-button" class="primary-button" type="submit"><span>提交生成</span><b>→</b></button>
+        <p id="form-message" class="form-message" role="status"></p>
+      </form>
+    </section>
+
+    <section id="view-jobs" class="view" aria-labelledby="nav-jobs">
+      <div class="page-heading">
+        <div><p class="eyebrow">GENERATION LOG</p><h2>任务记录</h2></div>
+        <button id="refresh-jobs" class="icon-button" type="button" aria-label="刷新任务">↻</button>
+      </div>
+      <div id="jobs-list" class="jobs-list"></div>
+      <div id="jobs-empty" class="empty-state"><span>◎</span><h3>还没有任务</h3><p>从“生成”页提交第一个镜头。</p></div>
+    </section>
+
+    <section id="view-device" class="view" aria-labelledby="nav-device">
+      <div class="page-heading"><div><p class="eyebrow">WORKSTATION</p><h2>设备状态</h2></div></div>
+      <div id="device-overview" class="device-overview"></div>
+      <div class="metric-card control-card">
+        <div class="metric-title"><span>ComfyUI 控制</span><b id="control-state">检查中</b></div>
+        <p class="metric-note">启动和重启可能需要一两分钟，完成后状态会自动更新。</p>
+        <div class="device-actions" id="device-actions">
+          <button type="button" data-control="start">启动</button>
+          <button type="button" data-control="restart">重启</button>
+          <button type="button" class="danger" data-control="stop">关闭</button>
+        </div>
+        <p id="control-message" class="control-message" aria-live="polite"></p>
+      </div>
+      <div class="metric-card accent">
+        <div class="metric-title"><span>GPU</span><b id="gpu-name">暂不可用</b></div>
+        <div class="metric-hero"><strong id="gpu-util">—</strong><span>%</span></div>
+        <div class="progress-track"><i id="gpu-bar"></i></div>
+        <div class="metric-grid">
+          <div><small>显存</small><strong id="gpu-memory">—</strong></div>
+          <div><small>温度</small><strong id="gpu-temp">—</strong></div>
+          <div><small>功耗</small><strong id="gpu-power">—</strong></div>
+        </div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-title"><span>系统内存</span><b id="ram-percent">—</b></div>
+        <div class="progress-track neutral"><i id="ram-bar"></i></div>
+        <p id="ram-memory" class="metric-note">暂不可用</p>
+      </div>
+      <div class="metric-card">
+        <div class="metric-title"><span>存储</span><b id="disk-free">—</b></div>
+        <div class="metric-grid two"><div><small>面板文件</small><strong id="tracked-size">—</strong></div><div><small>运行时间</small><strong id="uptime">—</strong></div></div>
+      </div>
+      <div id="preset-diagnostics" class="diagnostics"></div>
+    </section>
+  </main>
+
+  <div id="video-modal" class="video-modal hidden" role="dialog" aria-modal="true" aria-labelledby="video-title">
+    <div class="video-dialog">
+      <div class="video-dialog-head"><strong id="video-title">视频预览</strong><button id="video-close" type="button" aria-label="关闭视频">×</button></div>
+      <video id="video-player" controls playsinline preload="metadata"></video>
+      <p>播放结束后播放器会保留，可拖动进度或重新播放。</p>
+    </div>
+  </div>
+
+  <nav class="bottom-nav" aria-label="主导航">
+    <button id="nav-generate" class="active" data-view="generate"><span>＋</span>生成</button>
+    <button id="nav-jobs" data-view="jobs"><span>▤</span>任务<i id="job-badge" class="hidden">0</i></button>
+    <button id="nav-device" data-view="device"><span>◉</span>设备</button>
+  </nav>
+  <script src="/static/app.js?v=0.2.1" defer></script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+[server]
+host = "127.0.0.1"
+port = 8190
+public_origin = "https://your-device.your-tailnet.ts.net"
+
+[auth]
+allowed_logins = ["you@example.com"]
+
+[comfyui]
+base_url = "http://127.0.0.1:8188"
+input_dir = "../ComfyUI/input"
+output_dir = "../ComfyUI/output"
+minimum_version = "0.26.0"
+
+[comfyui.control]
+enabled = false
+working_dir = "../ComfyUI"
+start_command = ["./python_embeded/python.exe", "-s", "ComfyUI/main.py", "--windows-standalone-build", "--enable-manager"]
+visible_window = false
+startup_timeout_seconds = 120
+shutdown_timeout_seconds = 30
+
+[storage]
+data_dir = "./data"
+workflow_dir = "./workflows"
+
+[monitoring]
+interval_seconds = 3
+nvidia_smi_timeout_seconds = 2

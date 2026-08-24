@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comfyui-remote-panel"
+version = "0.1.0"
+description = "A small, Tailscale-authenticated mobile control panel for trusted ComfyUI workflows."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "ComfyUI Remote Panel contributors" }]
+dependencies = [
+  "aiohttp>=3.10,<4",
+  "Pillow>=10,<13",
+  "psutil>=5.9,<8",
+]
+
+[project.optional-dependencies]
+test = [
+  "build>=1.2,<2",
+  "pytest>=8,<10",
+  "pytest-aiohttp>=1.1,<2",
+  "pytest-asyncio>=0.24,<2",
+]
+
+[project.scripts]
+comfyui-remote-panel = "comfyui_remote_panel.__main__:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+comfyui_remote_panel = ["static/*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

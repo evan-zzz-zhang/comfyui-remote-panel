@@ -1,0 +1,12 @@
+ComfyUI Remote Panel
+====================
+
+The bundled MiniMax H3 workflow presets are derived from the official ComfyUI
+workflow templates and a locally tested parameter variant. The official
+templates are distributed under the MIT License:
+
+https://github.com/Comfy-Org/workflow_templates
+
+The presets do not include model weights, LoRAs, user media, ComfyUI history,
+or generated output. Model names and download URLs are descriptive dependency
+metadata only. ComfyUI and model weights retain their respective licenses.
