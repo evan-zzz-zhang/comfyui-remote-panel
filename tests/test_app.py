@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import io
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
@@ -269,6 +270,67 @@ async def test_queue_position_includes_non_panel_jobs(panel_client, comfy_server
     comfy_server.app["queue_pending"].extend([[1, "external-job"], [2, job["id"]]])
     await panel_client.app["jobs"].reconcile_once()
     assert (await panel_client.app["db"].get_job(job["id"]))["queue_position"] == 2
+
+
+@pytest.mark.asyncio
+async def test_websocket_terminal_state_wins_over_delayed_reconcile(panel_client):
+    form = FormData(default_to_multipart=True)
+    form.add_field("prompt", "测试 reconcile 与 WebSocket 竞态")
+    response = await panel_client.post("/api/jobs", data=form, headers=LOGIN)
+    job = await response.json()
+
+    history_started = asyncio.Event()
+    release_history = asyncio.Event()
+
+    async def empty_queue():
+        return {"queue_running": [], "queue_pending": []}
+
+    async def delayed_history(_job_id):
+        history_started.set()
+        await release_history.wait()
+        return {_job_id: {"status": {"completed": True, "status_str": "success"}, "outputs": {}}}
+
+    panel_client.app["comfy"].queue = empty_queue
+    panel_client.app["comfy"].history = delayed_history
+    reconcile = asyncio.create_task(panel_client.app["jobs"].reconcile_once())
+    await asyncio.wait_for(history_started.wait(), timeout=2)
+
+    await panel_client.app["jobs"].handle_ws_event({
+        "type": "execution_error",
+        "data": {"prompt_id": job["id"], "exception_message": "deterministic failure"},
+    })
+    release_history.set()
+    await reconcile
+
+    current = await panel_client.app["db"].get_job(job["id"])
+    assert current["status"] == "failed"
+    assert current["error_summary"] == "deterministic failure"
+
+
+@pytest.mark.asyncio
+async def test_prompt_has_independent_streaming_limit(panel_client):
+    form = FormData(default_to_multipart=True)
+    form.add_field("prompt", "字" * 11_000)
+    response = await panel_client.post("/api/jobs", data=form, headers=LOGIN)
+    assert response.status == 413
+    assert (await response.json())["error"]["code"] == "field_too_large"
+
+
+@pytest.mark.asyncio
+async def test_missing_output_recovery_has_terminal_limit(panel_client):
+    form = FormData(default_to_multipart=True)
+    form.add_field("prompt", "测试输出恢复上限")
+    response = await panel_client.post("/api/jobs", data=form, headers=LOGIN)
+    job = await response.json()
+    await panel_client.app["db"].update_job(
+        job["id"], status="succeeded", finished_at=time.time() - 25 * 60 * 60,
+    )
+    panel_client.app["comfy"].history = AsyncMock(return_value={})
+
+    await panel_client.app["jobs"]._recover_missing_outputs()
+    current = await panel_client.app["db"].get_job(job["id"])
+    assert current["status"] == "output_missing"
+    assert current["recovery_attempts"] == 1
 
 
 @pytest.mark.asyncio

@@ -23,6 +23,11 @@ shutdown_timeout_seconds = 30
 [storage]
 data_dir = "./data"
 workflow_dir = "./workflows"
+# Keep enough space for temporary uploads and a conservative generated-video budget.
+minimum_free_bytes = 536870912
+output_reserve_bytes = 1073741824
+# Optional hard ceiling for files tracked by this panel.
+# max_tracked_bytes = 107374182400
 
 [monitoring]
 interval_seconds = 3

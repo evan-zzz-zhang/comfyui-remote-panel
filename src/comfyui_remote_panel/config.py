@@ -30,6 +30,9 @@ class Config:
     comfyui_visible_window: bool = False
     comfyui_startup_timeout: float = 120.0
     comfyui_shutdown_timeout: float = 30.0
+    minimum_free_bytes: int = 512 * 1024 * 1024
+    output_reserve_bytes: int = 1024 * 1024 * 1024
+    max_tracked_bytes: int | None = None
 
     @property
     def database_path(self) -> Path:
@@ -137,6 +140,18 @@ def load_config(path: str | Path) -> Config:
     if not isinstance(shutdown_timeout, (int, float)) or shutdown_timeout <= 0:
         raise ConfigError("comfyui.control.shutdown_timeout_seconds must be positive")
 
+    minimum_free_bytes = storage.get("minimum_free_bytes", 512 * 1024 * 1024)
+    output_reserve_bytes = storage.get("output_reserve_bytes", 1024 * 1024 * 1024)
+    max_tracked_bytes = storage.get("max_tracked_bytes")
+    if not isinstance(minimum_free_bytes, int) or isinstance(minimum_free_bytes, bool) or minimum_free_bytes < 0:
+        raise ConfigError("storage.minimum_free_bytes must be a non-negative integer")
+    if not isinstance(output_reserve_bytes, int) or isinstance(output_reserve_bytes, bool) or output_reserve_bytes < 0:
+        raise ConfigError("storage.output_reserve_bytes must be a non-negative integer")
+    if max_tracked_bytes is not None and (
+        not isinstance(max_tracked_bytes, int) or isinstance(max_tracked_bytes, bool) or max_tracked_bytes <= 0
+    ):
+        raise ConfigError("storage.max_tracked_bytes must be a positive integer")
+
     return Config(
         host=host,
         port=port,
@@ -156,4 +171,7 @@ def load_config(path: str | Path) -> Config:
         comfyui_visible_window=visible_window,
         comfyui_startup_timeout=float(startup_timeout),
         comfyui_shutdown_timeout=float(shutdown_timeout),
+        minimum_free_bytes=minimum_free_bytes,
+        output_reserve_bytes=output_reserve_bytes,
+        max_tracked_bytes=max_tracked_bytes,
     )

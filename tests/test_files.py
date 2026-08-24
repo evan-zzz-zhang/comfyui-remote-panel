@@ -93,3 +93,31 @@ async def test_oversize_stream_is_rejected_and_temp_file_is_removed(tmp_path):
     with pytest.raises(FileValidationError, match="25MB"):
         await value.save_upload("job", "first", OversizePart())
     assert list(value.temp_root.iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_orphan_scan_is_dry_run_then_exact_delete(tmp_path):
+    value = store(tmp_path)
+    job_dir = value.input_root / "123e4567-e89b-42d3-a456-426614174000"
+    job_dir.mkdir()
+    tracked = job_dir / "tracked.png"
+    orphan = job_dir / "orphan.png"
+    tracked.write_bytes(b"tracked")
+    orphan.write_bytes(b"orphan")
+
+    report = await value.scan_orphans({tracked})
+    assert report == [{"path": str(orphan), "action": "would_delete"}]
+    assert orphan.exists()
+
+    report = await value.scan_orphans({tracked}, execute=True)
+    assert report == [{"path": str(orphan), "action": "deleted"}]
+    assert tracked.exists() and not orphan.exists()
+
+
+@pytest.mark.asyncio
+async def test_storage_admission_rejects_low_free_space(tmp_path, monkeypatch):
+    value = store(tmp_path)
+    usage = type("Usage", (), {"free": 99})()
+    monkeypatch.setattr("comfyui_remote_panel.files.shutil.disk_usage", lambda _path: usage)
+    with pytest.raises(Exception, match="空间不足"):
+        await value.ensure_capacity(1, 0, 50, 50, None)

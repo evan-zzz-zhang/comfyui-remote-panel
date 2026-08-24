@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import os
+import re
 import shutil
 import stat
 import uuid
@@ -18,9 +20,14 @@ MAX_IMAGE_SIDE = 8192
 MAX_IMAGE_PIXELS = 40_000_000
 FORMAT_EXTENSIONS = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}
 VIDEO_SIGNATURES = {b"\x1aE\xdf\xa3": ".webm"}
+_JOB_DIR_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.I)
 
 
 class FileValidationError(ValueError):
+    pass
+
+
+class StorageCapacityError(RuntimeError):
     pass
 
 
@@ -29,6 +36,11 @@ class FileStore:
         self.input_root = input_root.resolve()
         self.output_root = output_root.resolve()
         self.temp_root = (data_dir / "tmp").resolve()
+        self._worker_limit = asyncio.Semaphore(2)
+
+    async def _run_blocking(self, function: Any, *args: Any) -> Any:
+        async with self._worker_limit:
+            return await asyncio.to_thread(function, *args)
 
     def initialize(self) -> None:
         for directory in (self.input_root, self.output_root, self.temp_root):
@@ -54,15 +66,18 @@ class FileStore:
                         labels = {"image": "单张图片不能超过 25MB", "video": "单个视频不能超过 200MB", "audio": "单个音频不能超过 50MB"}
                         raise FileValidationError(labels[kind])
                     handle.write(chunk)
-            extension = self._validate_image(temp) if kind == "image" else self._validate_media(temp, kind)
-            job_dir = self._safe_child(self.input_root, job_id)
-            job_dir.mkdir(parents=True, exist_ok=True)
-            destination = self._safe_child(job_dir, f"{job_id}-{role.replace('_', '-')}{extension}")
-            os.replace(temp, destination)
-            return {"role": role, "path": destination, "size_bytes": destination.stat().st_size}
+            return await self._run_blocking(self._validate_and_store, temp, job_id, role, kind)
         except Exception:
             temp.unlink(missing_ok=True)
             raise
+
+    def _validate_and_store(self, temp: Path, job_id: str, role: str, kind: str) -> dict[str, Any]:
+        extension = self._validate_image(temp) if kind == "image" else self._validate_media(temp, kind)
+        job_dir = self._safe_child(self.input_root, job_id)
+        job_dir.mkdir(parents=True, exist_ok=True)
+        destination = self._safe_child(job_dir, f"{job_id}-{role.replace('_', '-')}{extension}")
+        os.replace(temp, destination)
+        return {"role": role, "path": destination, "size_bytes": destination.stat().st_size}
 
     @staticmethod
     def role_kind(role: str) -> str | None:
@@ -129,6 +144,29 @@ class FileStore:
         shutil.copy2(source, destination)
         return {"role": role, "path": destination, "size_bytes": destination.stat().st_size}
 
+    async def copy_input_async(self, source: Path, new_job_id: str, role: str) -> dict[str, Any]:
+        return await self._run_blocking(self.copy_input, source, new_job_id, role)
+
+    async def ensure_capacity(
+        self, incoming_bytes: int, tracked_bytes: int, minimum_free_bytes: int,
+        output_reserve_bytes: int, max_tracked_bytes: int | None,
+    ) -> None:
+        await self._run_blocking(
+            self._ensure_capacity, incoming_bytes, tracked_bytes, minimum_free_bytes,
+            output_reserve_bytes, max_tracked_bytes,
+        )
+
+    def _ensure_capacity(
+        self, incoming_bytes: int, tracked_bytes: int, minimum_free_bytes: int,
+        output_reserve_bytes: int, max_tracked_bytes: int | None,
+    ) -> None:
+        required = max(0, incoming_bytes) + minimum_free_bytes + output_reserve_bytes
+        free = min(shutil.disk_usage(root).free for root in {self.input_root, self.output_root, self.temp_root})
+        if free < required:
+            raise StorageCapacityError("磁盘可用空间不足，未接受新任务")
+        if max_tracked_bytes is not None and tracked_bytes + incoming_bytes + output_reserve_bytes > max_tracked_bytes:
+            raise StorageCapacityError("应用存储配额不足，未接受新任务")
+
     def comfy_input_name(self, path: Path) -> str:
         path = path.resolve(strict=True)
         self._assert_managed_file(path, self.input_root)
@@ -170,6 +208,55 @@ class FileStore:
                 self.delete_exact(Path(file["path"]), file["role"])
             except (OSError, FileValidationError):
                 pass
+
+    async def scan_orphans(self, known_paths: set[Path], execute: bool = False) -> list[dict[str, str]]:
+        return await self._run_blocking(self._scan_orphans, known_paths, execute)
+
+    def _scan_orphans(self, known_paths: set[Path], execute: bool) -> list[dict[str, str]]:
+        """Inspect only app-owned UUID folders and upload temps; never recurse or follow links."""
+        known = {os.path.normcase(str(path.resolve())) for path in known_paths}
+        findings: list[dict[str, str]] = []
+        for root in (self.input_root, self.output_root):
+            for directory in root.iterdir():
+                if not directory.is_dir() or not _JOB_DIR_PATTERN.fullmatch(directory.name):
+                    continue
+                if self._is_link_like(directory):
+                    findings.append({"path": str(directory), "action": "refused_link"})
+                    continue
+                for candidate in directory.iterdir():
+                    if self._is_link_like(candidate) or not candidate.is_file():
+                        findings.append({"path": str(candidate), "action": "refused_link_or_non_file"})
+                        continue
+                    if os.path.normcase(str(candidate.resolve())) in known:
+                        continue
+                    action = "would_delete"
+                    if execute:
+                        candidate.unlink()
+                        action = "deleted"
+                    findings.append({"path": str(candidate), "action": action})
+                if execute:
+                    try:
+                        directory.rmdir()
+                    except OSError:
+                        pass
+        for candidate in self.temp_root.iterdir():
+            if candidate.suffix != ".upload":
+                continue
+            if self._is_link_like(candidate) or not candidate.is_file():
+                findings.append({"path": str(candidate), "action": "refused_link_or_non_file"})
+                continue
+            action = "would_delete"
+            if execute:
+                candidate.unlink()
+                action = "deleted"
+            findings.append({"path": str(candidate), "action": action})
+        return findings
+
+    @staticmethod
+    def _is_link_like(path: Path) -> bool:
+        info = path.lstat()
+        attributes = getattr(info, "st_file_attributes", 0)
+        return stat.S_ISLNK(info.st_mode) or bool(attributes & 0x400)
 
     @staticmethod
     def _safe_child(root: Path, *parts: str) -> Path:

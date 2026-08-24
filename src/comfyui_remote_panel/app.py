@@ -17,7 +17,7 @@ from .comfy import ComfyClient, ComfyError
 from .config import Config
 from .db import TERMINAL_STATUSES, Database
 from .events import EventBus
-from .files import FileStore, FileValidationError
+from .files import FileStore, FileValidationError, StorageCapacityError
 from .jobs import JobService, new_job_id
 from .lifecycle import ComfyLifecycle, LifecycleError
 from .metrics import MetricsService
@@ -25,9 +25,17 @@ from .preset import PresetError, load_presets
 
 
 MAX_REQUEST_BYTES = 1024 * 1024 * 1024
+MAX_PROMPT_BYTES = 32 * 1024
+MAX_PROMPT_CHARS = 10_000
+MAX_TEXT_FIELD_BYTES = 2 * 1024
+MAX_TEXT_FIELD_CHARS = 1_000
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 RANGE_PATTERN = re.compile(r"^bytes=(\d*)-(\d*)$")
 log = logging.getLogger(__name__)
+
+
+class TextFieldTooLarge(ValueError):
+    pass
 
 
 def json_error(message: str, status: int, code: str = "request_error") -> web.Response:
@@ -114,6 +122,10 @@ def create_app(config: Config) -> web.Application:
         repeated_files = {"ref_images": ("image", 9), "ref_videos": ("video", 3), "ref_audios": ("audio", 3)}
         repeated_counts = {name: 0 for name in repeated_files}
         try:
+            await app["files"].ensure_capacity(
+                request.content_length or 0, await app["db"].tracked_size(),
+                config.minimum_free_bytes, config.output_reserve_bytes, config.max_tracked_bytes,
+            )
             reader = await request.multipart()
             async for part in reader:
                 if part.name in fixed_files:
@@ -135,7 +147,7 @@ def create_app(config: Config) -> web.Application:
                 elif part.name in allowed_text:
                     if part.name in fields:
                         raise PresetError(f"字段重复：{part.name}")
-                    fields[part.name] = await part.text()
+                    fields[part.name] = await _read_text_part(part, part.name)
                 else:
                     raise PresetError(f"不支持的字段：{part.name}")
             fields["duration_seconds"] = int(fields.get("duration_seconds", "5"))
@@ -146,6 +158,12 @@ def create_app(config: Config) -> web.Application:
             fields["seed"] = seed_text or None
             job = await app["jobs"].create(fields, uploaded, job_id)
             return web.json_response(app["jobs"].public_job(job), status=201)
+        except StorageCapacityError as exc:
+            app["files"].cleanup_untracked(uploaded)
+            return json_error(str(exc), 507, "insufficient_storage")
+        except TextFieldTooLarge as exc:
+            app["files"].cleanup_untracked(uploaded)
+            return json_error(str(exc), 413, "field_too_large")
         except (ValueError, PresetError, FileValidationError) as exc:
             app["files"].cleanup_untracked(uploaded)
             return json_error(str(exc), 400, "validation_error")
@@ -270,6 +288,9 @@ def create_app(config: Config) -> web.Application:
         config.data_dir.mkdir(parents=True, exist_ok=True)
         app["files"].initialize()
         await app["db"].initialize()
+        orphan_report = await app["files"].scan_orphans(await app["db"].tracked_paths())
+        if orphan_report:
+            log.warning("orphan dry-run found %d app-owned paths; nothing was deleted", len(orphan_report))
         await app["comfy"].start()
         app["background_tasks"] = [
             asyncio.create_task(app["jobs"].reconcile_loop(config.monitoring_interval)),
@@ -297,8 +318,28 @@ async def _write_sse(response: web.StreamResponse, event: str, data: Any) -> Non
     await response.write(f"event: {event}\ndata: {payload}\n\n".encode("utf-8"))
 
 
+async def _read_text_part(part: Any, field_name: str) -> str:
+    byte_limit = MAX_PROMPT_BYTES if field_name == "prompt" else MAX_TEXT_FIELD_BYTES
+    char_limit = MAX_PROMPT_CHARS if field_name == "prompt" else MAX_TEXT_FIELD_CHARS
+    payload = bytearray()
+    while True:
+        chunk = await part.read_chunk(4096)
+        if not chunk:
+            break
+        payload.extend(chunk)
+        if len(payload) > byte_limit:
+            raise TextFieldTooLarge(f"字段 {field_name} 超过 {byte_limit} 字节限制")
+    try:
+        value = payload.decode(part.get_charset(default="utf-8"))
+    except (UnicodeDecodeError, LookupError) as exc:
+        raise ValueError(f"字段 {field_name} 不是有效 UTF-8 文本") from exc
+    if len(value) > char_limit:
+        raise TextFieldTooLarge(f"字段 {field_name} 超过 {char_limit} 字符限制")
+    return value
+
+
 async def _stream_file(request: web.Request, path: Path) -> web.StreamResponse:
-    size = path.stat().st_size
+    size = (await asyncio.to_thread(path.stat)).st_size
     start, end, status = 0, size - 1, 200
     range_header = request.headers.get("Range")
     if range_header:
@@ -330,14 +371,17 @@ async def _stream_file(request: web.Request, path: Path) -> web.StreamResponse:
     response = web.StreamResponse(status=status, headers=headers)
     await response.prepare(request)
     if request.method != "HEAD":
-        with path.open("rb") as handle:
-            handle.seek(start)
+        handle = await asyncio.to_thread(path.open, "rb")
+        try:
+            await asyncio.to_thread(handle.seek, start)
             remaining = length
             while remaining:
-                chunk = handle.read(min(1024 * 1024, remaining))
+                chunk = await asyncio.to_thread(handle.read, min(1024 * 1024, remaining))
                 if not chunk:
                     break
                 remaining -= len(chunk)
                 await response.write(chunk)
+        finally:
+            await asyncio.to_thread(handle.close)
     await response.write_eof()
     return response

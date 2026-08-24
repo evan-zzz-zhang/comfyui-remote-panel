@@ -144,24 +144,12 @@ class ComfyLifecycle:
         raise LifecycleError("等待 ComfyUI 启动超时；进程可能仍在加载，请稍后刷新")
 
     async def _stop(self) -> None:
-        process = self._recorded_process()
+        process = await asyncio.to_thread(self._recorded_process)
         if process is None:
             raise LifecycleError("无法通过进程记录安全确认 ComfyUI 主进程；未执行关闭")
 
-        descendants = self._record_descendants(process)
-        try:
-            process.terminate()
-            _, alive = psutil.wait_procs([process], timeout=self.shutdown_timeout)
-            if alive:
-                process.kill()
-                _, alive = psutil.wait_procs(alive, timeout=5)
-            if alive:
-                raise LifecycleError("已确认的 ComfyUI 主进程未能停止；未处理任何子进程")
-        except (psutil.AccessDenied, psutil.Error) as exc:
-            raise LifecycleError("没有权限关闭已确认的 ComfyUI 进程") from exc
-
+        surviving_pids = await asyncio.to_thread(self._stop_recorded_process, process)
         self._remove_record()
-        surviving_pids = self._surviving_descendant_pids(descendants)
         if surviving_pids:
             log.warning(
                 "ComfyUI main process stopped but descendant processes remain; "
@@ -175,6 +163,21 @@ class ComfyLifecycle:
                 return
             await asyncio.sleep(.5)
         raise LifecycleError("ComfyUI 进程已停止，但服务端口仍然在线")
+
+    def _stop_recorded_process(self, process: psutil.Process) -> list[int]:
+        """Perform blocking psutil work off the aiohttp event-loop thread."""
+        descendants = self._record_descendants(process)
+        try:
+            process.terminate()
+            _, alive = psutil.wait_procs([process], timeout=self.shutdown_timeout)
+            if alive:
+                process.kill()
+                _, alive = psutil.wait_procs(alive, timeout=5)
+            if alive:
+                raise LifecycleError("已确认的 ComfyUI 主进程未能停止；未处理任何子进程")
+        except (psutil.AccessDenied, psutil.Error) as exc:
+            raise LifecycleError("没有权限关闭已确认的 ComfyUI 进程") from exc
+        return self._surviving_descendant_pids(descendants)
 
     async def _is_online(self) -> bool:
         try:

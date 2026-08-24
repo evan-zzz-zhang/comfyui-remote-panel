@@ -80,7 +80,7 @@ class JobService:
                     compatible = role in {"first", "last"} if preset.manifest.get("family") != "ref2va" else kind is not None
                     replaced = role in supplied_roles if preset.manifest.get("family") != "ref2va" else kind in supplied_kinds
                     if compatible and not replaced:
-                        copied_file = self.files.copy_input(Path(file["path"]), job_id, file["role"])
+                        copied_file = await self.files.copy_input_async(Path(file["path"]), job_id, file["role"])
                         copied.append(copied_file)
                         effective_uploads.append(copied_file)
             roles = {file["role"] for file in effective_uploads}
@@ -275,11 +275,32 @@ class JobService:
 
     async def _recover_missing_outputs(self) -> None:
         for job in await self.db.succeeded_without_output():
-            history = await self.comfy.history(job["id"])
-            entry = history.get(job["id"]) if isinstance(history, dict) else None
-            if isinstance(entry, dict) and await self._capture_output(job["id"], entry):
-                updated = await self.db.get_job(job["id"])
+            now = time.time()
+            attempts = int(job.get("recovery_attempts") or 0) + 1
+            age = now - float(job.get("finished_at") or job["created_at"])
+            try:
+                history = await self.comfy.history(job["id"])
+                entry = history.get(job["id"]) if isinstance(history, dict) else None
+                if isinstance(entry, dict) and await self._capture_output(job["id"], entry):
+                    updated = await self.db.get_job(job["id"])
+                    self.events.publish("job", self.public_job(updated))
+                    continue
+                error = "ComfyUI 历史记录中尚未找到输出文件"
+            except ComfyError as exc:
+                error = safe_summary(str(exc))
+            if attempts >= 8 or age >= 24 * 60 * 60:
+                updated = await self.db.update_job(
+                    job["id"], status="output_missing", stage="输出缺失",
+                    error_code="output_missing", error_summary="多次恢复后仍未找到输出，可人工重试",
+                    recovery_attempts=attempts, recovery_next_at=None, recovery_last_error=error,
+                )
                 self.events.publish("job", self.public_job(updated))
+            else:
+                delay = min(3600, 30 * 2 ** (attempts - 1))
+                await self.db.update_job(
+                    job["id"], recovery_attempts=attempts,
+                    recovery_next_at=now + delay, recovery_last_error=error,
+                )
 
     async def handle_ws_event(self, event: dict[str, Any]) -> None:
         event_type = event.get("type")

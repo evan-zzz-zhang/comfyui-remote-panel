@@ -51,6 +51,9 @@ async def test_succeeded_without_output_excludes_jobs_with_video(tmp_path):
     await db.add_file("complete", "output", tmp_path / "video.mp4", 10)
     assert [job["id"] for job in await db.succeeded_without_output()] == ["missing"]
 
+    await db.update_job("missing", recovery_attempts=1, recovery_next_at=time.time() + 60)
+    assert await db.succeeded_without_output() == []
+
 
 @pytest.mark.asyncio
 async def test_active_update_cannot_overwrite_terminal_status(tmp_path):

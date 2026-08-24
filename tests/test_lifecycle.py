@@ -1,4 +1,6 @@
 import json
+import asyncio
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
@@ -123,3 +125,22 @@ async def test_stop_refuses_listener_fallback_without_a_record(tmp_path, monkeyp
 
     with pytest.raises(Exception, match="进程记录"):
         await manager._stop()
+
+
+@pytest.mark.asyncio
+async def test_slow_process_wait_does_not_block_event_loop(tmp_path, monkeypatch):
+    manager = lifecycle(tmp_path)
+    process = Mock(pid=1234)
+    monkeypatch.setattr(manager, "_recorded_process", Mock(return_value=process))
+    manager._is_online = AsyncMock(return_value=False)
+
+    def slow_stop(_process):
+        time.sleep(0.15)
+        return []
+
+    monkeypatch.setattr(manager, "_stop_recorded_process", slow_stop)
+    stop_task = asyncio.create_task(manager._stop())
+    started = time.perf_counter()
+    await asyncio.wait_for(asyncio.sleep(0.01), timeout=0.05)
+    assert time.perf_counter() - started < 0.05
+    await stop_task

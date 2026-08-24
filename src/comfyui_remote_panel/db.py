@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-TERMINAL_STATUSES = {"succeeded", "failed", "cancelled", "interrupted"}
+TERMINAL_STATUSES = {"succeeded", "failed", "cancelled", "interrupted", "output_missing"}
 ACTIVE_STATUSES = {"submitting", "queued", "running"}
 
 
@@ -54,6 +54,9 @@ class Database:
                             created_at REAL NOT NULL,
                             started_at REAL,
                             finished_at REAL,
+                            recovery_attempts INTEGER NOT NULL DEFAULT 0,
+                            recovery_next_at REAL,
+                            recovery_last_error TEXT,
                             updated_at REAL NOT NULL
                         );
                         CREATE INDEX jobs_created_at_idx ON jobs(created_at DESC);
@@ -66,10 +69,10 @@ class Database:
                             size_bytes INTEGER NOT NULL,
                             UNIQUE(job_id, role)
                         );
-                        PRAGMA user_version = 2;
+                        PRAGMA user_version = 3;
                         """
                     )
-                    version = 2
+                    version = 3
                 if version == 1:
                     db.executescript(
                         """
@@ -80,7 +83,17 @@ class Database:
                         """
                     )
                     version = 2
-                if version != 2:
+                if version == 2:
+                    db.executescript(
+                        """
+                        ALTER TABLE jobs ADD COLUMN recovery_attempts INTEGER NOT NULL DEFAULT 0;
+                        ALTER TABLE jobs ADD COLUMN recovery_next_at REAL;
+                        ALTER TABLE jobs ADD COLUMN recovery_last_error TEXT;
+                        PRAGMA user_version = 3;
+                        """
+                    )
+                    version = 3
+                if version != 3:
                     raise RuntimeError(f"unsupported database schema version: {version}")
 
     async def create_job(self, record: dict[str, Any], files: list[dict[str, Any]]) -> None:
@@ -110,6 +123,7 @@ class Database:
         allowed = {
             "status", "queue_position", "stage", "progress_value", "progress_max",
             "error_code", "error_summary", "started_at", "finished_at",
+            "recovery_attempts", "recovery_next_at", "recovery_last_error",
         }
         unknown = set(values) - allowed
         if unknown:
@@ -134,6 +148,7 @@ class Database:
         allowed = {
             "status", "queue_position", "stage", "progress_value", "progress_max",
             "error_code", "error_summary", "started_at", "finished_at",
+            "recovery_attempts", "recovery_next_at", "recovery_last_error",
         }
         unknown = set(values) - allowed
         if unknown:
@@ -229,19 +244,25 @@ class Database:
                         )
         return [self._job_from_row(row, files_by_job[row["id"]]) for row in rows]
 
-    async def succeeded_without_output(self) -> list[dict[str, Any]]:
+    async def succeeded_without_output(self, now: float | None = None) -> list[dict[str, Any]]:
+        now = time.time() if now is None else now
         async with self._lock:
-            with self._connect() as db:
-                rows = db.execute(
-                    """SELECT * FROM jobs
-                       WHERE status = 'succeeded'
-                         AND NOT EXISTS (
-                           SELECT 1 FROM job_files
-                           WHERE job_files.job_id = jobs.id AND job_files.role = 'output'
-                         )
-                       ORDER BY finished_at DESC"""
-                ).fetchall()
-                return [self._job_from_row(row, []) for row in rows]
+            return await asyncio.to_thread(self._succeeded_without_output, now)
+
+    def _succeeded_without_output(self, now: float) -> list[dict[str, Any]]:
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT * FROM jobs
+                   WHERE status = 'succeeded'
+                     AND COALESCE(recovery_next_at, 0) <= ?
+                     AND NOT EXISTS (
+                       SELECT 1 FROM job_files
+                       WHERE job_files.job_id = jobs.id AND job_files.role = 'output'
+                     )
+                   ORDER BY finished_at DESC""",
+                (now,),
+            ).fetchall()
+            return [self._job_from_row(row, []) for row in rows]
 
     async def delete_job(self, job_id: str) -> None:
         async with self._lock:
@@ -252,3 +273,8 @@ class Database:
         async with self._lock:
             with self._connect() as db:
                 return int(db.execute("SELECT COALESCE(SUM(size_bytes), 0) FROM job_files").fetchone()[0])
+
+    async def tracked_paths(self) -> set[Path]:
+        async with self._lock:
+            with self._connect() as db:
+                return {Path(row[0]) for row in db.execute("SELECT path FROM job_files")}
