@@ -26,6 +26,16 @@ function formatDate(timestamp) {
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));
 }
+function parseWorkflowFile(text) {
+  let cleaned = String(text ?? "").replace(/^\uFEFF/, "").trim();
+  const fenced = cleaned.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fenced) cleaned = fenced[1].trim();
+  let value;
+  try { value = JSON.parse(cleaned); }
+  catch (_) { throw new Error("无法解析工作流 JSON。请使用 ComfyUI 的“导出（API）”，不要选择网页、日志或带说明文字的文件。"); }
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("工作流 JSON 顶层必须是对象。");
+  return value;
+}
 function aspectLabel(value) {
   return ({ reference: "参考图 1 画幅", reference_image: "参考图 1 画幅", reference_video: "参考视频 1 画幅" })[value] || value;
 }
@@ -499,8 +509,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!file) return;
     try {
       const text = await file.text();
-      state.workflowDraft = JSON.parse(text);
-      const response = await fetch("/api/workflows/inspect", { method: "POST", headers: {"Content-Type":"application/json"}, body: text });
+      state.workflowDraft = parseWorkflowFile(text);
+      const response = await fetch("/api/workflows/inspect", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(state.workflowDraft) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error?.message || "检查失败");
       renderWorkflowInspection(result);

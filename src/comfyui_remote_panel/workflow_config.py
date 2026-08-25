@@ -20,9 +20,13 @@ def parse_json_bytes(payload: bytes) -> dict[str, Any]:
     if len(payload) > MAX_WORKFLOW_BYTES:
         raise PresetError("工作流 JSON 不能超过 4MB")
     try:
-        value = json.loads(payload.decode("utf-8"))
+        text = payload.decode("utf-8-sig").strip()
+        fenced = re.fullmatch(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+        if fenced:
+            text = fenced.group(1).strip()
+        value = json.loads(text)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise PresetError("工作流 JSON 无效") from exc
+        raise PresetError("工作流 JSON 无效；请使用 ComfyUI 的“导出（API）”文件") from exc
     if not isinstance(value, dict):
         raise PresetError("工作流 JSON 顶层必须是对象")
     return value

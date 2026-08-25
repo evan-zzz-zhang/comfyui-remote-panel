@@ -3,7 +3,13 @@ import json
 import pytest
 
 from comfyui_remote_panel.preset import PresetError, preset_from_definition
-from comfyui_remote_panel.workflow_config import build_definition, export_package, import_package, inspect_api_workflow
+from comfyui_remote_panel.workflow_config import (
+    build_definition,
+    export_package,
+    import_package,
+    inspect_api_workflow,
+    parse_json_bytes,
+)
 
 
 def save_image_workflow():
@@ -42,6 +48,17 @@ def test_inspection_never_suggests_connected_inputs():
     result = inspect_api_workflow(save_image_workflow())
     clip = next(node for node in result["nodes"] if node["id"] == "2")
     assert next(value for value in clip["inputs"] if value["name"] == "clip")["suggested_control"] is None
+
+
+def test_workflow_json_parser_accepts_bom_and_markdown_fence():
+    payload = json.dumps(save_image_workflow(), ensure_ascii=False)
+    assert parse_json_bytes(("\ufeff" + payload).encode("utf-8")) == save_image_workflow()
+    assert parse_json_bytes(("```json\n" + payload + "\n```").encode()) == save_image_workflow()
+
+
+def test_workflow_json_parser_rejects_trailing_text_with_helpful_message():
+    with pytest.raises(PresetError, match="导出（API）"):
+        parse_json_bytes(b'{} unexpected')
 
 
 def test_remote_workflow_package_round_trip_and_rejects_paths():
