@@ -23,7 +23,11 @@ from .files import FileStore, FileValidationError, StorageCapacityError
 from .jobs import JobService, new_job_id
 from .lifecycle import ComfyLifecycle, LifecycleError
 from .metrics import MetricsService
-from .preset import PresetError, load_presets
+from .preset import PresetError, load_presets, preset_from_definition
+from .workflow_config import (
+    MAX_PACKAGE_BYTES, MAX_WORKFLOW_BYTES, build_definition, export_package,
+    import_package, inspect_api_workflow, parse_json_bytes,
+)
 
 
 MAX_REQUEST_BYTES = 1024 * 1024 * 1024
@@ -123,7 +127,7 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
         job_id = new_job_id()
         uploaded: list[dict[str, Any]] = []
         fields: dict[str, Any] = {}
-        allowed_text = {"preset_id", "prompt", "duration_seconds", "aspect_ratio", "megapixels", "seed", "scheduler", "sampler", "steps", "retry_source_id", "retry_keep_roles"}
+        allowed_text = {"preset_id", "prompt", "duration_seconds", "aspect_ratio", "megapixels", "seed", "scheduler", "sampler", "steps", "retry_source_id", "retry_keep_roles", "values_json"}
         fixed_files = {"first_frame": "first", "last_frame": "last"}
         repeated_files = {"ref_images": ("image", 9), "ref_videos": ("video", 3), "ref_audios": ("audio", 3)}
         slot_files = {**{f"image_{index}": f"image_{index}" for index in range(9)}, **{f"video_{index}": f"video_{index}" for index in range(3)}, **{f"audio_{index}": f"audio_{index}" for index in range(3)}}
@@ -163,6 +167,11 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
                     fields[part.name] = await _read_text_part(part, part.name)
                 else:
                     raise PresetError(f"不支持的字段：{part.name}")
+            if "values_json" in fields:
+                values = json.loads(fields.pop("values_json"))
+                if not isinstance(values, dict) or not all(isinstance(key, str) for key in values):
+                    raise PresetError("values_json 必须是对象")
+                fields.update(values)
             fields["duration_seconds"] = int(fields.get("duration_seconds", "5"))
             fields["megapixels"] = float(fields.get("megapixels", "0.4"))
             if "steps" in fields:
@@ -205,7 +214,10 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
         return web.json_response(job)
 
     async def list_presets(_: web.Request) -> web.Response:
-        return web.json_response({"items": [preset.public_metadata() for preset in app["presets"].values()]})
+        enabled = {item["id"] for item in await app["db"].list_workflows() if item["status"] == "enabled"}
+        return web.json_response({"items": [
+            preset.public_metadata() for preset in app["presets"].values() if preset.id in enabled
+        ]})
 
     async def delete_job(request: web.Request) -> web.Response:
         try:
@@ -300,6 +312,144 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
         download_name = _download_filename(job) if request.query.get("download") == "1" else None
         return await _stream_file(request, path, download_name)
 
+    async def list_artifacts(request: web.Request) -> web.Response:
+        if await app["db"].get_job(request.match_info["job_id"]) is None:
+            return json_error("任务不存在", 404, "not_found")
+        artifacts = await app["db"].list_artifacts(request.match_info["job_id"])
+        return web.json_response({"items": [
+            {key: value for key, value in artifact.items() if key != "path"}
+            for artifact in artifacts
+        ]})
+
+    async def artifact(request: web.Request) -> web.StreamResponse:
+        try:
+            artifact_id = int(request.match_info["artifact_id"])
+        except ValueError:
+            return json_error("结果编号无效", 400, "validation_error")
+        item = await app["db"].get_artifact(request.match_info["job_id"], artifact_id)
+        if item is None or item["direction"] != "output":
+            return json_error("结果不存在", 404, "not_found")
+        try:
+            path = app["files"].validate_artifact_file(Path(item["path"]))
+        except (OSError, FileValidationError):
+            return json_error("结果文件不存在或路径无效", 404, "not_found")
+        name = item.get("original_name") or path.name
+        return await _stream_file(request, path, name)
+
+    async def list_workflows(_: web.Request) -> web.Response:
+        items = await app["db"].list_workflows()
+        return web.json_response({"items": [
+            {key: value for key, value in item.items() if key != "definition"}
+            | {"manifest": item["definition"]["manifest"]}
+            for item in items
+        ]})
+
+    async def get_workflow(request: web.Request) -> web.Response:
+        item = await app["db"].get_workflow(request.match_info["workflow_id"])
+        return web.json_response(item) if item else json_error("工作流不存在", 404, "not_found")
+
+    async def inspect_workflow(request: web.Request) -> web.Response:
+        if request.content_length and request.content_length > MAX_WORKFLOW_BYTES:
+            return json_error("工作流 JSON 不能超过 4MB", 413, "too_large")
+        try:
+            workflow = parse_json_bytes(await request.read())
+            result = inspect_api_workflow(workflow)
+            schemas = {}
+            for node_type in sorted({node["class_type"] for node in result["nodes"]}):
+                try:
+                    schemas[node_type] = await app["comfy"].object_info(node_type)
+                except ComfyError:
+                    schemas[node_type] = None
+            result["object_info"] = schemas
+            return web.json_response(result)
+        except PresetError as exc:
+            return json_error(str(exc), 400, "validation_error")
+
+    async def save_workflow(request: web.Request) -> web.Response:
+        try:
+            payload = await request.json()
+            definition = build_definition(payload.get("workflow"), payload.get("config"))
+            item = await app["db"].save_workflow(definition, status="draft")
+            return web.json_response(item, status=201)
+        except (json.JSONDecodeError, TypeError, AttributeError, PresetError) as exc:
+            return json_error(str(exc), 400, "validation_error")
+
+    async def set_workflow_status(request: web.Request) -> web.Response:
+        workflow_id = request.match_info["workflow_id"]
+        try:
+            payload = await request.json()
+            status = payload.get("status")
+            item = await app["db"].set_workflow_status(workflow_id, status)
+            if item is None:
+                return json_error("工作流不存在", 404, "not_found")
+            if status == "enabled":
+                preset = preset_from_definition(item["definition"], config.workflow_dir / workflow_id)
+                try:
+                    await app["comfy"].validate_preset(preset)
+                except ComfyError:
+                    pass
+                app["presets"][workflow_id] = preset
+            return web.json_response(item)
+        except (ValueError, AttributeError, PresetError) as exc:
+            return json_error(str(exc), 400, "validation_error")
+
+    async def test_workflow(request: web.Request) -> web.Response:
+        workflow_id = request.match_info["workflow_id"]
+        item = await app["db"].get_workflow(workflow_id)
+        if item is None:
+            return json_error("工作流不存在", 404, "not_found")
+        try:
+            values = await request.json()
+            preset = preset_from_definition(item["definition"], config.workflow_dir / workflow_id)
+            app["presets"][workflow_id] = preset
+            await app["comfy"].validate_preset(preset)
+            job = await app["jobs"].create({"preset_id": workflow_id, **values}, [], is_test=True)
+            return web.json_response(app["jobs"].public_job(job), status=201)
+        except (PresetError, ComfyError, ValueError, TypeError) as exc:
+            return json_error(str(exc), 400 if isinstance(exc, (PresetError, ValueError)) else 503, "workflow_test_failed")
+
+    async def export_workflow(request: web.Request) -> web.Response:
+        item = await app["db"].get_workflow(request.match_info["workflow_id"])
+        if item is None:
+            return json_error("工作流不存在", 404, "not_found")
+        payload = export_package(item["definition"])
+        return web.Response(
+            body=payload, content_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{item["id"]}-r{item["revision"]}.zip"'},
+        )
+
+    async def import_workflow_package(request: web.Request) -> web.Response:
+        if request.content_length and request.content_length > MAX_PACKAGE_BYTES:
+            return json_error("工作流包不能超过 8MB", 413, "too_large")
+        try:
+            definition = import_package(await request.read())
+            item = await app["db"].save_workflow(definition, status="draft")
+            return web.json_response(item, status=201)
+        except PresetError as exc:
+            return json_error(str(exc), 400, "validation_error")
+
+    async def copy_workflow(request: web.Request) -> web.Response:
+        source = await app["db"].get_workflow(request.match_info["workflow_id"])
+        if source is None:
+            return json_error("工作流不存在", 404, "not_found")
+        try:
+            payload = await request.json()
+            definition = json.loads(json.dumps(source["definition"]))
+            definition["manifest"]["id"] = payload["id"]
+            definition["manifest"]["name"] = payload["name"]
+            definition["manifest"]["revision"] = 1
+            preset_from_definition(definition)
+            item = await app["db"].save_workflow(definition, status="draft")
+            return web.json_response(item, status=201)
+        except (KeyError, TypeError, PresetError) as exc:
+            return json_error(str(exc), 400, "validation_error")
+
+    async def delete_workflow(request: web.Request) -> web.Response:
+        item = await app["db"].set_workflow_status(request.match_info["workflow_id"], "disabled")
+        if item is None:
+            return json_error("工作流不存在", 404, "not_found")
+        return web.Response(status=204)
+
     app.router.add_get("/healthz", healthz)
     app.router.add_get("/", index)
     app.router.add_static("/static", static_dir, show_index=False)
@@ -312,6 +462,18 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
     app.router.add_delete("/api/jobs/{job_id}", delete_job)
     app.router.add_post("/api/jobs/{job_id}/purge", purge_job)
     app.router.add_get("/api/jobs/{job_id}/video", video)
+    app.router.add_get("/api/jobs/{job_id}/artifacts", list_artifacts)
+    app.router.add_get("/api/jobs/{job_id}/artifacts/{artifact_id}", artifact)
+    app.router.add_get("/api/workflows", list_workflows)
+    app.router.add_post("/api/workflows", save_workflow)
+    app.router.add_post("/api/workflows/inspect", inspect_workflow)
+    app.router.add_post("/api/workflows/import", import_workflow_package)
+    app.router.add_get("/api/workflows/{workflow_id}", get_workflow)
+    app.router.add_post("/api/workflows/{workflow_id}/status", set_workflow_status)
+    app.router.add_post("/api/workflows/{workflow_id}/test", test_workflow)
+    app.router.add_post("/api/workflows/{workflow_id}/copy", copy_workflow)
+    app.router.add_get("/api/workflows/{workflow_id}/export", export_workflow)
+    app.router.add_delete("/api/workflows/{workflow_id}", delete_workflow)
     app.router.add_get("/api/metrics", metrics)
     app.router.add_post("/api/comfyui/control/{action}", control_comfyui)
     app.router.add_get("/api/events", events)
@@ -320,6 +482,16 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
         config.data_dir.mkdir(parents=True, exist_ok=True)
         app["files"].initialize()
         await app["db"].initialize()
+        for preset in list(app["presets"].values()):
+            await app["db"].save_workflow(preset.snapshot(), status="enabled", builtin=True)
+        await app["db"].backfill_legacy_workflows({
+            preset.id: preset.snapshot() for preset in app["presets"].values()
+        })
+        for item in await app["db"].list_workflows():
+            if not item["builtin"]:
+                app["presets"][item["id"]] = preset_from_definition(
+                    item["definition"], config.workflow_dir / item["id"]
+                )
         migration = await app["files"].migrate_legacy(await app["db"].tracked_files())
         for change in migration:
             path = Path(change["new_path"])

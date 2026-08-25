@@ -214,6 +214,9 @@ class ComfyClient:
     async def history(self, prompt_id: str) -> dict[str, Any]:
         return await self._json("GET", f"/history/{prompt_id}")
 
+    async def object_info(self, node_type: str) -> dict[str, Any]:
+        return await self._json("GET", f"/object_info/{node_type}")
+
     async def websocket_events(self) -> AsyncIterator[dict[str, Any]]:
         parsed = urlsplit(self.base_url)
         scheme = "wss" if parsed.scheme == "https" else "ws"

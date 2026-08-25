@@ -13,6 +13,15 @@ ACTIVE_STATUSES = {"submitting", "queued", "running"}
 HIDDEN_STATUS = "hidden"
 
 
+def _artifact_kind_for_role(role: str) -> str:
+    if role == "output":
+        return "video"
+    for kind in ("image", "video", "audio"):
+        if role.startswith(kind + "_"):
+            return kind
+    return "image" if role in {"first", "last"} else "file"
+
+
 class Database:
     def __init__(self, path: Path):
         self.path = path
@@ -61,6 +70,11 @@ class Database:
                             cancel_requested_at REAL,
                             missing_observations INTEGER NOT NULL DEFAULT 0,
                             missing_first_at REAL,
+                            workflow_id TEXT,
+                            workflow_revision INTEGER,
+                            workflow_snapshot_json TEXT,
+                            input_values_json TEXT,
+                            is_test INTEGER NOT NULL DEFAULT 0,
                             updated_at REAL NOT NULL
                         );
                         CREATE INDEX jobs_created_at_idx ON jobs(created_at DESC);
@@ -73,10 +87,35 @@ class Database:
                             size_bytes INTEGER NOT NULL,
                             UNIQUE(job_id, role)
                         );
-                        PRAGMA user_version = 4;
+                        CREATE TABLE workflows (
+                            id TEXT NOT NULL,
+                            revision INTEGER NOT NULL,
+                            status TEXT NOT NULL,
+                            name TEXT NOT NULL,
+                            definition_json TEXT NOT NULL,
+                            builtin INTEGER NOT NULL DEFAULT 0,
+                            created_at REAL NOT NULL,
+                            updated_at REAL NOT NULL,
+                            PRIMARY KEY(id, revision)
+                        );
+                        CREATE INDEX workflows_status_idx ON workflows(status);
+                        CREATE TABLE job_artifacts (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+                            direction TEXT NOT NULL,
+                            binding_id TEXT NOT NULL,
+                            ordinal INTEGER NOT NULL,
+                            path TEXT NOT NULL UNIQUE,
+                            kind TEXT NOT NULL,
+                            mime_type TEXT,
+                            original_name TEXT,
+                            size_bytes INTEGER NOT NULL,
+                            UNIQUE(job_id, direction, binding_id, ordinal)
+                        );
+                        PRAGMA user_version = 5;
                         """
                     )
-                    version = 4
+                    version = 5
                 if version == 1:
                     db.executescript(
                         """
@@ -107,7 +146,51 @@ class Database:
                         """
                     )
                     version = 4
-                if version != 4:
+                if version == 4:
+                    db.executescript(
+                        """
+                        ALTER TABLE jobs ADD COLUMN workflow_id TEXT;
+                        ALTER TABLE jobs ADD COLUMN workflow_revision INTEGER;
+                        ALTER TABLE jobs ADD COLUMN workflow_snapshot_json TEXT;
+                        ALTER TABLE jobs ADD COLUMN input_values_json TEXT;
+                        ALTER TABLE jobs ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0;
+                        CREATE TABLE workflows (
+                            id TEXT NOT NULL,
+                            revision INTEGER NOT NULL,
+                            status TEXT NOT NULL,
+                            name TEXT NOT NULL,
+                            definition_json TEXT NOT NULL,
+                            builtin INTEGER NOT NULL DEFAULT 0,
+                            created_at REAL NOT NULL,
+                            updated_at REAL NOT NULL,
+                            PRIMARY KEY(id, revision)
+                        );
+                        CREATE INDEX workflows_status_idx ON workflows(status);
+                        CREATE TABLE job_artifacts (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+                            direction TEXT NOT NULL,
+                            binding_id TEXT NOT NULL,
+                            ordinal INTEGER NOT NULL,
+                            path TEXT NOT NULL UNIQUE,
+                            kind TEXT NOT NULL,
+                            mime_type TEXT,
+                            original_name TEXT,
+                            size_bytes INTEGER NOT NULL,
+                            UNIQUE(job_id, direction, binding_id, ordinal)
+                        );
+                        INSERT INTO job_artifacts(
+                            job_id, direction, binding_id, ordinal, path, kind, size_bytes
+                        )
+                        SELECT job_id, CASE WHEN role = 'output' THEN 'output' ELSE 'input' END,
+                               role, 0, path, CASE WHEN role = 'output' THEN 'video' ELSE 'file' END,
+                               size_bytes
+                        FROM job_files;
+                        PRAGMA user_version = 5;
+                        """
+                    )
+                    version = 5
+                if version != 5:
                     raise RuntimeError(f"unsupported database schema version: {version}")
 
     async def create_job(self, record: dict[str, Any], files: list[dict[str, Any]]) -> None:
@@ -118,19 +201,30 @@ class Database:
                     """INSERT INTO jobs (
                         id, preset_id, status, mode, prompt, duration_seconds,
                         aspect_ratio, megapixels, seed, scheduler, sampler, steps,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        workflow_id, workflow_revision, workflow_snapshot_json,
+                        input_values_json, is_test, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         record["id"], record["preset_id"], record["status"], record["mode"],
-                        record["prompt"], record["duration_seconds"], record["aspect_ratio"],
-                        record["megapixels"], str(record["seed"]), record.get("scheduler", "beta"),
-                        record.get("sampler", "euler"), record.get("steps", 8), now, now,
+                        record.get("prompt", ""), record.get("duration_seconds", 0), record.get("aspect_ratio", "custom"),
+                        record.get("megapixels", 0.0), str(record.get("seed", "0")), record.get("scheduler", "custom"),
+                        record.get("sampler", "euler"), record.get("steps", 8),
+                        record.get("workflow_id", record["preset_id"]), record.get("workflow_revision", 1),
+                        json.dumps(record.get("workflow_snapshot"), ensure_ascii=False) if record.get("workflow_snapshot") else None,
+                        json.dumps(record.get("input_values", {}), ensure_ascii=False),
+                        int(bool(record.get("is_test"))), now, now,
                     ),
                 )
                 for file in files:
                     db.execute(
                         "INSERT INTO job_files(job_id, role, path, size_bytes) VALUES (?, ?, ?, ?)",
                         (record["id"], file["role"], str(file["path"]), file["size_bytes"]),
+                    )
+                    db.execute(
+                        """INSERT OR IGNORE INTO job_artifacts(
+                            job_id, direction, binding_id, ordinal, path, kind, size_bytes
+                        ) VALUES (?, 'input', ?, 0, ?, ?, ?)""",
+                        (record["id"], file["role"], str(file["path"]), _artifact_kind_for_role(file["role"]), file["size_bytes"]),
                     )
 
     async def update_job(self, job_id: str, **values: Any) -> dict[str, Any] | None:
@@ -191,9 +285,157 @@ class Database:
                     "INSERT OR REPLACE INTO job_files(job_id, role, path, size_bytes) VALUES (?, ?, ?, ?)",
                     (job_id, role, str(path), size_bytes),
                 )
+                db.execute(
+                    """INSERT OR IGNORE INTO job_artifacts(
+                        job_id, direction, binding_id, ordinal, path, kind, size_bytes
+                    ) VALUES (?, ?, ?, 0, ?, ?, ?)""",
+                    (job_id, "output" if role == "output" else "input", role, str(path), "video" if role == "output" else "file", size_bytes),
+                )
+
+    async def add_artifact(
+        self, job_id: str, direction: str, binding_id: str, ordinal: int,
+        path: Path, kind: str, mime_type: str | None, original_name: str | None,
+        size_bytes: int,
+    ) -> int:
+        async with self._lock:
+            with self._connect() as db:
+                cursor = db.execute(
+                    """INSERT OR REPLACE INTO job_artifacts(
+                        job_id, direction, binding_id, ordinal, path, kind,
+                        mime_type, original_name, size_bytes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (job_id, direction, binding_id, ordinal, str(path), kind, mime_type, original_name, size_bytes),
+                )
+                return int(cursor.lastrowid)
+
+    async def list_artifacts(self, job_id: str) -> list[dict[str, Any]]:
+        async with self._lock:
+            with self._connect() as db:
+                rows = db.execute(
+                    """SELECT id, direction, binding_id, ordinal, path, kind, mime_type,
+                              original_name, size_bytes
+                       FROM job_artifacts WHERE job_id = ? ORDER BY direction, binding_id, ordinal""",
+                    (job_id,),
+                ).fetchall()
+        return [dict(row) for row in rows]
+
+    async def get_artifact(self, job_id: str, artifact_id: int) -> dict[str, Any] | None:
+        async with self._lock:
+            with self._connect() as db:
+                row = db.execute(
+                    """SELECT id, direction, binding_id, ordinal, path, kind, mime_type,
+                              original_name, size_bytes
+                       FROM job_artifacts WHERE job_id = ? AND id = ?""",
+                    (job_id, artifact_id),
+                ).fetchone()
+        return dict(row) if row else None
+
+    async def save_workflow(self, definition: dict[str, Any], *, status: str = "draft", builtin: bool = False) -> dict[str, Any]:
+        workflow_id = str(definition["manifest"]["id"])
+        name = str(definition["manifest"]["name"])
+        now = time.time()
+        async with self._lock:
+            with self._connect() as db:
+                latest = db.execute(
+                    "SELECT COALESCE(MAX(revision), 0) FROM workflows WHERE id = ?", (workflow_id,)
+                ).fetchone()[0]
+                if builtin and latest:
+                    existing = db.execute(
+                        "SELECT status FROM workflows WHERE id = ? AND revision = ?",
+                        (workflow_id, latest),
+                    ).fetchone()
+                    if existing:
+                        status = existing[0]
+                revision = max(int(definition["manifest"].get("revision", 1)), int(latest) + (0 if builtin and latest else 1))
+                definition = json.loads(json.dumps(definition))
+                definition["manifest"]["revision"] = revision
+                db.execute(
+                    """INSERT OR REPLACE INTO workflows(
+                        id, revision, status, name, definition_json, builtin, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (workflow_id, revision, status, name, json.dumps(definition, ensure_ascii=False), int(builtin), now, now),
+                )
+        return {"id": workflow_id, "revision": revision, "status": status, "name": name, "definition": definition, "builtin": builtin}
+
+    async def list_workflows(self) -> list[dict[str, Any]]:
+        async with self._lock:
+            with self._connect() as db:
+                rows = db.execute(
+                    """SELECT w.* FROM workflows w JOIN (
+                        SELECT id, MAX(revision) revision FROM workflows GROUP BY id
+                    ) latest ON latest.id = w.id AND latest.revision = w.revision ORDER BY w.name"""
+                ).fetchall()
+        return [self._workflow_row(row) for row in rows]
+
+    async def get_workflow(self, workflow_id: str, revision: int | None = None) -> dict[str, Any] | None:
+        async with self._lock:
+            with self._connect() as db:
+                if revision is None:
+                    row = db.execute(
+                        "SELECT * FROM workflows WHERE id = ? ORDER BY revision DESC LIMIT 1", (workflow_id,)
+                    ).fetchone()
+                else:
+                    row = db.execute(
+                        "SELECT * FROM workflows WHERE id = ? AND revision = ?", (workflow_id, revision)
+                    ).fetchone()
+        return self._workflow_row(row) if row else None
+
+    async def set_workflow_status(self, workflow_id: str, status: str) -> dict[str, Any] | None:
+        if status not in {"draft", "enabled", "disabled"}:
+            raise ValueError("invalid workflow status")
+        async with self._lock:
+            with self._connect() as db:
+                row = db.execute(
+                    "SELECT revision FROM workflows WHERE id = ? ORDER BY revision DESC LIMIT 1", (workflow_id,)
+                ).fetchone()
+                if row:
+                    db.execute(
+                        "UPDATE workflows SET status = ?, updated_at = ? WHERE id = ? AND revision = ?",
+                        (status, time.time(), workflow_id, row[0]),
+                    )
+        return await self.get_workflow(workflow_id) if row else None
+
+    async def backfill_legacy_workflows(self, definitions: dict[str, dict[str, Any]]) -> None:
+        async with self._lock:
+            with self._connect() as db:
+                rows = db.execute(
+                    "SELECT * FROM jobs WHERE workflow_id IS NULL OR workflow_snapshot_json IS NULL"
+                ).fetchall()
+                for row in rows:
+                    definition = definitions.get(row["preset_id"])
+                    if definition is None:
+                        continue
+                    values = {
+                        key: row[key] for key in (
+                            "prompt", "duration_seconds", "aspect_ratio", "megapixels",
+                            "seed", "scheduler", "sampler", "steps",
+                        ) if key in row.keys()
+                    }
+                    db.execute(
+                        """UPDATE jobs SET workflow_id = ?, workflow_revision = ?,
+                                  workflow_snapshot_json = ?, input_values_json = ?
+                           WHERE id = ?""",
+                        (
+                            row["preset_id"], int(definition["manifest"].get("revision", 1)),
+                            json.dumps(definition, ensure_ascii=False),
+                            json.dumps(values, ensure_ascii=False), row["id"],
+                        ),
+                    )
+
+    @staticmethod
+    def _workflow_row(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "id": row["id"], "revision": row["revision"], "status": row["status"],
+            "name": row["name"], "definition": json.loads(row["definition_json"]),
+            "builtin": bool(row["builtin"]), "created_at": row["created_at"], "updated_at": row["updated_at"],
+        }
 
     def _job_from_row(self, row: sqlite3.Row, files: list[dict[str, Any]]) -> dict[str, Any]:
         item = dict(row)
+        snapshot = item.pop("workflow_snapshot_json", None)
+        values = item.pop("input_values_json", None)
+        item["workflow_snapshot"] = json.loads(snapshot) if snapshot else None
+        item["input_values"] = json.loads(values) if values else {}
         item["files"] = files
         item["size_bytes"] = sum(f["size_bytes"] for f in files)
         value, maximum = item.get("progress_value"), item.get("progress_max")
@@ -273,8 +515,8 @@ class Database:
                    WHERE status = 'succeeded'
                      AND COALESCE(recovery_next_at, 0) <= ?
                      AND NOT EXISTS (
-                       SELECT 1 FROM job_files
-                       WHERE job_files.job_id = jobs.id AND job_files.role = 'output'
+                       SELECT 1 FROM job_artifacts
+                       WHERE job_artifacts.job_id = jobs.id AND job_artifacts.direction = 'output'
                      )
                    ORDER BY finished_at DESC""",
                 (now,),

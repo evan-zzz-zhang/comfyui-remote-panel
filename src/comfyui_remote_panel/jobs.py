@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import mimetypes
 import re
 import secrets
 import time
@@ -52,7 +53,10 @@ class JobService:
         self._stop = asyncio.Event()
         self._last_output_recovery = 0.0
 
-    async def create(self, fields: dict[str, Any], uploaded: list[dict[str, Any]], job_id: str | None = None) -> dict[str, Any]:
+    async def create(
+        self, fields: dict[str, Any], uploaded: list[dict[str, Any]],
+        job_id: str | None = None, *, is_test: bool = False,
+    ) -> dict[str, Any]:
         job_id = job_id or new_job_id()
         preset_id = fields.get("preset_id") or "h3-fl2va-v4step600"
         preset = self.presets.get(preset_id)
@@ -92,33 +96,18 @@ class JobService:
                 for file in source["files"]:
                     role = file["role"]
                     kind = self.files.role_kind(role)
-                    compatible = role in {"first", "last"} if preset.manifest.get("family") != "ref2va" else kind is not None
+                    compatible = preset.retry_role_compatible(role)
                     if keep_roles is not None:
                         should_copy = role in keep_roles
                     else:
-                        replaced = role in supplied_roles if preset.manifest.get("family") != "ref2va" else kind in supplied_kinds
+                        replaced = role in supplied_roles if preset.media_binding["type"] in {"frame_pair", "slots"} else kind in supplied_kinds
                         should_copy = not replaced
                     if compatible and should_copy and role not in supplied_roles:
                         copied_file = await self.files.copy_input_async(Path(file["path"]), job_id, file["role"])
                         copied.append(copied_file)
                         effective_uploads.append(copied_file)
             roles = {file["role"] for file in effective_uploads}
-            if preset.manifest.get("family") == "ref2va":
-                limits = preset.manifest["reference_media"]
-                counts = {
-                    kind: sum(self.files.role_kind(role) == kind for role in roles)
-                    for kind in ("image", "video", "audio")
-                }
-                if any(self.files.role_kind(role) is None for role in roles):
-                    raise PresetError("Ref2VA 收到了不支持的参考素材")
-                if counts["image"] > limits["images"]["max"] or counts["video"] > limits["videos"]["max"] or counts["audio"] > limits["audios"]["max"]:
-                    raise PresetError("参考素材数量超过工作流允许范围")
-                mode = " · ".join(f"{counts[kind]}{label}" for kind, label in (("image", "图"), ("video", "视频"), ("audio", "音频")) if counts[kind]) or "纯文字"
-            else:
-                if roles - {"first", "last"}:
-                    raise PresetError("FL2VA 仅支持首帧和尾帧")
-                mode = {frozenset(): "纯文字", frozenset({"first"}): "仅首帧", frozenset({"last"}): "仅尾帧", frozenset({"first", "last"}): "首尾帧"}[frozenset(roles)]
-            allow_empty_prompt = preset.manifest.get("family") == "fl2va" and bool({"first", "last"} & roles)
+            mode, allow_empty_prompt = preset.validate_media_roles(roles)
             normalized = preset.validate_parameters(fields, allow_empty_prompt=allow_empty_prompt)
             seed = normalized.get("seed")
             if seed is None:
@@ -130,6 +119,11 @@ class JobService:
             record = {
                 "id": job_id,
                 "preset_id": preset_id,
+                "workflow_id": preset_id,
+                "workflow_revision": preset.revision,
+                "workflow_snapshot": preset.snapshot(),
+                "input_values": normalized,
+                "is_test": is_test,
                 "status": "submitting",
                 "mode": mode,
                 **normalized,
@@ -216,6 +210,7 @@ class JobService:
             "steps": original["steps"],
             "input_roles": [file["role"] for file in original["files"] if self.files.role_kind(file["role"]) is not None],
             "retry_keep_roles": [file["role"] for file in original["files"] if self.files.role_kind(file["role"]) is not None],
+            "values": original.get("input_values", {}),
         }
 
     async def cancel(self, job_id: str) -> dict[str, Any]:
@@ -427,23 +422,33 @@ class JobService:
 
     async def _capture_output(self, job_id: str, entry: dict[str, Any]) -> bool:
         preset = self.presets[(await self.db.get_job(job_id))["preset_id"]]
-        output = entry.get("outputs", {}).get(preset.output_node, {})
-        descriptors: list[dict[str, Any]] = []
-        for key in ("videos", "video", "files", "images"):
-            value = output.get(key)
-            if isinstance(value, list):
-                descriptors.extend(item for item in value if isinstance(item, dict))
-            elif isinstance(value, dict):
-                descriptors.append(value)
-        for descriptor in descriptors:
-            try:
-                path = self.files.register_output(job_id, descriptor)
-                path = self.files.finalize_output(job_id, path)
-            except (FileValidationError, OSError):
-                continue
-            await self.db.add_file(job_id, "output", path, path.stat().st_size)
-            return True
-        return False
+        captured = False
+        for binding in preset.manifest["output_bindings"]:
+            output = entry.get("outputs", {}).get(str(binding["node"]), {})
+            descriptors: list[dict[str, Any]] = []
+            for key in binding.get("history_keys", ("images", "videos", "files")):
+                value = output.get(key)
+                if isinstance(value, list):
+                    descriptors.extend(item for item in value if isinstance(item, dict))
+                elif isinstance(value, dict):
+                    descriptors.append(value)
+            for ordinal, descriptor in enumerate(descriptors):
+                try:
+                    path = self.files.register_artifact(
+                        job_id, str(binding["id"]), ordinal, descriptor, str(binding["kind"])
+                    )
+                except (FileValidationError, OSError):
+                    continue
+                size = path.stat().st_size
+                await self.db.add_artifact(
+                    job_id, "output", str(binding["id"]), ordinal, path,
+                    str(binding["kind"]), mimetypes.guess_type(path.name)[0],
+                    descriptor.get("filename"), size,
+                )
+                if binding.get("primary") and binding["kind"] == "video" and ordinal == 0:
+                    await self.db.add_file(job_id, "output", path, size)
+                captured = True
+        return captured
 
     async def _recover_missing_outputs(self) -> None:
         for job in await self.db.succeeded_without_output():
@@ -566,7 +571,7 @@ class JobService:
     def public_job(self, job: dict[str, Any] | None) -> dict[str, Any] | None:
         if job is None:
             return None
-        result = {key: value for key, value in job.items() if key != "files"}
+        result = {key: value for key, value in job.items() if key not in {"files", "workflow_snapshot"}}
         result["seed"] = str(result["seed"])
         preset = self.presets.get(job["preset_id"])
         result["preset_name"] = preset.manifest["name"] if preset else job["preset_id"]

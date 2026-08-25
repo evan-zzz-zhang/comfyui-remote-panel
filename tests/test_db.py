@@ -118,6 +118,6 @@ async def test_schema_v3_migrates_recovery_intent_fields(tmp_path):
     db = Database(path)
     await db.initialize()
     with sqlite3.connect(path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 5
         columns = {row[1] for row in connection.execute("PRAGMA table_info(jobs)")}
     assert {"cancel_requested_at", "missing_observations", "missing_first_at"} <= columns
