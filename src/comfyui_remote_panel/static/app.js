@@ -510,9 +510,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const text = await file.text();
       state.workflowDraft = parseWorkflowFile(text);
-      const response = await fetch("/api/workflows/inspect", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(state.workflowDraft) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error?.message || "检查失败");
+      const result = await apiAction("/api/workflows/inspect", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(state.workflowDraft) });
       renderWorkflowInspection(result);
       message.className = "form-message"; message.textContent = `已读取 ${result.nodes.length} 个节点，请选择参数和输出。`;
     } catch (error) {
@@ -543,8 +541,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#workflow-package").addEventListener("change", async event => {
     const file = event.target.files[0], message = $("#workflow-message"); if (!file) return;
     try {
-      const response = await fetch("/api/workflows/import", { method:"POST", headers:{"Content-Type":"application/zip"}, body:file });
-      const result = await response.json(); if (!response.ok) throw new Error(result.error?.message || "导入失败");
+      const result = await apiAction("/api/workflows/import", { method:"POST", headers:{"Content-Type":"application/zip"}, body:file });
       message.className = "form-message"; message.textContent = `${result.name} 已导入为草稿`;
       await loadWorkflows();
     } catch (error) { message.className = "form-message error"; message.textContent = error.message; }
