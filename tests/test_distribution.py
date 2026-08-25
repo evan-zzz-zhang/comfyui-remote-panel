@@ -81,3 +81,12 @@ def test_packaged_workflows_match_repository_sources():
     for source in source_files:
         relative = source.relative_to(ROOT / "workflows")
         assert (packaged / relative).read_bytes() == source.read_bytes()
+
+
+def test_mobile_generation_controls_have_fixed_presets_and_sticky_navigation():
+    html = (ROOT / "src" / "comfyui_remote_panel" / "static" / "index.html").read_text(encoding="utf-8")
+    assert 'class="top-nav"' in html
+    assert 'class="bottom-nav"' not in html
+    assert 'name="duration_seconds" type="range" min="5" max="15" step="1"' in html
+    assert [f'data-megapixels="{value}"' in html for value in ("0.2", "0.4", "0.6", "0.8", "0.9", "1.0")] == [True] * 6
+    assert 'accept=".wav,.mp3,.flac,.ogg,.m4a"' in html

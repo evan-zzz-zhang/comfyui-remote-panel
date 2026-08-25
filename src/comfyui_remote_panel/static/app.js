@@ -1,4 +1,4 @@
-const state = { jobs: new Map(), presets: new Map(), metrics: null, eventSource: null, retryRoles: [], previewUrls: [], isSubmitting: false, jobsPage: 1, jobsHasMore: false, pollTimer: null, pollDelay: 2000, deviceTimer: null, deviceChecks: 0 };
+const state = { jobs: new Map(), presets: new Map(), metrics: null, eventSource: null, retryRoles: [], retryKeepRoles: [], mediaFiles: { image: [], video: [], audio: [] }, isSubmitting: false, jobsPage: 1, jobsHasMore: false, pollTimer: null, pollDelay: 2000, deviceTimer: null, deviceChecks: 0, thumbnailStarted: new Set(), thumbnailObserver: null };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -26,7 +26,9 @@ function formatDate(timestamp) {
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));
 }
-function aspectLabel(value) { return value === "reference" ? "参考图比例" : value; }
+function aspectLabel(value) {
+  return ({ reference: "参考图 1 画幅", reference_image: "参考图 1 画幅", reference_video: "参考视频 1 画幅" })[value] || value;
+}
 function mediaKindFromRole(role) {
   if (role === "first" || role === "last" || role.startsWith("image_")) return "image";
   if (role.startsWith("video_")) return "video";
@@ -36,7 +38,7 @@ function mediaKindFromRole(role) {
 
 function setView(name) {
   $$(".view").forEach(view => view.classList.toggle("active", view.id === `view-${name}`));
-  $$(".bottom-nav button").forEach(button => button.classList.toggle("active", button.dataset.view === name));
+  $$(".top-nav button").forEach(button => button.classList.toggle("active", button.dataset.view === name));
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -72,14 +74,22 @@ function applyPreset(presetId, overrides = {}) {
   $("#last-frame-label").textContent = referenceWorkflow ? "参考图 2" : "尾帧";
   $("#first-frame-hint").textContent = referenceWorkflow ? "主要参考" : "镜头起点 · 可选";
   $("#last-frame-hint").textContent = referenceWorkflow ? "补充参考" : "镜头终点 · 可选";
+  const imageAspect = $("#reference-aspect-image-option");
+  const videoAspect = $("#reference-aspect-video-option");
+  imageAspect.value = referenceWorkflow ? "reference_image" : "reference";
+  imageAspect.textContent = referenceWorkflow ? "参考图 1 画幅（需参考图）" : "参考图比例（需参考图）";
+  videoAspect.hidden = !referenceWorkflow;
+  $("#follow-video-duration").classList.toggle("hidden", !referenceWorkflow);
   updateSubmitAvailability();
 }
 
 function renderJobs() {
   const jobs = [...state.jobs.values()].sort((a, b) => b.created_at - a.created_at);
+  state.thumbnailObserver?.disconnect();
   $("#jobs-empty").classList.toggle("hidden", jobs.length > 0);
   $("#jobs-list").innerHTML = jobs.map(jobCard).join("");
   updateJobsSummary();
+  observeThumbnails();
 }
 
 function updateJobsSummary() {
@@ -95,12 +105,18 @@ function upsertJob(job) {
   state.jobs.set(job.id, job);
   const list = $("#jobs-list");
   const existing = list.querySelector(`[data-job="${CSS.escape(job.id)}"]`);
+  const oldThumbnail = existing?.querySelector(".job-preview video");
+  const oldPreview = existing?.querySelector(".job-preview");
+  if (oldPreview) state.thumbnailObserver?.unobserve(oldPreview);
   const wrapper = document.createElement("div");
   wrapper.innerHTML = jobCard(job).trim();
   const card = wrapper.firstElementChild;
   if (existing) existing.replaceWith(card);
   else list.prepend(card);
+  const newThumbnail = card.querySelector(".job-preview video");
+  if (newThumbnail && oldThumbnail?.src) newThumbnail.src = oldThumbnail.src;
   updateJobsSummary();
+  observeThumbnails();
 }
 
 function removeJob(id) {
@@ -109,11 +125,19 @@ function removeJob(id) {
   updateJobsSummary();
 }
 
+function observeThumbnails() {
+  if (!state.thumbnailObserver) return;
+  $$(".job-preview").forEach(preview => {
+    if (!preview.querySelector("video")?.src && !state.thumbnailStarted.has(preview.dataset.id)) state.thumbnailObserver.observe(preview);
+  });
+}
+
 function jobCard(job) {
   const active = ["submitting", "queued", "running"].includes(job.status);
   const progress = job.progress_percent ?? (job.status === "succeeded" ? 100 : 0);
+  const progressValue = Math.max(0, Math.min(100, Number(progress) || 0));
   const queueText = job.status === "queued" && job.queue_position ? ` · 第 ${job.queue_position} 位` : "";
-  const video = job.has_video ? `<button class="job-preview" data-action="play" data-id="${job.id}" type="button" aria-label="播放视频"><span>▶</span></button>` : "";
+  const video = job.has_video ? `<button class="job-preview" data-action="play" data-id="${job.id}" type="button" aria-label="播放视频"><video muted playsinline preload="none"></video><span>▶</span></button>` : "";
   const actions = [];
   if (active) actions.push(`<button data-action="cancel" data-id="${job.id}">取消任务</button>`);
   if (["failed", "cancelled", "interrupted", "succeeded", "output_missing"].includes(job.status)) actions.push(`<button data-action="retry" data-id="${job.id}">载入原参数</button>`);
@@ -121,12 +145,12 @@ function jobCard(job) {
     actions.unshift(`<button class="play" data-action="play" data-id="${job.id}">播放视频</button>`);
     actions.push(`<a href="/api/jobs/${job.id}/video?download=1">下载</a>`);
   }
-  if (["failed", "cancelled", "interrupted", "succeeded", "output_missing"].includes(job.status)) actions.push(`<button data-action="delete" data-id="${job.id}">删除</button>`);
+  if (["failed", "cancelled", "interrupted", "succeeded", "output_missing"].includes(job.status)) actions.push(`<button data-action="delete" data-id="${job.id}">移出历史</button>`);
   return `<article class="job-card" data-job="${job.id}">
     <div class="job-top"><div><span class="job-time">${formatDate(job.created_at)}</span><h3>${escapeHtml(job.mode)} · ${escapeHtml(aspectLabel(job.aspect_ratio))}</h3></div><span class="job-status ${job.status}">${statusLabels[job.status] || job.status}</span></div>
     <p class="job-prompt">${escapeHtml(job.prompt)}</p>
     <div class="job-meta"><span>${escapeHtml(job.preset_name || job.preset_id)}</span><span>${job.duration_seconds} 秒</span><span>${job.megapixels} MP</span><span>${escapeHtml(job.scheduler)}</span><span>${escapeHtml(job.sampler)}</span><span>${job.steps} 步</span><span>种子 ${job.seed}</span><span>${formatBytes(job.size_bytes)}</span></div>
-    ${active || job.status === "succeeded" ? `<div class="job-progress"><div><span>${escapeHtml(job.stage || "等待状态")} ${queueText}</span><b>${progress}% · ${formatDuration(job.elapsed_seconds)}</b></div><div class="progress-track"><i style="width:${Math.min(100, progress)}%"></i></div></div>` : ""}
+    ${active || ["succeeded", "failed", "cancelled", "interrupted", "output_missing"].includes(job.status) ? `<div class="job-progress"><div><span>${escapeHtml(job.stage || "等待状态")} ${queueText}</span><b>${progressValue}% · ${formatDuration(job.elapsed_seconds)}</b></div><progress class="progress-track" max="100" value="${progressValue}" aria-label="进度 ${progressValue}%"></progress></div>` : ""}
     ${job.error_summary ? `<p class="job-error">${escapeHtml(job.error_summary)}</p>` : ""}
     ${video}<div class="job-actions">${actions.join("")}</div>
   </article>`;
@@ -286,51 +310,140 @@ async function apiAction(path, options = {}) {
   return response.status === 204 ? null : response.json();
 }
 
+function uploadForm(path, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    const startedAt = performance.now();
+    request.open("POST", path);
+    request.upload.addEventListener("progress", event => {
+      if (!event.lengthComputable) return;
+      onProgress({ loaded: event.loaded, total: event.total, elapsed: (performance.now() - startedAt) / 1000 });
+    });
+    request.addEventListener("load", () => {
+      let body = {};
+      try { body = request.responseText ? JSON.parse(request.responseText) : {}; } catch (_) {}
+      if (request.status >= 200 && request.status < 300) resolve(body);
+      else {
+        const error = new Error(body.error?.message || `请求失败（${request.status}）`);
+        error.status = request.status; error.code = body.error?.code;
+        reject(error);
+      }
+    });
+    request.addEventListener("error", () => reject(new Error("上传连接失败，请检查网络后重试")));
+    request.addEventListener("abort", () => reject(new Error("上传已取消")));
+    request.send(formData);
+  });
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
-  const form = $("#job-form"), duration = $("select[name=duration_seconds]"), aspect = $("select[name=aspect_ratio]");
-  const firstFrame = $("#first-frame"), lastFrame = $("#last-frame"), referenceOption = $("#reference-aspect-option");
+  const form = $("#job-form"), duration = $("input[name=duration_seconds]"), aspect = $("select[name=aspect_ratio]");
+  const firstFrame = $("#first-frame"), lastFrame = $("#last-frame");
+  const imageAspect = $("#reference-aspect-image-option"), videoAspect = $("#reference-aspect-video-option");
   const refImages = $("#ref-images"), refVideos = $("#ref-videos"), refAudios = $("#ref-audios");
-  for (let value = 5; value <= 15; value += 1) duration.insertAdjacentHTML("beforeend", `<option value="${value}">${value} 秒</option>`);
-  const updateReferenceAspect = () => {
-    const retryHasImage = state.retryRoles.some(role => mediaKindFromRole(role) === "image");
-    const available = selectedPreset()?.family === "ref2va"
-      ? Boolean(refImages.files.length || retryHasImage)
-      : Boolean(firstFrame.files.length || lastFrame.files.length || state.retryRoles.some(role => role === "first" || role === "last"));
-    referenceOption.disabled = !available;
-    if (!available && aspect.value === "reference") aspect.value = "9:16";
-  };
+  const mediaInputs = { image: refImages, video: refVideos, audio: refAudios };
+  const mediaMaximums = { image: 9, video: 3, audio: 3 };
+  const mediaLabels = { image: "图片", video: "视频", audio: "音频" };
+  const mediaTags = { image: "Picture", video: "Video", audio: "Audio" };
+  state.thumbnailObserver = "IntersectionObserver" in window ? new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      const preview = entry.target;
+      const id = preview.dataset.id;
+      const player = preview.querySelector("video");
+      if (!id || !player || state.thumbnailStarted.has(id)) continue;
+      state.thumbnailStarted.add(id);
+      player.src = `/api/jobs/${encodeURIComponent(id)}/video#t=0.01`;
+      player.addEventListener("loadeddata", () => player.pause(), { once: true });
+      player.load();
+      state.thumbnailObserver.unobserve(preview);
+    }
+  }, { rootMargin: "160px 0px" }) : null;
+  const revokeEntry = entry => { if (entry?.url) { URL.revokeObjectURL(entry.url); entry.url = null; } };
   const clearMediaPreviews = () => {
-    state.previewUrls.forEach(url => URL.revokeObjectURL(url)); state.previewUrls = [];
-    for (const selector of ("#ref-image-preview #ref-video-preview #ref-audio-preview").split(" ")) {
-      const container = $(selector); container.innerHTML = ""; container.classList.add("hidden");
+    Object.values(state.mediaFiles).flat().forEach(revokeEntry);
+    state.mediaFiles = { image: [], video: [], audio: [] };
+    for (const kind of Object.keys(mediaInputs)) {
+      mediaInputs[kind].value = "";
+      const container = $(`#ref-${kind}-preview`);
+      container.innerHTML = "";
+      container.classList.add("hidden");
     }
   };
-  const renderReferenceFiles = (input, kind, maximum) => {
-    const files = [...input.files];
-    if (files.length > maximum) {
-      input.value = ""; window.alert(`最多选择 ${maximum} 个${kind === "image" ? "图片" : kind === "video" ? "视频" : "音频"}`); return;
-    }
+  const sortMedia = kind => state.mediaFiles[kind].sort((a, b) => String(a.role).localeCompare(String(b.role), undefined, { numeric: true }));
+  const renderReferenceFiles = kind => {
     const container = $(`#ref-${kind}-preview`);
-    if (kind === "image") {
-      state.previewUrls.forEach(url => URL.revokeObjectURL(url)); state.previewUrls = [];
-      container.innerHTML = files.map((file, index) => {
-        const url = URL.createObjectURL(file); state.previewUrls.push(url);
-        return `<div class="media-preview"><img src="${url}" alt="参考图片 ${index + 1}"><span>&lt;Picture ${index + 1}&gt;</span></div>`;
-      }).join("");
-    } else {
-      const tag = kind === "video" ? "Video" : "Audio";
-      container.innerHTML = files.map((file, index) => `<div class="media-file-item"><span>${escapeHtml(file.name)}</span><b>&lt;${tag} ${index + 1}&gt; · ${formatBytes(file.size)}</b></div>`).join("");
+    const entries = sortMedia(kind);
+    const tag = mediaTags[kind];
+    container.innerHTML = entries.map((entry, index) => {
+      const label = `&lt;${tag} ${index + 1}&gt;`;
+      const replace = `<button type="button" data-media-action="replace" data-kind="${kind}" data-index="${index}">替换</button>`;
+      const remove = `<button type="button" data-media-action="remove" data-kind="${kind}" data-index="${index}">删除</button>`;
+      if (kind === "image") {
+        const visual = entry.url ? `<img src="${entry.url}" alt="参考图片 ${index + 1}">` : `<span>已保留素材</span>`;
+        return `<div class="media-preview">${visual}<span>${label}</span><div class="media-preview-actions">${replace}${remove}</div></div>`;
+      }
+      const name = entry.file ? escapeHtml(entry.file.name) : "已保留素材";
+      const video = kind === "video" && entry.url ? `<video controls muted playsinline preload="metadata" src="${entry.url}"></video>` : "";
+      return `<div class="media-file-item">${video}<span>${name}</span><b>${label} · ${entry.file ? formatBytes(entry.file.size) : "已保留"}</b><div>${replace}${remove}</div></div>`;
+    }).join("");
+    container.classList.toggle("hidden", entries.length === 0);
+  };
+  const renderAllReferenceFiles = () => { Object.keys(mediaInputs).forEach(renderReferenceFiles); updateReferenceAspect(); updateFollowButton(); };
+  const addSelectedFiles = (kind, input) => {
+    const selected = [...input.files];
+    const current = state.mediaFiles[kind];
+    const slots = new Set(current.map(entry => Number(String(entry.role).split("_").pop())));
+    const available = mediaMaximums[kind] - current.length;
+    if (selected.length > available) { input.value = ""; window.alert(`最多选择 ${mediaMaximums[kind]} 个${mediaLabels[kind]}`); return; }
+    for (const file of selected) {
+      let slot = 0; while (slots.has(slot)) slot += 1;
+      slots.add(slot);
+      current.push({ file, role: `${kind}_${slot}`, url: URL.createObjectURL(file), source: "local" });
     }
-    container.classList.toggle("hidden", files.length === 0);
-    updateReferenceAspect();
+    input.value = "";
+    renderAllReferenceFiles();
+  };
+  const replaceMedia = (kind, index) => {
+    const chooser = document.createElement("input");
+    chooser.type = "file"; chooser.accept = mediaInputs[kind].accept;
+    chooser.addEventListener("change", () => {
+      const file = chooser.files[0];
+      if (!file) { chooser.remove(); return; }
+      const entry = state.mediaFiles[kind][index];
+      revokeEntry(entry);
+      state.mediaFiles[kind][index] = { ...entry, file, url: URL.createObjectURL(file), source: "local" };
+      chooser.remove(); renderAllReferenceFiles();
+    }, { once: true });
+    document.body.append(chooser); chooser.click();
+  };
+  const removeMedia = (kind, index) => {
+    const [entry] = state.mediaFiles[kind].splice(index, 1); revokeEntry(entry); renderAllReferenceFiles();
+  };
+  const updateReferenceAspect = () => {
+    const referenceWorkflow = selectedPreset()?.family === "ref2va";
+    const imageAvailable = referenceWorkflow
+      ? state.mediaFiles.image.length > 0
+      : Boolean(firstFrame.files.length || lastFrame.files.length || state.retryRoles.some(role => role === "first" || role === "last"));
+    const videoAvailable = referenceWorkflow && state.mediaFiles.video.length > 0;
+    imageAspect.disabled = !imageAvailable;
+    videoAspect.hidden = !referenceWorkflow;
+    videoAspect.disabled = !videoAvailable;
+    const invalid = (aspect.value === "reference" || aspect.value === "reference_image") && !imageAvailable || aspect.value === "reference_video" && !videoAvailable;
+    if (invalid) aspect.value = "9:16";
+  };
+  const updateFollowButton = () => {
+    const button = $("#follow-video-duration"), entry = state.mediaFiles.video[0];
+    const available = selectedPreset()?.family === "ref2va" && Boolean(entry?.file);
+    button.disabled = !available;
+    button.title = available ? "按参考视频 1 时长取整并限制在 5–15 秒" : "请先选择参考视频 1";
   };
   const clearRetry = () => {
-    state.retryRoles = []; $("#retry-source-id").value = ""; $("#retry-draft").classList.add("hidden");
+    state.retryRoles = []; state.retryKeepRoles = []; $("#retry-source-id").value = ""; $("#retry-draft").classList.add("hidden"); clearMediaPreviews();
     $("#first-frame-hint").textContent = selectedPreset()?.family === "ref2va" ? "主要参考" : "镜头起点 · 可选";
     $("#last-frame-hint").textContent = selectedPreset()?.family === "ref2va" ? "补充参考" : "镜头终点 · 可选";
-    updateReferenceAspect();
+    updateReferenceAspect(); updateFollowButton();
   };
-  $$(".bottom-nav button").forEach(button => button.addEventListener("click", () => setView(button.dataset.view)));
+  $$(".top-nav button").forEach(button => button.addEventListener("click", () => setView(button.dataset.view)));
   $("#refresh-jobs").addEventListener("click", () => loadJobs(true));
   $("#load-more-jobs").addEventListener("click", () => loadJobs(false));
   $("#clear-retry").addEventListener("click", clearRetry);
@@ -341,37 +454,100 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (file) { image.dataset.objectUrl = URL.createObjectURL(file); image.src = image.dataset.objectUrl; } else image.removeAttribute("src");
     updateReferenceAspect();
   }));
-  refImages.addEventListener("change", () => renderReferenceFiles(refImages, "image", 9));
-  refVideos.addEventListener("change", () => renderReferenceFiles(refVideos, "video", 3));
-  refAudios.addEventListener("change", () => renderReferenceFiles(refAudios, "audio", 3));
-  const range = $("input[name=megapixels]");
-  const updateLoad = () => {
-    $("#mp-value").textContent = `${range.value} MP`;
-    $("#load-warning").classList.toggle("hidden", Number(range.value) < .8 && Number(duration.value) < 12);
+  Object.entries(mediaInputs).forEach(([kind, input]) => input.addEventListener("change", () => addSelectedFiles(kind, input)));
+  $("#ref2va-media").addEventListener("click", event => {
+    const action = event.target.closest("[data-media-action]");
+    if (!action) return;
+    event.preventDefault(); event.stopPropagation();
+    const kind = action.dataset.kind, index = Number(action.dataset.index);
+    if (action.dataset.mediaAction === "replace") replaceMedia(kind, index);
+    if (action.dataset.mediaAction === "remove") removeMedia(kind, index);
+  });
+  const durationValue = $("#duration-value"), megapixels = $("#megapixels-value");
+  const setDurationValue = () => { durationValue.textContent = `${duration.value} 秒`; };
+  duration.addEventListener("input", () => { setDurationValue(); updateLoad(); });
+  const updateResolution = value => {
+    megapixels.value = value;
+    $$("[data-megapixels]").forEach(button => button.setAttribute("aria-pressed", button.dataset.megapixels === String(value)));
+    updateLoad();
   };
-  range.addEventListener("input", updateLoad); duration.addEventListener("change", updateLoad); updateLoad();
-  $("#preset-select").addEventListener("change", event => { applyPreset(event.target.value); updateReferenceAspect(); });
+  $$("[data-megapixels]").forEach(button => button.addEventListener("click", () => updateResolution(button.dataset.megapixels)));
+  const updateLoad = () => {
+    $("#mp-value").textContent = `${megapixels.value} MP`;
+    $("#load-warning").classList.toggle("hidden", Number(megapixels.value) < .8 && Number(duration.value) < 12);
+  };
+  setDurationValue(); updateResolution(megapixels.value);
+  $("#follow-video-duration").addEventListener("click", () => {
+    const file = state.mediaFiles.video[0]?.file, message = $("#form-message");
+    if (!file) return;
+    const probe = document.createElement("video"), url = URL.createObjectURL(file);
+    probe.preload = "metadata";
+    probe.onloadedmetadata = () => {
+      const value = Math.min(15, Math.max(5, Math.round(probe.duration)));
+      duration.value = String(value); setDurationValue(); updateLoad(); URL.revokeObjectURL(url); probe.remove();
+      message.className = "form-message"; message.textContent = `已按参考视频 1 时长设置为 ${value} 秒`;
+    };
+    probe.onerror = () => { URL.revokeObjectURL(url); probe.remove(); message.className = "form-message error"; message.textContent = "无法读取参考视频时长，请手动选择 5–15 秒"; };
+    probe.src = url; probe.load();
+  });
+  $("#preset-select").addEventListener("change", event => { applyPreset(event.target.value); updateReferenceAspect(); updateFollowButton(); });
+
+  const buildFormData = () => {
+    const data = new FormData(form), retry = Boolean($("#retry-source-id").value);
+    ["ref_images", "ref_videos", "ref_audios", "retry_keep_roles", "image_0", "image_1", "image_2", "image_3", "image_4", "image_5", "image_6", "image_7", "image_8", "video_0", "video_1", "video_2", "audio_0", "audio_1", "audio_2"].forEach(name => data.delete(name));
+    const keepRoles = [];
+    if (retry) {
+      if (selectedPreset()?.family === "ref2va") {
+        Object.values(state.mediaFiles).flat().forEach(entry => {
+          if (entry.source === "retained") keepRoles.push(entry.role);
+          else if (entry.file) data.append(entry.role, entry.file, entry.file.name);
+        });
+      } else {
+        if (!firstFrame.files.length && state.retryRoles.includes("first")) keepRoles.push("first");
+        if (!lastFrame.files.length && state.retryRoles.includes("last")) keepRoles.push("last");
+      }
+      const originalRoles = new Set(state.retryKeepRoles);
+      const retryRolesChanged = keepRoles.length !== originalRoles.size || keepRoles.some(role => !originalRoles.has(role));
+      const retryUploads = Object.values(state.mediaFiles).flat().some(entry => entry.file);
+      if (retryRolesChanged || retryUploads) data.set("retry_keep_roles", JSON.stringify(keepRoles));
+    } else {
+      for (const [kind, inputName] of [["image", "ref_images"], ["video", "ref_videos"], ["audio", "ref_audios"]]) {
+        state.mediaFiles[kind].filter(entry => entry.file).forEach(entry => data.append(inputName, entry.file, entry.file.name));
+      }
+    }
+    return data;
+  };
 
   form.addEventListener("submit", async event => {
     event.preventDefault();
     if (state.isSubmitting) return;
     const message = $("#form-message"), button = $("#submit-button");
-    const hasReferenceImage = selectedPreset()?.family === "ref2va"
-      ? Boolean(refImages.files.length || state.retryRoles.some(role => mediaKindFromRole(role) === "image"))
-      : Boolean(firstFrame.files.length || lastFrame.files.length || state.retryRoles.some(role => role === "first" || role === "last"));
-    if (aspect.value === "reference" && !hasReferenceImage) {
-      message.className = "form-message error"; message.textContent = "参考图比例需要先上传参考图"; return;
+    const referenceWorkflow = selectedPreset()?.family === "ref2va";
+    const hasImage = referenceWorkflow ? state.mediaFiles.image.length > 0 : Boolean(firstFrame.files.length || lastFrame.files.length || state.retryRoles.some(role => role === "first" || role === "last"));
+    const hasVideo = referenceWorkflow && state.mediaFiles.video.length > 0;
+    if ((aspect.value === "reference" || aspect.value === "reference_image") && !hasImage || aspect.value === "reference_video" && !hasVideo) {
+      message.className = "form-message error"; message.textContent = aspect.value === "reference_video" ? "参考视频 1 画幅需要先上传参考视频" : "参考图 1 画幅需要先上传参考图"; return;
     }
     state.isSubmitting = true;
-    message.className = "form-message"; message.textContent = "正在安全上传并提交…"; button.disabled = true;
+    message.className = "form-message"; message.textContent = "准备上传…"; button.disabled = true;
     try {
       const currentPreset = $("#preset-select").value;
-      const job = await apiAction("/api/jobs", { method: "POST", body: new FormData(form) });
-      upsertJob(job); message.textContent = "任务已加入队列";
+      const job = await uploadForm("/api/jobs", buildFormData(), progress => {
+        const percent = Math.round(progress.loaded * 100 / progress.total);
+        message.textContent = `上传中 ${formatBytes(progress.loaded)} / ${formatBytes(progress.total)}（${percent}%） · ${formatDuration(Math.round(progress.elapsed))}`;
+      });
+      upsertJob(job);
+      if (job.status === "failed") { message.className = "form-message error"; message.textContent = `上传完成，但 ComfyUI 提交失败：${job.error_summary || "请检查工作站状态"}`; }
+      else { message.textContent = "上传完成，任务已加入生成队列"; }
       form.reset(); $$(".upload-card").forEach(card => card.classList.remove("has-image"));
-      $$(".upload-card img").forEach(image => image.removeAttribute("src"));
-      clearMediaPreviews(); clearRetry(); applyPreset(currentPreset); updateLoad(); setView("jobs");
-    } catch (error) { message.className = "form-message error"; message.textContent = error.message; }
+      $$(".upload-card img").forEach(image => { if (image.dataset.objectUrl) URL.revokeObjectURL(image.dataset.objectUrl); image.removeAttribute("src"); delete image.dataset.objectUrl; });
+      clearMediaPreviews(); clearRetry(); applyPreset(currentPreset); setDurationValue(); updateResolution(megapixels.value); updateLoad(); setView("jobs");
+    } catch (error) {
+      message.className = "form-message error";
+      if (error.code === "validation_error") message.textContent = `参数或素材校验失败：${error.message}`;
+      else if (error.code === "comfyui_unavailable") message.textContent = `ComfyUI 提交失败：${error.message}`;
+      else message.textContent = error.message.includes("上传") || error.message.includes("网络") ? error.message : `提交失败：${error.message}`;
+    }
     finally { state.isSubmitting = false; updateSubmitAvailability(); }
   });
 
@@ -379,7 +555,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const control = event.target.closest("[data-action]"); if (!control) return;
     const { action, id } = control.dataset;
     if (action === "play") { openPlayer(id); return; }
-    if (action === "delete" && !window.confirm("确认删除这个任务的输入、视频和面板记录？此操作无法撤销。")) return;
+    if (action === "delete" && !window.confirm("确认将这个任务移出历史？本地输入素材和生成视频会保留。")) return;
     control.disabled = true;
     try {
       if (action === "cancel") upsertJob(await apiAction(`/api/jobs/${id}/cancel`, { method: "POST" }));
@@ -388,10 +564,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         form.reset(); $$(".upload-card").forEach(card => card.classList.remove("has-image"));
         clearMediaPreviews();
         applyPreset(draft.preset_id, draft);
-        form.elements.prompt.value = draft.prompt; form.elements.duration_seconds.value = draft.duration_seconds;
+        form.elements.prompt.value = draft.prompt; form.elements.duration_seconds.value = draft.duration_seconds; setDurationValue();
         form.elements.aspect_ratio.value = draft.aspect_ratio; form.elements.megapixels.value = draft.megapixels;
+        updateResolution(String(draft.megapixels));
         form.elements.seed.value = draft.seed; $("#retry-source-id").value = draft.retry_source_id;
         state.retryRoles = draft.input_roles || [];
+        state.retryKeepRoles = [...state.retryRoles];
+        if (selectedPreset()?.family === "ref2va") {
+          state.retryRoles.forEach(role => {
+            const kind = mediaKindFromRole(role);
+            if (kind) state.mediaFiles[kind].push({ role, source: "retained", file: null, url: null });
+          });
+          renderAllReferenceFiles();
+        }
         const retained = { image: 0, video: 0, audio: 0 };
         state.retryRoles.forEach(role => { const kind = mediaKindFromRole(role); if (kind) retained[kind] += 1; });
         const retainedText = [["image", "图"], ["video", "视频"], ["audio", "音频"]].filter(([kind]) => retained[kind]).map(([kind, label]) => `${retained[kind]}${label}`).join("、");
@@ -402,7 +587,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         updateReferenceAspect(); updateLoad(); setView("generate");
       }
       if (action === "delete") { await apiAction(`/api/jobs/${id}`, { method: "DELETE", headers: {"Content-Type":"application/json"}, body: JSON.stringify({confirm:true}) }); removeJob(id); }
-    } catch (error) { window.alert(error.message); control.disabled = false; }
+    } catch (error) { window.alert(error.message); }
+    finally { control.disabled = false; }
   });
 
   $("#device-actions").addEventListener("click", async event => {

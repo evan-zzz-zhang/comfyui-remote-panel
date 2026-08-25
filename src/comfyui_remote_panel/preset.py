@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .files import FileStore
+
 
 class PresetError(ValueError):
     pass
@@ -13,6 +15,7 @@ class PresetError(ValueError):
 
 @dataclass
 class Preset:
+    MEGAPIXEL_VALUES = (0.2, 0.4, 0.6, 0.8, 0.9, 1.0)
     directory: Path
     manifest: dict[str, Any]
     template: dict[str, Any]
@@ -35,6 +38,15 @@ class Preset:
     @property
     def stages(self) -> dict[str, str]:
         return self.manifest.get("stages", {})
+
+    def phase_for_stage(self, stage: str | None) -> str | None:
+        if not stage:
+            return None
+        phases = self.manifest.get("progress_phase", {})
+        for node_id, label in self.stages.items():
+            if label == stage:
+                return phases.get(node_id)
+        return {"采样": "sampling", "解码画面": "decode", "解码音频": "decode", "合成视频": "compose", "保存视频": "save"}.get(stage)
 
     def public_metadata(self) -> dict[str, Any]:
         parameters = self.manifest["parameters"]
@@ -61,14 +73,17 @@ class Preset:
             "reference_media": public_media,
         }
 
-    def validate_parameters(self, values: dict[str, Any]) -> dict[str, Any]:
+    def validate_parameters(self, values: dict[str, Any], *, allow_empty_prompt: bool = False) -> dict[str, Any]:
         specs = self.manifest["parameters"]
         result: dict[str, Any] = {}
         for name, spec in specs.items():
             value = values.get(name, spec.get("default"))
             if name == "prompt":
                 if not isinstance(value, str) or not value.strip():
-                    raise PresetError("提示词不能为空")
+                    if not allow_empty_prompt:
+                        raise PresetError("提示词不能为空")
+                    result[name] = ""
+                    continue
                 result[name] = value.strip()
                 continue
             if name == "seed":
@@ -97,6 +112,8 @@ class Preset:
                 step = spec.get("step")
                 if step and abs((value - spec["minimum"]) / step - round((value - spec["minimum"]) / step)) > 1e-8:
                     raise PresetError(f"{name} 步进不合法")
+                if name == "megapixels" and value not in self.MEGAPIXEL_VALUES:
+                    raise PresetError("megapixels 不是可用的分辨率预设")
             elif spec["type"] == "enum":
                 if value not in spec["values"]:
                     raise PresetError(f"不支持的 {name}")
@@ -108,9 +125,12 @@ class Preset:
         return result
 
     def build_prompt(self, values: dict[str, Any], job_id: str, media: dict[str, str]) -> dict[str, Any]:
-        normalized = self.validate_parameters(values)
+        allow_empty_prompt = self.manifest.get("family") == "fl2va" and bool({"first", "last"} & media.keys())
+        normalized = self.validate_parameters(values, allow_empty_prompt=allow_empty_prompt)
         reference = self.manifest.get("reference_aspect", {})
-        use_reference = normalized.get("aspect_ratio") == reference.get("parameter_value")
+        aspect_value = normalized.get("aspect_ratio")
+        reference_values = {reference.get("parameter_value"), reference.get("legacy_parameter_value", "reference"), reference.get("video_parameter_value")}
+        use_reference = aspect_value in reference_values
         prompt = copy.deepcopy(self.template)
         for node_id, inputs in self.model_overrides.items():
             prompt[node_id]["inputs"].update(inputs)
@@ -120,14 +140,20 @@ class Preset:
                 value = int(value)
             if spec["type"] == "enum":
                 value = spec["values"][value]
-                if value == "__reference_image__":
+                if isinstance(value, str) and value.startswith("__reference_"):
                     continue
             prompt[spec["node"]]["inputs"][spec["input"]] = value
-        prompt[self.output_node]["inputs"]["filename_prefix"] = f"h3_remote/{job_id}/video"
+        output_key = FileStore.storage_key(job_id) if len(str(job_id)) >= 36 else str(job_id)
+        prompt[self.output_node]["inputs"]["filename_prefix"] = f"h3_remote/{output_key}"
         reference_source: str | None = None
         target = self.manifest["frame_inputs"]["target_node"]
         if self.manifest.get("family") == "ref2va":
-            reference_source = self._add_reference_media(prompt, media)
+            reference_sources = self._add_reference_media(prompt, media)
+            source_kind = "video" if aspect_value == reference.get("video_parameter_value") else "image"
+            reference_source = reference_sources.get(source_kind)
+            if use_reference and reference_source is None:
+                label = "参考视频 1" if source_kind == "video" else "参考图 1"
+                raise PresetError(f"{label}画幅需要对应参考素材")
         else:
             for index, role in enumerate(("first", "last"), start=9001):
                 if role not in media:
@@ -159,7 +185,7 @@ class Preset:
             prompt[target]["inputs"]["height"] = [size_node, 1]
         return prompt
 
-    def _add_reference_media(self, prompt: dict[str, Any], media: dict[str, str]) -> str | None:
+    def _add_reference_media(self, prompt: dict[str, Any], media: dict[str, str]) -> dict[str, str | None]:
         config = self.manifest["reference_media"]
         target = config["target_node"]
         image_roles = [role for role in ("first", "last") if role in media]
@@ -168,12 +194,12 @@ class Preset:
         audio_roles = sorted((role for role in media if role.startswith("audio_")), key=lambda role: int(role[6:]))
         if len(image_roles) > config["images"]["max"] or len(video_roles) > config["videos"]["max"] or len(audio_roles) > config["audios"]["max"]:
             raise PresetError("参考素材数量超过工作流允许范围")
-        reference_source = None
+        reference_sources: dict[str, str | None] = {"image": None, "video": None}
         for index, role in enumerate(image_roles):
             node_id = str(9100 + index)
             prompt[node_id] = {"class_type": config["images"]["loader"], "inputs": {config["images"]["loader_input"]: media[role]}}
             prompt[target]["inputs"][f"{config['images']['input_prefix']}{index}"] = [node_id, 0]
-            reference_source = reference_source or node_id
+            reference_sources["image"] = reference_sources["image"] or node_id
         for index, role in enumerate(video_roles):
             load_id, components_id = str(9200 + index), str(9300 + index)
             video = config["videos"]
@@ -181,12 +207,13 @@ class Preset:
             prompt[components_id] = {"class_type": video["components"], "inputs": {"video": [load_id, 0]}}
             prompt[target]["inputs"][f"{video['input_prefix']}{index}"] = [components_id, 0]
             prompt[target]["inputs"][f"{video['audio_input_prefix']}{index}"] = [components_id, 1]
+            reference_sources["video"] = reference_sources["video"] or components_id
         for index, role in enumerate(audio_roles):
             node_id = str(9400 + index)
             audio = config["audios"]
             prompt[node_id] = {"class_type": audio["loader"], "inputs": {audio["loader_input"]: media[role]}}
             prompt[target]["inputs"][f"{audio['input_prefix']}{index}"] = [node_id, 0]
-        return reference_source
+        return reference_sources
 
 
 BUILTIN_WORKFLOW_DIR = Path(__file__).with_name("workflows")
@@ -239,6 +266,10 @@ def _validate_manifest(preset: Preset) -> None:
     reference = manifest.get("reference_aspect")
     if not isinstance(reference, dict) or reference.get("parameter_value") not in manifest["parameters"]["aspect_ratio"]["values"]:
         raise PresetError("reference aspect mapping is invalid")
+    for key in ("legacy_parameter_value", "video_parameter_value"):
+        value = reference.get(key)
+        if value is not None and value not in manifest["parameters"]["aspect_ratio"]["values"]:
+            raise PresetError("reference aspect mapping is invalid")
     if manifest.get("family") == "ref2va":
         media = manifest.get("reference_media")
         if not isinstance(media, dict) or media.get("target_node") not in template:

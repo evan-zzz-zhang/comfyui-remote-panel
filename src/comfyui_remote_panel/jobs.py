@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 import secrets
@@ -10,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .comfy import ComfyClient, ComfyError
-from .db import ACTIVE_STATUSES, TERMINAL_STATUSES, Database
+from .db import ACTIVE_STATUSES, HIDDEN_STATUS, TERMINAL_STATUSES, Database
 from .events import EventBus
 from .files import FileStore, FileValidationError
 from .preset import Preset, PresetError
@@ -36,6 +37,10 @@ def new_job_id() -> str:
 
 
 class JobService:
+    _PROGRESS_STARTS = {"build": 0, "sampling": 10, "decode": 70, "compose": 85, "save": 95}
+    _PROGRESS_WEIGHTS = {"build": 10, "sampling": 60, "decode": 15, "compose": 10, "save": 5}
+    _SUBMISSION_CONFIRMATION_TIMEOUT = 60.0
+
     def __init__(self, db: Database, files: FileStore, comfy: ComfyClient, presets: dict[str, Preset], events: EventBus):
         self.db = db
         self.files = files
@@ -59,27 +64,39 @@ class JobService:
         if not preset.available:
             diagnostics = "；".join(preset.diagnostics[:3]) or "尚未完成在线检查"
             raise ComfyError("工作流预设当前不可用：" + diagnostics)
-        normalized = preset.validate_parameters(fields)
-        seed = normalized.get("seed")
-        if seed is None:
-            seed = str(secrets.randbits(64))
-            normalized["seed"] = seed
         effective_uploads = list(uploaded)
         copied: list[dict[str, Any]] = []
+        persisted = False
         try:
             retry_source_id = fields.get("retry_source_id")
             if retry_source_id:
                 source = await self.db.get_job(str(retry_source_id))
                 if source is None or source["status"] not in TERMINAL_STATUSES:
                     raise PresetError("原任务不存在或尚未结束，无法沿用参考图")
+                keep_roles: set[str] | None = None
+                if fields.get("retry_keep_roles") is not None:
+                    try:
+                        raw_keep_roles = json.loads(str(fields["retry_keep_roles"]))
+                    except (TypeError, json.JSONDecodeError) as exc:
+                        raise PresetError("retry_keep_roles 必须是 JSON 数组") from exc
+                    if not isinstance(raw_keep_roles, list) or any(not isinstance(role, str) for role in raw_keep_roles):
+                        raise PresetError("retry_keep_roles 必须是 JSON 字符串数组")
+                    keep_roles = set(raw_keep_roles)
+                    source_roles = {file["role"] for file in source["files"] if self.files.role_kind(file["role"]) is not None}
+                    if not keep_roles <= source_roles:
+                        raise PresetError("retry_keep_roles 包含原任务不存在的素材槽位")
                 supplied_roles = {item["role"] for item in effective_uploads}
                 supplied_kinds = {self.files.role_kind(role) for role in supplied_roles}
                 for file in source["files"]:
                     role = file["role"]
                     kind = self.files.role_kind(role)
                     compatible = role in {"first", "last"} if preset.manifest.get("family") != "ref2va" else kind is not None
-                    replaced = role in supplied_roles if preset.manifest.get("family") != "ref2va" else kind in supplied_kinds
-                    if compatible and not replaced:
+                    if keep_roles is not None:
+                        should_copy = role in keep_roles
+                    else:
+                        replaced = role in supplied_roles if preset.manifest.get("family") != "ref2va" else kind in supplied_kinds
+                        should_copy = not replaced
+                    if compatible and should_copy and role not in supplied_roles:
                         copied_file = await self.files.copy_input_async(Path(file["path"]), job_id, file["role"])
                         copied.append(copied_file)
                         effective_uploads.append(copied_file)
@@ -99,6 +116,12 @@ class JobService:
                 if roles - {"first", "last"}:
                     raise PresetError("FL2VA 仅支持首帧和尾帧")
                 mode = {frozenset(): "纯文字", frozenset({"first"}): "仅首帧", frozenset({"last"}): "仅尾帧", frozenset({"first", "last"}): "首尾帧"}[frozenset(roles)]
+            allow_empty_prompt = preset.manifest.get("family") == "fl2va" and bool({"first", "last"} & roles)
+            normalized = preset.validate_parameters(fields, allow_empty_prompt=allow_empty_prompt)
+            seed = normalized.get("seed")
+            if seed is None:
+                seed = str(secrets.randbits(64))
+                normalized["seed"] = seed
             has_image = any(self.files.role_kind(role) == "image" for role in roles)
             if normalized.get("aspect_ratio") == "reference" and not has_image:
                 raise PresetError("参考图比例需要至少上传一张参考图")
@@ -110,6 +133,7 @@ class JobService:
                 **normalized,
             }
             await self.db.create_job(record, effective_uploads)
+            persisted = True
             media_names = {file["role"]: self.files.comfy_input_name(Path(file["path"])) for file in effective_uploads}
             prompt = preset.build_prompt(normalized, job_id, media_names)
             await self.comfy.submit(job_id, prompt)
@@ -120,16 +144,52 @@ class JobService:
             self.files.cleanup_untracked(copied)
             raise
         except Exception as exc:
+            if not persisted:
+                self.files.cleanup_untracked(copied)
+                raise
             summary = safe_summary(exc, "任务提交失败")
-            _, job = await self.db.update_job_if_status(
-                job_id, {"submitting"},
-                status="failed",
-                error_code="submission_failed",
-                error_summary=summary,
-                finished_at=time.time(),
-            )
+            try:
+                confirmed, job = await self._confirm_submission(job_id)
+            except ComfyError:
+                confirmed = False
+                job = await self.db.get_job(job_id)
+            if not confirmed:
+                _, job = await self.db.update_job_if_status(
+                    job_id, {"submitting"},
+                    status="submitting",
+                    stage="确认提交状态",
+                    error_code="submission_uncertain",
+                    error_summary=None,
+                )
+            log.warning("ComfyUI submission response could not be trusted for job %s: %s", job_id, summary)
         self.events.publish("job", self.public_job(job))
         return job
+
+    async def _confirm_submission(self, job_id: str) -> tuple[bool, dict[str, Any] | None]:
+        """Resolve a submit error without declaring an accepted prompt failed."""
+        job = await self.db.get_job(job_id)
+        if job is None or job["status"] in TERMINAL_STATUSES:
+            return True, job
+        queue = await self.comfy.queue()
+        running = {str(item[1]) for item in queue.get("queue_running", []) if isinstance(item, list) and len(item) > 1}
+        pending_list = [str(item[1]) for item in queue.get("queue_pending", []) if isinstance(item, list) and len(item) > 1]
+        if job_id in running:
+            values: dict[str, Any] = {"status": "running", "queue_position": 0}
+            if not job.get("started_at"):
+                values["started_at"] = time.time()
+            return True, await self.db.update_active_job(job_id, **values)
+        if job_id in pending_list:
+            return True, await self.db.update_active_job(
+                job_id, status="queued", stage="等待执行", queue_position=pending_list.index(job_id) + 1,
+            )
+        history = await self.comfy.history(job_id)
+        entry = history.get(job_id) if isinstance(history, dict) else None
+        if entry:
+            current = await self.db.get_job(job_id)
+            if current is None:
+                return True, None
+            return True, await self._apply_history(current, entry)
+        return False, job
 
     async def retry(self, job_id: str) -> dict[str, Any]:
         original = await self.db.get_job(job_id)
@@ -149,6 +209,7 @@ class JobService:
             "sampler": original["sampler"],
             "steps": original["steps"],
             "input_roles": [file["role"] for file in original["files"] if self.files.role_kind(file["role"]) is not None],
+            "retry_keep_roles": [file["role"] for file in original["files"] if self.files.role_kind(file["role"]) is not None],
         }
 
     async def cancel(self, job_id: str) -> dict[str, Any]:
@@ -173,7 +234,16 @@ class JobService:
             raise KeyError(job_id)
         if job["status"] not in TERMINAL_STATUSES:
             raise PresetError("运行中或排队中的任务不能删除")
-        await self.db.update_job(job_id, status="deleting", stage="正在删除")
+
+        await self.db.update_job(job_id, status=HIDDEN_STATUS, stage="已从历史隐藏")
+        self.events.publish("job_deleted", {"id": job_id})
+
+    async def purge(self, job_id: str) -> None:
+        job = await self.db.get_job(job_id)
+        if job is None:
+            raise KeyError(job_id)
+        if job["status"] not in TERMINAL_STATUSES | {HIDDEN_STATUS}:
+            raise PresetError("运行中或排队中的任务不能清理文件")
         try:
             for file in job["files"]:
                 path = Path(file["path"])
@@ -181,7 +251,7 @@ class JobService:
                     self.files.delete_exact(path, file["role"])
             await self.db.delete_job(job_id)
         except Exception:
-            await self.db.update_job(job_id, status=job["status"], stage="删除失败", error_code="delete_failed", error_summary="部分文件删除失败，请检查权限后重试")
+            await self.db.update_job(job_id, status=job["status"], stage="清理失败", error_code="purge_failed", error_summary="部分文件清理失败，请检查权限后重试")
             raise
         self.events.publish("job_deleted", {"id": job_id})
 
@@ -206,6 +276,10 @@ class JobService:
                     entry = history.get(job_id) if isinstance(history, dict) else None
                     if entry:
                         updated = await self._apply_history(job, entry)
+                    elif job["status"] == "submitting" and time.time() - job["created_at"] < self._SUBMISSION_CONFIRMATION_TIMEOUT:
+                        updated = await self.db.update_active_job(job_id, status="submitting", stage="确认提交状态", error_code="submission_uncertain", error_summary=None)
+                    elif job["status"] == "submitting":
+                        updated = await self.db.update_active_job(job_id, status="failed", stage="提交失败", error_code="submission_unconfirmed", error_summary="提交响应异常，超过确认时间后仍未在 ComfyUI 中找到任务", finished_at=time.time(), queue_position=None)
                     else:
                         updated = await self.db.update_active_job(job_id, status="interrupted", stage="意外中断", error_code="missing_upstream", error_summary="ComfyUI 中找不到这个未完成任务", finished_at=time.time(), queue_position=None)
                 self.events.publish("job", self.public_job(updated))
@@ -254,6 +328,58 @@ class JobService:
                     return safe_summary(value)
         return "ComfyUI 执行失败，请检查本机日志"
 
+    @staticmethod
+    def _progress_number(value: Any, default: int = 0) -> int | float:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return default
+        if not number == number or number < 0:
+            return default
+        return int(number) if number.is_integer() else number
+
+    @staticmethod
+    def _progress_node_stage(preset: Preset, node: dict[str, Any], fallback_node_id: Any = None) -> str | None:
+        node_ids = (
+            node.get("display_node_id"),
+            node.get("real_node_id"),
+            node.get("node_id"),
+            fallback_node_id,
+        )
+        for node_id in node_ids:
+            if node_id is not None:
+                stage = preset.stages.get(str(node_id))
+                if stage:
+                    return stage
+        return None
+
+    async def _handle_progress_state(
+        self, job_id: str, preset: Preset, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        nodes = data.get("nodes")
+        if not isinstance(nodes, dict):
+            return None
+
+        candidates: list[tuple[dict[str, Any], Any]] = []
+        for node_id, node in nodes.items():
+            if isinstance(node, dict) and str(node.get("state", "")).lower() != "pending":
+                candidates.append((node, node_id))
+        if not candidates:
+            return None
+
+        running = [item for item in candidates if str(item[0].get("state", "")).lower() == "running"]
+        node, fallback_node_id = (running or candidates)[-1]
+        stage = self._progress_node_stage(preset, node, fallback_node_id)
+        values: dict[str, Any] = {
+            "status": "running",
+            "queue_position": 0,
+            "progress_value": self._progress_number(node.get("value")),
+            "progress_max": self._progress_number(node.get("max")),
+        }
+        if stage:
+            values["stage"] = stage
+        return await self.db.update_active_job(job_id, **values)
+
     async def _capture_output(self, job_id: str, entry: dict[str, Any]) -> bool:
         preset = self.presets[(await self.db.get_job(job_id))["preset_id"]]
         output = entry.get("outputs", {}).get(preset.output_node, {})
@@ -267,6 +393,7 @@ class JobService:
         for descriptor in descriptors:
             try:
                 path = self.files.register_output(job_id, descriptor)
+                path = self.files.finalize_output(job_id, path)
             except (FileValidationError, OSError):
                 continue
             await self.db.add_file(job_id, "output", path, path.stat().st_size)
@@ -323,8 +450,18 @@ class JobService:
             if not job.get("started_at"):
                 values["started_at"] = time.time()
             updated = await self.db.update_active_job(job_id, **values)
+        elif event_type == "progress_state":
+            updated = await self._handle_progress_state(job_id, preset, data)
         elif event_type == "progress":
-            updated = await self.db.update_active_job(job_id, status="running", stage="采样", progress_value=int(data.get("value", 0)), progress_max=int(data.get("max", 0)))
+            node = {"node_id": data.get("node")}
+            stage = self._progress_node_stage(preset, node) or "采样"
+            updated = await self.db.update_active_job(
+                job_id,
+                status="running",
+                stage=stage,
+                progress_value=self._progress_number(data.get("value")),
+                progress_max=self._progress_number(data.get("max")),
+            )
         elif event_type == "execution_success":
             try:
                 history = await self.comfy.history(job_id)
@@ -383,4 +520,13 @@ class JobService:
             kind: sum(self.files.role_kind(file["role"]) == kind for file in input_files)
             for kind in ("image", "video", "audio")
         }
+        phase = preset.phase_for_stage(job.get("stage")) if preset else None
+        result["progress_phase"] = phase
+        if job.get("status") == "succeeded":
+            result["progress_percent"] = 100
+        elif phase in self._PROGRESS_STARTS and job.get("progress_value") is not None and job.get("progress_max"):
+            sample = max(0, min(100, round(job["progress_value"] * 100 / job["progress_max"])))
+            result["progress_percent"] = self._PROGRESS_STARTS[phase] + round(self._PROGRESS_WEIGHTS[phase] * sample / 100)
+        elif phase in self._PROGRESS_STARTS:
+            result["progress_percent"] = self._PROGRESS_STARTS[phase]
         return result

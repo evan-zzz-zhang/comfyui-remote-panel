@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 import json
 import logging
 import mimetypes
@@ -117,9 +118,10 @@ def create_app(config: Config) -> web.Application:
         job_id = new_job_id()
         uploaded: list[dict[str, Any]] = []
         fields: dict[str, Any] = {}
-        allowed_text = {"preset_id", "prompt", "duration_seconds", "aspect_ratio", "megapixels", "seed", "scheduler", "sampler", "steps", "retry_source_id"}
+        allowed_text = {"preset_id", "prompt", "duration_seconds", "aspect_ratio", "megapixels", "seed", "scheduler", "sampler", "steps", "retry_source_id", "retry_keep_roles"}
         fixed_files = {"first_frame": "first", "last_frame": "last"}
         repeated_files = {"ref_images": ("image", 9), "ref_videos": ("video", 3), "ref_audios": ("audio", 3)}
+        slot_files = {**{f"image_{index}": f"image_{index}" for index in range(9)}, **{f"video_{index}": f"video_{index}" for index in range(3)}, **{f"audio_{index}": f"audio_{index}" for index in range(3)}}
         repeated_counts = {name: 0 for name in repeated_files}
         try:
             await app["files"].ensure_capacity(
@@ -135,6 +137,12 @@ def create_app(config: Config) -> web.Application:
                     if not part.filename:
                         continue
                     uploaded.append(await app["files"].save_upload(job_id, role, part))
+                elif part.name in slot_files:
+                    role = slot_files[part.name]
+                    if any(item["role"] == role for item in uploaded):
+                        raise PresetError(f"素材槽位重复：{role}")
+                    if part.filename:
+                        uploaded.append(await app["files"].save_upload(job_id, role, part))
                 elif part.name in repeated_files:
                     if not part.filename:
                         continue
@@ -211,6 +219,23 @@ def create_app(config: Config) -> web.Application:
             return json_error("删除失败，任务记录已保留", 500, "delete_failed")
         return web.Response(status=204)
 
+    async def purge_job(request: web.Request) -> web.Response:
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, web.HTTPBadRequest):
+            body = None
+        if not isinstance(body, dict) or body.get("confirm") is not True:
+            return json_error("清理本地产物需要 confirm=true", 400, "confirmation_required")
+        try:
+            await app["jobs"].purge(request.match_info["job_id"])
+        except KeyError:
+            return json_error("任务不存在", 404, "not_found")
+        except PresetError as exc:
+            return json_error(str(exc), 409, "invalid_state")
+        except (OSError, FileValidationError):
+            return json_error("清理失败，任务记录已保留", 500, "purge_failed")
+        return web.Response(status=204)
+
     async def metrics(_: web.Request) -> web.Response:
         if not app["metrics"].snapshot:
             await app["metrics"].collect()
@@ -267,7 +292,8 @@ def create_app(config: Config) -> web.Application:
             path = app["files"].validate_output_file(Path(output["path"]))
         except (OSError, FileValidationError):
             return json_error("视频文件不存在或路径无效", 404, "video_unavailable")
-        return await _stream_file(request, path)
+        download_name = _download_filename(job) if request.query.get("download") == "1" else None
+        return await _stream_file(request, path, download_name)
 
     app.router.add_get("/healthz", healthz)
     app.router.add_get("/", index)
@@ -279,6 +305,7 @@ def create_app(config: Config) -> web.Application:
     app.router.add_post("/api/jobs/{job_id}/cancel", cancel_job)
     app.router.add_post("/api/jobs/{job_id}/retry", retry_job)
     app.router.add_delete("/api/jobs/{job_id}", delete_job)
+    app.router.add_post("/api/jobs/{job_id}/purge", purge_job)
     app.router.add_get("/api/jobs/{job_id}/video", video)
     app.router.add_get("/api/metrics", metrics)
     app.router.add_post("/api/comfyui/control/{action}", control_comfyui)
@@ -288,6 +315,12 @@ def create_app(config: Config) -> web.Application:
         config.data_dir.mkdir(parents=True, exist_ok=True)
         app["files"].initialize()
         await app["db"].initialize()
+        migration = await app["files"].migrate_legacy(await app["db"].tracked_files())
+        for change in migration:
+            path = Path(change["new_path"])
+            await app["db"].update_file_path(change["job_id"], change["role"], path, path.stat().st_size)
+        if migration:
+            log.info("flattened %d tracked legacy files", len(migration))
         orphan_report = await app["files"].scan_orphans(await app["db"].tracked_paths())
         if orphan_report:
             log.warning("orphan dry-run found %d app-owned paths; nothing was deleted", len(orphan_report))
@@ -338,7 +371,14 @@ async def _read_text_part(part: Any, field_name: str) -> str:
     return value
 
 
-async def _stream_file(request: web.Request, path: Path) -> web.StreamResponse:
+def _download_filename(job: dict[str, Any]) -> str:
+    preset_id = re.sub(r"[^A-Za-z0-9._-]+", "-", str(job.get("preset_id") or "h3")).strip("-.") or "h3"
+    stamp = datetime.fromtimestamp(float(job["created_at"])).strftime("%Y%m%d-%H%M%S")
+    short_id = re.sub(r"[^0-9a-f]", "", str(job["id"]).lower())[:6] or "000000"
+    return f"{preset_id}-{stamp}-{short_id}.mp4"
+
+
+async def _stream_file(request: web.Request, path: Path, download_name: str | None = None) -> web.StreamResponse:
     size = (await asyncio.to_thread(path.stat)).st_size
     start, end, status = 0, size - 1, 200
     range_header = request.headers.get("Range")
@@ -364,7 +404,7 @@ async def _stream_file(request: web.Request, path: Path) -> web.StreamResponse:
         "Accept-Ranges": "bytes",
         "Content-Length": str(length),
         "Content-Type": mimetypes.guess_type(path.name)[0] or "video/mp4",
-        "Content-Disposition": f'{disposition}; filename="{path.name}"',
+        "Content-Disposition": f'{disposition}; filename="{download_name or path.name}"',
     }
     if status == 206:
         headers["Content-Range"] = f"bytes {start}-{end}/{size}"

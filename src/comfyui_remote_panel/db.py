@@ -10,6 +10,7 @@ from typing import Any
 
 TERMINAL_STATUSES = {"succeeded", "failed", "cancelled", "interrupted", "output_missing"}
 ACTIVE_STATUSES = {"submitting", "queued", "running"}
+HIDDEN_STATUS = "hidden"
 
 
 class Database:
@@ -198,12 +199,13 @@ class Database:
         return self._job_from_row(row, files)
 
     async def list_jobs(self, page: int = 1, page_size: int = 20, statuses: set[str] | None = None) -> dict[str, Any]:
-        where = ""
-        params: list[Any] = []
+        conditions = ["status != ?"]
+        params: list[Any] = [HIDDEN_STATUS]
         if statuses:
             placeholders = ",".join("?" for _ in statuses)
-            where = f" WHERE status IN ({placeholders})"
+            conditions.append(f"status IN ({placeholders})")
             params.extend(sorted(statuses))
+        where = " WHERE " + " AND ".join(conditions)
         async with self._lock:
             with self._connect() as db:
                 total = db.execute(f"SELECT COUNT(*) FROM jobs{where}", params).fetchone()[0]
@@ -278,3 +280,22 @@ class Database:
         async with self._lock:
             with self._connect() as db:
                 return {Path(row[0]) for row in db.execute("SELECT path FROM job_files")}
+
+    async def tracked_files(self) -> list[dict[str, Any]]:
+        async with self._lock:
+            with self._connect() as db:
+                return [
+                    {"job_id": row[0], "role": row[1], "path": row[2], "size_bytes": row[3], "status": row[4]}
+                    for row in db.execute(
+                        "SELECT job_files.job_id, job_files.role, job_files.path, job_files.size_bytes, jobs.status "
+                        "FROM job_files JOIN jobs ON jobs.id = job_files.job_id ORDER BY job_files.id"
+                    )
+                ]
+
+    async def update_file_path(self, job_id: str, role: str, path: Path, size_bytes: int) -> None:
+        async with self._lock:
+            with self._connect() as db:
+                db.execute(
+                    "UPDATE job_files SET path = ?, size_bytes = ? WHERE job_id = ? AND role = ?",
+                    (str(path), size_bytes, job_id, role),
+                )

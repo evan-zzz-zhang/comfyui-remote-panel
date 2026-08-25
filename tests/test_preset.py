@@ -41,10 +41,10 @@ def test_mutates_declared_sampling_parameters_and_keeps_model_locked(preset):
     assert graph["149"]["inputs"]["sampler_name"] == "dpmpp_2m"
     assert graph["145"]["inputs"]["lora_name"] == "minimax_h3_turbo_v4_step600_ema_pruned_comfyui.safetensors"
     assert graph["115"]["inputs"]["aspect_ratio"] == "21:9 (Ultrawide)"
-    assert graph["92"]["inputs"]["filename_prefix"] == "h3_remote/id/video"
+    assert graph["92"]["inputs"]["filename_prefix"] == "h3_remote/id"
 
 
-@pytest.mark.parametrize("field,value", [("duration_seconds", 4), ("duration_seconds", 16), ("megapixels", 0.1), ("megapixels", 1.1), ("seed", -1), ("seed", 2**64)])
+@pytest.mark.parametrize("field,value", [("duration_seconds", 4), ("duration_seconds", 16), ("megapixels", 0.1), ("megapixels", 0.3), ("megapixels", 1.1), ("seed", -1), ("seed", 2**64)])
 def test_parameter_boundaries(preset, field, value):
     data = values()
     data[field] = value
@@ -70,14 +70,14 @@ def test_all_eight_aspect_ratios(preset):
 def test_reference_aspect_uses_first_then_falls_back_to_last(preset, frames, source_node):
     data = values()
     data["aspect_ratio"] = "reference"
-    data["megapixels"] = 0.7
+    data["megapixels"] = 0.8
     graph = preset.build_prompt(data, "job", frames)
     assert graph["9003"] == {
         "class_type": "ImageScaleToTotalPixels",
         "inputs": {
             "image": [source_node, 0],
             "upscale_method": "nearest-exact",
-            "megapixels": 0.7,
+            "megapixels": 0.8,
             "resolution_steps": 32,
         },
     }
@@ -152,3 +152,20 @@ def test_ref2va_builds_video_audio_and_multi_image_reference_graph():
     assert target["ref_video_audios.ref_video_audio_0"] == ["9300", 1]
     assert graph["9400"] == {"class_type": "LoadAudio", "inputs": {"audio": "voice.wav"}}
     assert target["ref_audios.ref_audio_0"] == ["9400", 0]
+
+
+def test_ref2va_reference_aspect_can_use_image_or_video_one():
+    preset = load_presets(ROOT / "workflows")["h3-ref2va"]
+    image_graph = preset.build_prompt(values() | {"aspect_ratio": "reference_image"}, "image-job", {"image_0": "image.png"})
+    assert image_graph["9003"]["inputs"]["image"] == ["9100", 0]
+    assert image_graph["136"]["inputs"]["width"] == ["9004", 0]
+
+    video_graph = preset.build_prompt(values() | {"aspect_ratio": "reference_video"}, "video-job", {"video_0": "clip.mp4"})
+    assert video_graph["9003"]["inputs"]["image"] == ["9300", 0]
+    assert video_graph["136"]["inputs"]["height"] == ["9004", 1]
+
+
+def test_ref2va_legacy_reference_aspect_remains_image_based():
+    preset = load_presets(ROOT / "workflows")["h3-ref2va"]
+    graph = preset.build_prompt(values() | {"aspect_ratio": "reference"}, "legacy-job", {"image_0": "image.png"})
+    assert graph["9003"]["inputs"]["image"] == ["9100", 0]

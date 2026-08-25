@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#11130f">
   <meta name="description" content="安全、轻量的 MiniMax H3 远程生成面板">
   <title>H3 远程生成</title>
-  <link rel="stylesheet" href="/static/app.css?v=0.3.0">
+  <link rel="stylesheet" href="/static/app.css?v=0.4.0">
 </head>
 <body>
   <header class="topbar">
@@ -15,6 +15,11 @@
       <h1>H3 生成台</h1>
     </div>
     <div id="connection-pill" class="status-pill status-offline"><span></span>连接中</div>
+    <nav class="top-nav" aria-label="主导航">
+      <button id="nav-generate" class="active" data-view="generate"><span>＋</span>生成</button>
+      <button id="nav-jobs" data-view="jobs"><span>▤</span>任务<i id="job-badge" class="hidden">0</i></button>
+      <button id="nav-device" data-view="device"><span>◉</span>设备</button>
+    </nav>
   </header>
 
   <main>
@@ -56,27 +61,28 @@
           </label>
           <div id="ref-video-preview" class="media-file-list hidden"></div>
           <label class="media-picker">
-            <input id="ref-audios" type="file" name="ref_audios" accept="audio/wav,audio/mpeg,audio/flac,audio/ogg,audio/mp4,.m4a" multiple>
-            <span>＋</span><div><strong>参考音频</strong><small>最多 3 段 · WAV / MP3 / FLAC / OGG / M4A</small></div><b>选择</b>
+            <input id="ref-audios" type="file" name="ref_audios" accept=".wav,.mp3,.flac,.ogg,.m4a" multiple>
+            <span>＋</span><div><strong>参考音频</strong><small>最多 3 段 · 选择已有文件，无需麦克风</small></div><b>选择</b>
           </label>
           <div id="ref-audio-preview" class="media-file-list hidden"></div>
           <p class="reference-tag-tip">提示词可使用 <code>&lt;Picture 1&gt;</code>、<code>&lt;Video 1&gt;</code>、<code>&lt;Audio 1&gt;</code> 指代对应素材；视频自带音轨会自动一同送入工作流。</p>
         </div>
 
         <label class="field prompt-field">
-          <span>提示词 <small>必填</small></span>
-          <textarea name="prompt" rows="6" maxlength="10000" required placeholder="描述主体、动作、镜头运动，以及对白、环境声或音乐……"></textarea>
+          <span>提示词 <small>纯文字模式必填；有首帧或尾帧时可留空</small></span>
+          <textarea name="prompt" rows="6" maxlength="10000" placeholder="描述主体、动作、镜头运动，以及对白、环境声或音乐……"></textarea>
         </label>
 
         <div class="parameter-grid">
-          <label class="field"><span>时长</span><select name="duration_seconds"></select></label>
+          <label class="field duration-field"><span>时长 <output id="duration-value">5 秒</output></span><input name="duration_seconds" type="range" min="5" max="15" step="1" value="5"></label>
+          <button id="follow-video-duration" class="secondary-button hidden" type="button" disabled>跟随参考视频 1</button>
           <label class="field"><span>画幅</span>
             <select name="aspect_ratio">
-              <option>9:16</option><option id="reference-aspect-option" value="reference" disabled>参考图比例（需参考图）</option><option>16:9</option><option>1:1</option><option>2:3</option>
+              <option>9:16</option><option id="reference-aspect-image-option" value="reference_image" disabled>参考图 1 画幅（需参考图）</option><option id="reference-aspect-video-option" value="reference_video" disabled>参考视频 1 画幅（需参考视频）</option><option>16:9</option><option>1:1</option><option>2:3</option>
               <option>3:2</option><option>3:4</option><option>4:3</option><option>21:9</option>
             </select>
           </label>
-          <label class="field wide"><span>分辨率 <b id="mp-value">0.4 MP</b></span><input name="megapixels" type="range" min="0.2" max="1" step="0.1" value="0.4"></label>
+          <div class="field wide"><span>分辨率 <b id="mp-value">0.4 MP</b></span><input id="megapixels-value" name="megapixels" type="hidden" value="0.4"><div class="resolution-presets" role="group" aria-label="分辨率预设"><button type="button" data-megapixels="0.2" aria-pressed="false">0.2</button><button type="button" data-megapixels="0.4" aria-pressed="true">0.4</button><button type="button" data-megapixels="0.6" aria-pressed="false">0.6</button><button type="button" data-megapixels="0.8" aria-pressed="false">0.8</button><button type="button" data-megapixels="0.9" aria-pressed="false">0.9</button><button type="button" data-megapixels="1.0" aria-pressed="false">1.0</button></div></div>
         </div>
         <p id="load-warning" class="notice hidden">当前组合负载较高，可能耗时很久或显存不足；失败后可原参数重试。</p>
 
@@ -151,11 +157,6 @@
     </div>
   </div>
 
-  <nav class="bottom-nav" aria-label="主导航">
-    <button id="nav-generate" class="active" data-view="generate"><span>＋</span>生成</button>
-    <button id="nav-jobs" data-view="jobs"><span>▤</span>任务<i id="job-badge" class="hidden">0</i></button>
-    <button id="nav-device" data-view="device"><span>◉</span>设备</button>
-  </nav>
-  <script src="/static/app.js?v=0.3.0" defer></script>
+  <script src="/static/app.js?v=0.4.0" defer></script>
 </body>
 </html>

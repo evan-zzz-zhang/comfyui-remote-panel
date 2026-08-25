@@ -66,15 +66,28 @@ def test_delete_rejects_outside_file(tmp_path):
     assert outside.exists()
 
 
-def test_register_output_requires_exact_job_subfolder(tmp_path):
+def test_register_output_requires_flat_managed_subfolder(tmp_path):
     value = store(tmp_path)
-    output = value.output_root / "job" / "video_00001.mp4"
-    output.parent.mkdir()
+    job_id = "123e4567-e89b-42d3-a456-426614174000"
+    output = value.output_root / f"{value.storage_key(job_id)}_00001_.mp4"
     output.write_bytes(b"video")
-    descriptor = {"filename": output.name, "subfolder": "h3_remote/job", "type": "output"}
-    assert value.register_output("job", descriptor) == output
+    descriptor = {"filename": output.name, "subfolder": "h3_remote", "type": "output"}
+    assert value.register_output(job_id, descriptor) == output
     with pytest.raises(FileValidationError):
-        value.register_output("other", descriptor)
+        value.register_output("223e4567-e89b-42d3-a456-426614174000", descriptor)
+
+
+def test_flat_output_is_finalized_without_a_job_directory(tmp_path):
+    value = store(tmp_path)
+    job_id = "123e4567-e89b-42d3-a456-426614174000"
+    source = value.output_root / f"{value.storage_key(job_id)}_00001_.mp4"
+    source.write_bytes(b"video")
+
+    final = value.finalize_output(job_id, source)
+
+    assert final == value.output_root / f"{value.storage_key(job_id)}_result.mp4"
+    assert final.read_bytes() == b"video"
+    assert not source.exists()
 
 
 @pytest.mark.asyncio
@@ -112,6 +125,48 @@ async def test_orphan_scan_is_dry_run_then_exact_delete(tmp_path):
     report = await value.scan_orphans({tracked}, execute=True)
     assert report == [{"path": str(orphan), "action": "deleted"}]
     assert tracked.exists() and not orphan.exists()
+
+
+@pytest.mark.asyncio
+async def test_flat_orphan_scan_only_targets_panel_prefix(tmp_path):
+    value = store(tmp_path)
+    orphan = value.output_root / "rp_123456789abc_result.mp4"
+    user_file = value.output_root / "my-video.mp4"
+    orphan.write_bytes(b"orphan")
+    user_file.write_bytes(b"user")
+
+    report = await value.scan_orphans(set())
+
+    assert report == [{"path": str(orphan), "action": "would_delete"}]
+    assert orphan.exists() and user_file.exists()
+
+
+@pytest.mark.asyncio
+async def test_legacy_uuid_files_are_flattened_without_losing_untracked_files(tmp_path):
+    value = store(tmp_path)
+    job_id = "123e4567-e89b-42d3-a456-426614174000"
+    input_dir = value.input_root / job_id
+    output_dir = value.output_root / job_id
+    input_dir.mkdir()
+    output_dir.mkdir()
+    tracked_input = input_dir / f"{job_id}-first.png"
+    tracked_output = output_dir / "video_00001_.mp4"
+    untracked = output_dir / "old-preview.mp4"
+    tracked_input.write_bytes(b"input")
+    tracked_output.write_bytes(b"output")
+    untracked.write_bytes(b"preview")
+
+    changes = await value.migrate_legacy([
+        {"job_id": job_id, "role": "first", "path": tracked_input, "size_bytes": 5},
+        {"job_id": job_id, "role": "output", "path": tracked_output, "size_bytes": 6},
+    ])
+
+    assert {item["role"] for item in changes} == {"first", "output"}
+    assert (value.input_root / value.flat_input_name(job_id, "first", ".png")).read_bytes() == b"input"
+    assert (value.output_root / value.flat_output_name(job_id)).read_bytes() == b"output"
+    assert list(value.input_root.glob(f"{job_id}*")) == []
+    assert list(value.output_root.glob(f"{job_id}*")) == []
+    assert list(value.output_root.glob("rp_legacy_*.mp4"))
 
 
 @pytest.mark.asyncio

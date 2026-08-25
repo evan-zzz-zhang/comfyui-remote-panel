@@ -21,6 +21,7 @@ MAX_IMAGE_PIXELS = 40_000_000
 FORMAT_EXTENSIONS = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}
 VIDEO_SIGNATURES = {b"\x1aE\xdf\xa3": ".webm"}
 _JOB_DIR_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.I)
+_FLAT_FILE_PATTERN = re.compile(r"^rp_(?:[0-9a-f]{12}|legacy_[0-9a-f-]+)_.+", re.I)
 
 
 class FileValidationError(ValueError):
@@ -73,11 +74,30 @@ class FileStore:
 
     def _validate_and_store(self, temp: Path, job_id: str, role: str, kind: str) -> dict[str, Any]:
         extension = self._validate_image(temp) if kind == "image" else self._validate_media(temp, kind)
-        job_dir = self._safe_child(self.input_root, job_id)
-        job_dir.mkdir(parents=True, exist_ok=True)
-        destination = self._safe_child(job_dir, f"{job_id}-{role.replace('_', '-')}{extension}")
+        destination = self._safe_child(self.input_root, self.flat_input_name(job_id, role, extension))
         os.replace(temp, destination)
         return {"role": role, "path": destination, "size_bytes": destination.stat().st_size}
+
+    @staticmethod
+    def storage_key(job_id: str) -> str:
+        compact = re.sub(r"[^0-9a-f]", "", str(job_id).lower())
+        if len(compact) < 12:
+            raise FileValidationError("invalid job id")
+        return f"rp_{compact[:12]}"
+
+    @classmethod
+    def flat_input_name(cls, job_id: str, role: str, extension: str) -> str:
+        if cls.role_kind(role) is None:
+            raise FileValidationError("invalid input role")
+        return f"{cls.storage_key(job_id)}_{role.replace('_', '-')}{extension.lower()}"
+
+    @classmethod
+    def flat_output_name(cls, job_id: str) -> str:
+        return f"{cls.storage_key(job_id)}_result.mp4"
+
+    @classmethod
+    def comfy_output_prefix(cls, job_id: str) -> str:
+        return cls.storage_key(job_id)
 
     @staticmethod
     def role_kind(role: str) -> str | None:
@@ -138,9 +158,7 @@ class FileStore:
             raise FileValidationError("invalid input role")
         source = source.resolve(strict=True)
         self._assert_managed_file(source, self.input_root)
-        destination_dir = self._safe_child(self.input_root, new_job_id)
-        destination_dir.mkdir(parents=True, exist_ok=True)
-        destination = self._safe_child(destination_dir, f"{new_job_id}-{role.replace('_', '-')}{source.suffix.lower()}")
+        destination = self._safe_child(self.input_root, self.flat_input_name(new_job_id, role, source.suffix))
         shutil.copy2(source, destination)
         return {"role": role, "path": destination, "size_bytes": destination.stat().st_size}
 
@@ -179,15 +197,34 @@ class FileStore:
         filename = descriptor.get("filename")
         if not isinstance(subfolder, str) or not isinstance(filename, str) or not filename:
             raise FileValidationError("invalid output descriptor")
-        expected = f"h3_remote/{job_id}"
+        expected_prefix = self.storage_key(job_id)
         normalized_subfolder = subfolder.replace("\\", "/").strip("/")
-        if normalized_subfolder != expected:
-            raise FileValidationError("output is outside the job directory")
-        path = self._safe_child(self.output_root, job_id, Path(filename).name)
+        if normalized_subfolder != "h3_remote" or Path(filename).name != filename:
+            raise FileValidationError("output is outside the managed flat directory")
+        if not filename.lower().startswith(expected_prefix.lower() + "_"):
+            raise FileValidationError("output does not belong to the job")
+        path = self._safe_child(self.output_root, filename)
+        final = self._safe_child(self.output_root, self.flat_output_name(job_id))
+        if not path.exists() and final.exists():
+            path = final
         self._assert_managed_file(path.resolve(strict=True), self.output_root)
-        if path.suffix.lower() != ".mp4":
+        if path.suffix.lower() != ".mp4" or final.suffix.lower() != ".mp4":
             raise FileValidationError("output is not an MP4 file")
         return path
+
+    def finalize_output(self, job_id: str, path: Path) -> Path:
+        source = path.resolve(strict=True)
+        self._assert_managed_file(source, self.output_root)
+        if source.suffix.lower() != ".mp4":
+            raise FileValidationError("output is not an MP4 file")
+        destination = self._safe_child(self.output_root, self.flat_output_name(job_id))
+        if source == destination:
+            return destination
+        if destination.exists():
+            self._assert_managed_file(destination.resolve(strict=True), self.output_root)
+            return destination
+        os.replace(source, destination)
+        return destination
 
     def delete_exact(self, path: Path, role: str) -> None:
         root = self.output_root if role == "output" else self.input_root
@@ -209,14 +246,102 @@ class FileStore:
             except (OSError, FileValidationError):
                 pass
 
+    async def migrate_legacy(self, records: list[dict[str, Any]]) -> list[dict[str, str]]:
+        return await self._run_blocking(self._migrate_legacy, records)
+
+    def _migrate_legacy(self, records: list[dict[str, Any]]) -> list[dict[str, str]]:
+        """Flatten tracked and untracked UUID folders without following links."""
+        changes: list[dict[str, str]] = []
+        tracked_by_path = {
+            os.path.normcase(str(Path(record["path"]).resolve())): record
+            for record in records
+        }
+        recovered: set[tuple[str, str]] = set()
+        for record in records:
+            if record.get("status") in {"submitting", "queued", "running"}:
+                continue
+            source = Path(record["path"])
+            root = self.output_root if record["role"] == "output" else self.input_root
+            target_name = (
+                self.flat_output_name(record["job_id"])
+                if record["role"] == "output"
+                else self.flat_input_name(record["job_id"], record["role"], source.suffix)
+            )
+            target = self._safe_child(root, target_name)
+            if not source.exists() and target.exists():
+                changes.append({
+                    "job_id": str(record["job_id"]),
+                    "role": str(record["role"]),
+                    "old_path": str(source),
+                    "new_path": str(target),
+                })
+                recovered.add((str(record["job_id"]), str(record["role"])))
+        for root in (self.input_root, self.output_root):
+            for directory in root.iterdir():
+                if not directory.is_dir() or not _JOB_DIR_PATTERN.fullmatch(directory.name):
+                    continue
+                if self._is_link_like(directory):
+                    continue
+                for source in directory.iterdir():
+                    if self._is_link_like(source) or not source.is_file():
+                        continue
+                    record = tracked_by_path.get(os.path.normcase(str(source.resolve())))
+                    if record is not None and record.get("status") in {"submitting", "queued", "running"}:
+                        continue
+                    if record is not None and (str(record["job_id"]), str(record["role"])) in recovered:
+                        continue
+                    if record is not None:
+                        target_name = (
+                            self.flat_output_name(record["job_id"])
+                            if record["role"] == "output"
+                            else self.flat_input_name(record["job_id"], record["role"], source.suffix)
+                        )
+                    else:
+                        safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", source.name).strip(".-") or "file"
+                        target_name = f"rp_legacy_{directory.name}_{safe_name}"
+                    target = self._safe_child(root, target_name)
+                    if source.resolve() != target.resolve():
+                        if target.exists():
+                            continue
+                        try:
+                            os.replace(source, target)
+                        except OSError as exc:
+                            warnings.warn(f"无法迁移旧素材 {source} 到 {target}：{exc}", RuntimeWarning, stacklevel=2)
+                            continue
+                    if record is not None:
+                        changes.append({
+                            "job_id": str(record["job_id"]),
+                            "role": str(record["role"]),
+                            "old_path": str(source),
+                            "new_path": str(target),
+                        })
+                try:
+                    directory.rmdir()
+                except OSError:
+                    pass
+        return changes
+
     async def scan_orphans(self, known_paths: set[Path], execute: bool = False) -> list[dict[str, str]]:
         return await self._run_blocking(self._scan_orphans, known_paths, execute)
 
     def _scan_orphans(self, known_paths: set[Path], execute: bool) -> list[dict[str, str]]:
-        """Inspect only app-owned UUID folders and upload temps; never recurse or follow links."""
+        """Inspect only app-owned flat files, legacy UUID folders and upload temps."""
         known = {os.path.normcase(str(path.resolve())) for path in known_paths}
         findings: list[dict[str, str]] = []
         for root in (self.input_root, self.output_root):
+            for candidate in root.iterdir():
+                if not candidate.is_file() or not _FLAT_FILE_PATTERN.fullmatch(candidate.name):
+                    continue
+                if self._is_link_like(candidate):
+                    findings.append({"path": str(candidate), "action": "refused_link_or_non_file"})
+                    continue
+                if os.path.normcase(str(candidate.resolve())) in known:
+                    continue
+                action = "would_delete"
+                if execute:
+                    candidate.unlink()
+                    action = "deleted"
+                findings.append({"path": str(candidate), "action": action})
             for directory in root.iterdir():
                 if not directory.is_dir() or not _JOB_DIR_PATTERN.fullmatch(directory.name):
                     continue

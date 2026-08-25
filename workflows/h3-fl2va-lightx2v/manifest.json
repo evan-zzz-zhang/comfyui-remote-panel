@@ -42,5 +42,6 @@
     {"category": "vae", "name": "minimax_h3_audio_vae_fp32.safetensors", "node": "120", "input": "vae_name"},
     {"category": "loras", "name": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors", "node": "145", "input": "lora_name"}
   ],
-  "stages": {"127": "加载模型", "128": "加载模型", "119": "加载 VAE", "120": "加载 VAE", "145": "应用 Turbo LoRA", "147": "准备采样", "136": "构建条件", "125": "采样", "122": "解码画面", "121": "解码音频", "130": "合成视频", "92": "保存视频"}
+  "stages": {"127": "加载模型", "128": "加载模型", "119": "加载 VAE", "120": "加载 VAE", "145": "应用 Turbo LoRA", "147": "准备采样", "136": "构建条件", "125": "采样", "122": "解码画面", "121": "解码音频", "130": "合成视频", "92": "保存视频"},
+  "progress_phase": {"127": "build", "128": "build", "119": "build", "120": "build", "136": "build", "125": "sampling", "122": "decode", "121": "decode", "130": "compose", "92": "save"}
 }
