@@ -171,7 +171,12 @@ body.video-open { overflow: hidden; }
 .neutral i { background: #89927f; }
 .metric-note { margin: 11px 0 0; color: var(--muted); font-size: 10px; }
 .diagnostics { color: var(--danger); font-size: 11px; line-height: 1.55; }
-.top-nav { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 5px; padding: 4px; background: rgba(28,31,25,.94); border: 1px solid #3a4033; border-radius: 14px; }
+.workflow-importer { display: grid; gap: 14px; }
+.workflow-binding { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.workflow-binding input { width: 20px; height: 20px; }
+.workflow-binding span { min-width: 0; overflow-wrap: anywhere; }
+.workflow-binding small { max-width: 35vw; color: var(--muted); overflow-wrap: anywhere; }
+.top-nav { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 5px; padding: 4px; background: rgba(28,31,25,.94); border: 1px solid #3a4033; border-radius: 14px; }
 .top-nav button { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 35px; padding: 7px 6px; color: var(--muted); background: transparent; border: 0; border-radius: 10px; font-size: 10px; font-weight: 800; }
 .top-nav button span { font-size: 14px; }
 .top-nav button.active { color: #10130d; background: var(--lime); }

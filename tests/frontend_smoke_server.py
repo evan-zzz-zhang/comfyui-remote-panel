@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from pathlib import Path
 
@@ -59,6 +60,13 @@ async def jobs(request: web.Request) -> web.Response:
     return web.json_response({"items": items[start:start + 20], "pagination": {"page": page, "page_size": 20, "total": 25, "has_more": start + 20 < 25}})
 
 
+async def workflows(_request: web.Request) -> web.Response:
+    return web.json_response({"items": [{
+        "id": "smoke", "revision": 1, "status": "enabled", "name": "Smoke",
+        "builtin": True, "manifest": {"description": "Browser smoke workflow"},
+    }]})
+
+
 async def create_job(request: web.Request) -> web.Response:
     global POST_COUNT
     POST_COUNT += 1
@@ -91,10 +99,11 @@ app.router.add_static("/static", STATIC)
 app.router.add_get("/api/presets", presets)
 app.router.add_get("/api/metrics", metrics)
 app.router.add_get("/api/jobs", jobs)
+app.router.add_get("/api/workflows", workflows)
 app.router.add_post("/api/jobs", create_job)
 app.router.add_get("/api/events", events)
 app.router.add_get("/test/count", count)
 
 
 if __name__ == "__main__":
-    web.run_app(app, host="127.0.0.1", port=8765, print=None)
+    web.run_app(app, host="127.0.0.1", port=int(os.environ.get("REMOTE_PANEL_SMOKE_PORT", "8765")), print=None)

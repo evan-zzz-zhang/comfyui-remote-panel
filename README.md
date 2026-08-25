@@ -67,6 +67,8 @@ The H3 preset supports eight fixed aspect ratios plus a reference-image ratio. I
 
 It requires Python 3.11+, ComfyUI 0.26.0+, and same-host filesystem access. Tailscale Serve remains the recommended/default access provider: copy `config.example.toml`, install the package in a virtual environment, start the panel, and run `tailscale serve --bg 8190`. Set `auth.provider = "local"` only for loopback-only local use; this mode refuses non-loopback origins and clients. Every route except the minimal health endpoint passes through the selected authentication provider.
 
+The Workflow page imports ComfyUI API Workflow JSON, lets users select editable literal inputs, media loader slots and result nodes, runs a confirmed test job, and enables the workflow without editing Python or a manifest. See [Remote Workflow 使用说明](docs/WORKFLOWS.md).
+
 See [SECURITY.md](SECURITY.md) before deployment. Models, LoRAs, user uploads, generated videos, databases, logs, identities, and machine-specific configuration are never distributed with this repository.
 
 For a detailed Windows Portable setup and launcher integration, see [docs/WINDOWS_PORTABLE.md](docs/WINDOWS_PORTABLE.md). The release acceptance checklist is in [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md).

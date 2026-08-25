@@ -1,4 +1,4 @@
-const state = { jobs: new Map(), presets: new Map(), metrics: null, eventSource: null, retryRoles: [], retryKeepRoles: [], mediaFiles: { image: [], video: [], audio: [] }, isSubmitting: false, jobsPage: 1, jobsHasMore: false, pollTimer: null, pollDelay: 2000, deviceTimer: null, deviceChecks: 0, thumbnailStarted: new Set(), thumbnailObserver: null };
+const state = { jobs: new Map(), presets: new Map(), metrics: null, eventSource: null, retryRoles: [], retryKeepRoles: [], mediaFiles: { image: [], video: [], audio: [] }, isSubmitting: false, jobsPage: 1, jobsHasMore: false, pollTimer: null, pollDelay: 2000, deviceTimer: null, deviceChecks: 0, thumbnailStarted: new Set(), thumbnailObserver: null, workflowDraft: null };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -58,6 +58,30 @@ function applyPreset(presetId, overrides = {}) {
   if (!preset) return;
   $("#preset-select").value = preset.id;
   const parameters = preset.parameters;
+  const generic = preset.family === "generic";
+  const genericContainer = $("#generic-parameters");
+  genericContainer.classList.toggle("hidden", !generic);
+  genericContainer.innerHTML = generic ? Object.entries(parameters).map(([name, spec]) => {
+    const label = escapeHtml(spec.ui?.label || name), value = overrides[name] ?? spec.default ?? "";
+    if (spec.type === "enum") return `<label class="field"><span>${label}</span><select name="generic_${escapeHtml(name)}" data-generic-binding="${escapeHtml(name)}" data-value-type="enum">${optionKeys(spec).map(option => `<option value="${escapeHtml(option)}"${String(option) === String(value) ? " selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select></label>`;
+    if (spec.type === "boolean") return `<label class="field"><span>${label}</span><input type="checkbox" name="generic_${escapeHtml(name)}" data-generic-binding="${escapeHtml(name)}" data-value-type="boolean"${value ? " checked" : ""}></label>`;
+    const type = ["integer", "number"].includes(spec.type) ? "number" : "text";
+    return `<label class="field"><span>${label}</span><input type="${type}" name="generic_${escapeHtml(name)}" data-generic-binding="${escapeHtml(name)}" data-value-type="${escapeHtml(spec.type)}" value="${escapeHtml(value)}"${spec.minimum != null ? ` min="${spec.minimum}"` : ""}${spec.maximum != null ? ` max="${spec.maximum}"` : ""}${spec.step != null ? ` step="${spec.step}"` : ""}></label>`;
+  }).join("") : "";
+  if (generic && preset.input_bindings?.media?.type === "slots") {
+    genericContainer.innerHTML += Object.entries(preset.input_bindings.media.slots).map(([role, slot]) => {
+      const kind = slot.kind || mediaKindFromRole(role) || "file";
+      const accept = kind === "image" ? "image/jpeg,image/png,image/webp" : (kind === "video" ? "video/mp4,video/quicktime,video/webm" : (kind === "audio" ? ".wav,.mp3,.flac,.ogg,.m4a" : ""));
+      return `<label class="field"><span>${escapeHtml(slot.ui?.label || role)}</span><input type="file" name="${escapeHtml(role)}" accept="${accept}"></label>`;
+    }).join("");
+  }
+  if (generic) {
+    $("#active-preset-label").textContent = preset.name;
+    $("#preset-description").textContent = `${preset.description || "通用 ComfyUI 工作流"}。仅修改工作流明确暴露的参数。`;
+    $("#fl2va-media").classList.add("hidden"); $("#ref2va-media").classList.add("hidden");
+    $$("#fl2va-media input, #ref2va-media input").forEach(input => { input.disabled = true; });
+    updateSubmitAvailability(); return;
+  }
   fillSelect($("select[name=scheduler]"), optionKeys(parameters.scheduler), overrides.scheduler ?? parameters.scheduler.default);
   fillSelect($("select[name=sampler]"), optionKeys(parameters.sampler), overrides.sampler ?? parameters.sampler.default);
   const steps = $("input[name=steps]");
@@ -233,6 +257,32 @@ async function loadPresets() {
   const select = $("#preset-select");
   select.innerHTML = result.items.map(preset => `<option value="${escapeHtml(preset.id)}">${escapeHtml(preset.name)}</option>`).join("");
   applyPreset(state.presets.has("h3-fl2va-v4step600") ? "h3-fl2va-v4step600" : result.items[0]?.id);
+}
+
+async function loadWorkflows() {
+  const response = await fetch("/api/workflows");
+  if (!response.ok) throw new Error("无法加载工作流管理列表");
+  const data = await response.json();
+  const list = $("#workflow-list");
+  if (!list) return;
+  list.innerHTML = data.items.map(item => {
+    const manifest = item.manifest || {};
+    const customActions = item.builtin ? "" : `<button data-workflow-action="edit" data-id="${escapeHtml(item.id)}">编辑</button><button data-workflow-action="delete" data-id="${escapeHtml(item.id)}">删除</button>`;
+    return `<article class="job-card"><div class="job-card-head"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.id)} · r${item.revision}</small></div><span class="job-status">${escapeHtml(item.status)}</span></div><p>${escapeHtml(manifest.description || (item.builtin ? "内置工作流" : "自定义工作流"))}</p><div class="job-actions"><button data-workflow-action="${item.status === "enabled" ? "disable" : "enable"}" data-id="${escapeHtml(item.id)}">${item.status === "enabled" ? "禁用" : "启用"}</button><button data-workflow-action="test" data-id="${escapeHtml(item.id)}">测试</button><button data-workflow-action="copy" data-id="${escapeHtml(item.id)}">复制</button>${customActions}<a class="secondary-button" href="/api/workflows/${encodeURIComponent(item.id)}/export?download=1">导出</a></div></article>`;
+  }).join("") || `<div class="empty-state"><span>◇</span><h3>还没有工作流</h3></div>`;
+}
+
+function renderWorkflowInspection(result) {
+  const root = $("#workflow-inspection");
+  const inputs = result.nodes.flatMap(node => node.inputs.filter(input => !/^Load(Image|Video|Audio)$/i.test(node.class_type) && !input.connected && input.suggested_control !== "unsupported" && input.name !== "filename_prefix").map(input => ({...input, node: node.id, classType: node.class_type})));
+  const media = result.nodes.flatMap(node => {
+    const match = /^Load(Image|Video|Audio)$/i.exec(node.class_type); if (!match) return [];
+    const kind = match[1].toLowerCase(), input = node.inputs.find(value => !value.connected && ["image","file","video","audio"].includes(value.name));
+    return input ? [{node:node.id, input:input.name, kind, classType:node.class_type}] : [];
+  });
+  const outputs = result.output_candidates;
+  root.innerHTML = `<h3>选择手机端可修改参数</h3>${inputs.map((input, index) => `<label class="workflow-binding"><input type="checkbox" data-workflow-input data-node="${escapeHtml(input.node)}" data-input="${escapeHtml(input.name)}" data-current="${escapeHtml(JSON.stringify(input.value))}" data-control="${escapeHtml(input.suggested_control)}"${index < 4 && !/(model|ckpt|lora|vae|file|name)/i.test(input.name) ? " checked" : ""}><span>Node ${escapeHtml(input.node)} · ${escapeHtml(input.classType)} · ${escapeHtml(input.name)}</span><small>${escapeHtml(input.value)}</small></label>`).join("") || "<p>没有可安全暴露的字面输入。</p>"}<h3>选择媒体上传槽位</h3>${media.map(item => `<label class="workflow-binding"><input type="checkbox" data-workflow-media data-node="${escapeHtml(item.node)}" data-input="${escapeHtml(item.input)}" data-kind="${escapeHtml(item.kind)}"><span>Node ${escapeHtml(item.node)} · ${escapeHtml(item.classType)}</span><small>${escapeHtml(item.kind)}</small></label>`).join("") || "<p>没有检测到固定媒体加载节点。</p>"}<h3>选择主要输出</h3>${outputs.map((output, index) => `<label class="workflow-binding"><input type="radio" name="workflow-output" data-workflow-output data-node="${escapeHtml(output.node)}" data-kind="${escapeHtml(output.kind)}"${index === 0 ? " checked" : ""}><span>Node ${escapeHtml(output.node)} · ${escapeHtml(output.class_type)}</span><small>${escapeHtml(output.kind)}</small></label>`).join("") || "<p class=\"form-message error\">未自动找到输出节点，请在 ComfyUI 中加入 SaveImage 或 SaveVideo。</p>"}`;
+  $("#save-workflow").disabled = outputs.length === 0;
 }
 async function loadJobs(reset = true) {
   try {
@@ -444,6 +494,88 @@ document.addEventListener("DOMContentLoaded", async () => {
     updateReferenceAspect(); updateFollowButton();
   };
   $$(".top-nav button").forEach(button => button.addEventListener("click", () => setView(button.dataset.view)));
+  $("#workflow-json").addEventListener("change", async event => {
+    const file = event.target.files[0], message = $("#workflow-message");
+    if (!file) return;
+    try {
+      const text = await file.text();
+      state.workflowDraft = JSON.parse(text);
+      const response = await fetch("/api/workflows/inspect", { method: "POST", headers: {"Content-Type":"application/json"}, body: text });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error?.message || "检查失败");
+      renderWorkflowInspection(result);
+      message.className = "form-message"; message.textContent = `已读取 ${result.nodes.length} 个节点，请选择参数和输出。`;
+    } catch (error) {
+      state.workflowDraft = null; $("#save-workflow").disabled = true;
+      message.className = "form-message error"; message.textContent = error.message;
+    }
+  });
+  $("#save-workflow").addEventListener("click", async () => {
+    const message = $("#workflow-message"), workflowId = $("#workflow-id").value.trim().toLowerCase(), name = $("#workflow-name").value.trim();
+    const parameters = $$('[data-workflow-input]:checked').map(input => {
+      const current = JSON.parse(input.dataset.current), control = input.dataset.control;
+      let type = typeof current === "boolean" ? "boolean" : (Number.isInteger(current) ? "integer" : (typeof current === "number" ? "number" : "string"));
+      const id = `${input.dataset.node}_${input.dataset.input}`.toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+      return { id, node: input.dataset.node, input: input.dataset.input, type, default: current, ui: { label: input.dataset.input, control } };
+    });
+    const selectedOutput = $('[data-workflow-output]:checked');
+    if (!state.workflowDraft || !selectedOutput) return;
+    const kind = selectedOutput.dataset.kind, counters = {image:0,video:0,audio:0}, slots = {};
+    $$('[data-workflow-media]:checked').forEach(input => { const mediaKind=input.dataset.kind, role=`${mediaKind}_${counters[mediaKind]++}`; slots[role]={node:input.dataset.node,input:input.dataset.input,kind:mediaKind}; });
+    const media = Object.keys(slots).length ? {type:"slots",slots} : {type:"none"};
+    const config = { id: workflowId, name, parameters, media, outputs: [{ id:"primary", node:selectedOutput.dataset.node, kind, history_keys: kind === "image" ? ["images"] : (kind === "video" ? ["videos","video","files","images"] : ["files"]), primary:true }] };
+    try {
+      const item = await apiAction("/api/workflows", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({workflow:state.workflowDraft, config}) });
+      message.className = "form-message"; message.textContent = `${item.name} 已保存为草稿 r${item.revision}`;
+      await loadWorkflows();
+    } catch (error) { message.className = "form-message error"; message.textContent = error.message; }
+  });
+  $("#workflow-package").addEventListener("change", async event => {
+    const file = event.target.files[0], message = $("#workflow-message"); if (!file) return;
+    try {
+      const response = await fetch("/api/workflows/import", { method:"POST", headers:{"Content-Type":"application/zip"}, body:file });
+      const result = await response.json(); if (!response.ok) throw new Error(result.error?.message || "导入失败");
+      message.className = "form-message"; message.textContent = `${result.name} 已导入为草稿`;
+      await loadWorkflows();
+    } catch (error) { message.className = "form-message error"; message.textContent = error.message; }
+  });
+  $("#workflow-list").addEventListener("click", async event => {
+    const button = event.target.closest("[data-workflow-action]"); if (!button) return;
+    const id = button.dataset.id, action = button.dataset.workflowAction;
+    try {
+      if (action === "enable" || action === "disable") {
+        await apiAction(`/api/workflows/${encodeURIComponent(id)}/status`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({status: action === "enable" ? "enabled" : "disabled"}) });
+        await Promise.all([loadWorkflows(), loadPresets()]);
+      } else if (action === "test") {
+        if (!window.confirm("测试会真实提交一次 ComfyUI 任务并消耗 GPU，确认继续？")) return;
+        const detail = await apiAction(`/api/workflows/${encodeURIComponent(id)}`);
+        const values = Object.fromEntries(Object.entries(detail.definition.manifest.parameters || {}).map(([key, spec]) => [key, spec.default]));
+        const job = await apiAction(`/api/workflows/${encodeURIComponent(id)}/test`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(values) });
+        upsertJob(job); setView("jobs");
+      } else if (action === "edit") {
+        const detail = await apiAction(`/api/workflows/${encodeURIComponent(id)}`);
+        state.workflowDraft = detail.definition.workflow;
+        $("#workflow-id").value = detail.id;
+        $("#workflow-name").value = detail.name;
+        const inspection = await apiAction("/api/workflows/inspect", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(state.workflowDraft) });
+        renderWorkflowInspection(inspection);
+        $("#workflow-message").className = "form-message";
+        $("#workflow-message").textContent = `正在编辑 ${detail.name}；保存会创建新 revision，旧任务仍使用原快照。`;
+        $("#workflow-name").scrollIntoView({behavior:"smooth", block:"center"});
+      } else if (action === "copy") {
+        const newId = window.prompt("新工作流 ID（小写字母、数字、点、下划线或连字符）", `${id}-copy`);
+        if (!newId) return;
+        const newName = window.prompt("新工作流名称", `${id} 副本`);
+        if (!newName) return;
+        await apiAction(`/api/workflows/${encodeURIComponent(id)}/copy`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({id:newId.trim().toLowerCase(), name:newName.trim()}) });
+        await loadWorkflows();
+      } else if (action === "delete") {
+        if (!window.confirm(`删除 ${id}？历史任务不会受影响。`)) return;
+        await apiAction(`/api/workflows/${encodeURIComponent(id)}`, {method:"DELETE"});
+        await Promise.all([loadWorkflows(), loadPresets()]);
+      }
+    } catch (error) { window.alert(error.message); }
+  });
   $("#refresh-jobs").addEventListener("click", () => loadJobs(true));
   $("#load-more-jobs").addEventListener("click", () => loadJobs(false));
   $("#clear-retry").addEventListener("click", clearRetry);
@@ -494,6 +626,19 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const buildFormData = () => {
     const data = new FormData(form), retry = Boolean($("#retry-source-id").value);
+    if (selectedPreset()?.family === "generic") {
+      const values = {};
+      $$('[data-generic-binding]', form).forEach(input => {
+        let value = input.type === "checkbox" ? input.checked : input.value;
+        if (input.dataset.valueType === "integer") value = Number.parseInt(value, 10);
+        if (input.dataset.valueType === "number") value = Number(value);
+        values[input.dataset.genericBinding] = value;
+        data.delete(input.name);
+      });
+      data.set("values_json", JSON.stringify(values));
+      ["prompt", "duration_seconds", "aspect_ratio", "megapixels", "seed", "scheduler", "sampler", "steps"].forEach(name => data.delete(name));
+      return data;
+    }
     ["ref_images", "ref_videos", "ref_audios", "retry_keep_roles", "image_0", "image_1", "image_2", "image_3", "image_4", "image_5", "image_6", "image_7", "image_8", "video_0", "video_1", "video_2", "audio_0", "audio_1", "audio_2"].forEach(name => data.delete(name));
     const keepRoles = [];
     if (retry) {
@@ -616,5 +761,5 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.addEventListener("visibilitychange", () => { if (document.hidden) stopDeviceMonitor(); });
 
   try { await loadPresets(); } catch (error) { $("#form-message").className = "form-message error"; $("#form-message").textContent = error.message; }
-  await Promise.all([loadJobs(), loadMetrics()]); connectEvents();
+  await Promise.all([loadJobs(), loadMetrics(), loadWorkflows()]); connectEvents();
 });

@@ -18,6 +18,7 @@
     <nav class="top-nav" aria-label="主导航">
       <button id="nav-generate" class="active" data-view="generate"><span>＋</span>生成</button>
       <button id="nav-jobs" data-view="jobs"><span>▤</span>任务<i id="job-badge" class="hidden">0</i></button>
+      <button id="nav-workflows" data-view="workflows"><span>◇</span>工作流</button>
       <button id="nav-device" data-view="device"><span>◉</span>设备</button>
     </nav>
   </header>
@@ -98,6 +99,8 @@
           <p id="preset-description">种子支持 0 至 18446744073709551615；任务会保存实际使用的全部参数。</p>
         </details>
 
+        <div id="generic-parameters" class="parameter-grid hidden"></div>
+
         <button id="submit-button" class="primary-button" type="submit"><span>提交生成</span><b>→</b></button>
         <p id="form-message" class="form-message" role="status"></p>
       </form>
@@ -111,6 +114,22 @@
       <div id="jobs-list" class="jobs-list"></div>
       <div id="jobs-empty" class="empty-state"><span>◎</span><h3>还没有任务</h3><p>从“生成”页提交第一个镜头。</p></div>
       <button id="load-more-jobs" class="primary-button hidden" type="button">加载更多任务</button>
+    </section>
+
+    <section id="view-workflows" class="view" aria-labelledby="nav-workflows">
+      <div class="page-heading"><div><p class="eyebrow">REMOTE WORKFLOWS</p><h2>工作流管理</h2></div></div>
+      <div class="metric-card workflow-importer">
+        <label class="field"><span>工作流名称</span><input id="workflow-name" placeholder="例如：SDXL 出图"></label>
+        <label class="field"><span>工作流 ID</span><input id="workflow-id" placeholder="例如：sdxl-image"></label>
+        <label class="media-picker"><input id="workflow-json" type="file" accept="application/json,.json"><span>＋</span><div><strong>导入 API Workflow</strong><small>在 ComfyUI 中选择“导出（API）”</small></div><b>选择</b></label>
+        <div id="workflow-inspection" class="diagnostics"></div>
+        <button id="save-workflow" class="primary-button" type="button" disabled>保存为草稿</button>
+        <p id="workflow-message" class="form-message" role="status"></p>
+      </div>
+      <div class="metric-card">
+        <label class="media-picker"><input id="workflow-package" type="file" accept="application/zip,.zip"><span>⇧</span><div><strong>导入 Remote Workflow Package</strong><small>ZIP 不得包含模型、素材、本地路径或密钥</small></div><b>选择</b></label>
+      </div>
+      <div id="workflow-list" class="jobs-list"></div>
     </section>
 
     <section id="view-device" class="view" aria-labelledby="nav-device">
