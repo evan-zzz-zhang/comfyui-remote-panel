@@ -63,6 +63,22 @@ def test_control_snapshot_disables_conflicting_actions(tmp_path):
     assert busy["can_restart"] is False
 
 
+def test_control_snapshot_exposes_normalized_device_states(tmp_path):
+    manager = lifecycle(tmp_path)
+    assert manager.snapshot(True)["state"] == "online"
+    assert manager.snapshot(False)["state"] == "offline"
+    assert manager.snapshot(False, unresponsive=True)["state"] == "unresponsive"
+
+    manager.phase = "starting"
+    assert manager.snapshot(False)["state"] == "starting"
+    manager.phase = None
+    manager.last_error_action = "start"
+    manager.last_error = "boom"
+    failed = manager.snapshot(False)
+    assert failed["state"] == "start_failed"
+    assert failed["summary"] == "boom"
+
+
 def test_recorded_process_requires_all_four_identity_fields(tmp_path, monkeypatch):
     manager = lifecycle(tmp_path)
     executable = str(tmp_path / "python.exe")

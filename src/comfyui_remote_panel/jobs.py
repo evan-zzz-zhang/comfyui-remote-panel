@@ -40,6 +40,8 @@ class JobService:
     _PROGRESS_STARTS = {"build": 0, "sampling": 10, "decode": 70, "compose": 85, "save": 95}
     _PROGRESS_WEIGHTS = {"build": 10, "sampling": 60, "decode": 15, "compose": 10, "save": 5}
     _SUBMISSION_CONFIRMATION_TIMEOUT = 60.0
+    _MISSING_CONFIRMATIONS = 3
+    _MISSING_GRACE_SECONDS = 30.0
 
     def __init__(self, db: Database, files: FileStore, comfy: ComfyClient, presets: dict[str, Preset], events: EventBus):
         self.db = db
@@ -174,13 +176,17 @@ class JobService:
         running = {str(item[1]) for item in queue.get("queue_running", []) if isinstance(item, list) and len(item) > 1}
         pending_list = [str(item[1]) for item in queue.get("queue_pending", []) if isinstance(item, list) and len(item) > 1]
         if job_id in running:
-            values: dict[str, Any] = {"status": "running", "queue_position": 0}
+            values: dict[str, Any] = {
+                "status": "running", "queue_position": 0,
+                "missing_observations": 0, "missing_first_at": None,
+            }
             if not job.get("started_at"):
                 values["started_at"] = time.time()
             return True, await self.db.update_active_job(job_id, **values)
         if job_id in pending_list:
             return True, await self.db.update_active_job(
                 job_id, status="queued", stage="等待执行", queue_position=pending_list.index(job_id) + 1,
+                missing_observations=0, missing_first_at=None,
             )
         history = await self.comfy.history(job_id)
         entry = history.get(job_id) if isinstance(history, dict) else None
@@ -218,11 +224,13 @@ class JobService:
             raise KeyError(job_id)
         if job["status"] in TERMINAL_STATUSES:
             return job
+        requested_at = time.time()
+        job = await self.db.update_active_job(job_id, cancel_requested_at=requested_at)
         acted = await self.comfy.cancel(job_id)
         if acted:
             updated, job = await self.db.update_job_if_status(
                 job_id, ACTIVE_STATUSES, status="cancelled", stage="已取消",
-                finished_at=time.time(), queue_position=None,
+                finished_at=time.time(), queue_position=None, cancel_requested_at=requested_at,
             )
             if updated:
                 self.events.publish("job", self.public_job(job))
@@ -265,12 +273,19 @@ class JobService:
             for job in active:
                 job_id = job["id"]
                 if job_id in running:
-                    values: dict[str, Any] = {"status": "running", "queue_position": 0}
+                    values: dict[str, Any] = {
+                        "status": "running", "queue_position": 0,
+                        "missing_observations": 0, "missing_first_at": None,
+                    }
                     if not job.get("started_at"):
                         values["started_at"] = time.time()
                     updated = await self.db.update_active_job(job_id, **values)
                 elif job_id in pending:
-                    updated = await self.db.update_active_job(job_id, status="queued", stage="等待执行", queue_position=pending_list.index(job_id) + 1)
+                    updated = await self.db.update_active_job(
+                        job_id, status="queued", stage="等待执行",
+                        queue_position=pending_list.index(job_id) + 1,
+                        missing_observations=0, missing_first_at=None,
+                    )
                 else:
                     history = await self.comfy.history(job_id)
                     entry = history.get(job_id) if isinstance(history, dict) else None
@@ -281,7 +296,7 @@ class JobService:
                     elif job["status"] == "submitting":
                         updated = await self.db.update_active_job(job_id, status="failed", stage="提交失败", error_code="submission_unconfirmed", error_summary="提交响应异常，超过确认时间后仍未在 ComfyUI 中找到任务", finished_at=time.time(), queue_position=None)
                     else:
-                        updated = await self.db.update_active_job(job_id, status="interrupted", stage="意外中断", error_code="missing_upstream", error_summary="ComfyUI 中找不到这个未完成任务", finished_at=time.time(), queue_position=None)
+                        updated = await self._observe_missing(job)
                 self.events.publish("job", self.public_job(updated))
         if time.time() - self._last_output_recovery >= 30:
             self._last_output_recovery = time.time()
@@ -299,14 +314,12 @@ class JobService:
             if isinstance(message, list) and message
         }
         if "execution_interrupted" in message_types:
-            status = "cancelled"
-            error_code = error_summary = None
+            status, error_code, error_summary = self._interruption_result(current)
         elif completed or status_text in {"success", "succeeded", "completed"}:
             status = "succeeded"
             error_code = error_summary = None
         elif status_text in {"cancelled", "canceled", "interrupted"}:
-            status = "cancelled"
-            error_code = error_summary = None
+            status, error_code, error_summary = self._interruption_result(current)
         else:
             status = "failed"
             error_code = "execution_failed"
@@ -314,8 +327,38 @@ class JobService:
         if status == "succeeded":
             await self._capture_output(job["id"], entry)
         return await self.db.update_active_job(
-            job["id"], status=status, stage={"succeeded": "已完成", "failed": "失败", "cancelled": "已取消"}[status],
+            job["id"], status=status,
+            stage={"succeeded": "已完成", "failed": "失败", "cancelled": "已取消", "interrupted": "意外中断"}[status],
             finished_at=time.time(), queue_position=None, error_code=error_code, error_summary=error_summary,
+            missing_observations=0, missing_first_at=None,
+        )
+
+    @staticmethod
+    def _interruption_result(job: dict[str, Any]) -> tuple[str, str | None, str | None]:
+        if job.get("cancel_requested_at") is not None:
+            return "cancelled", None, None
+        return "interrupted", "execution_interrupted", "ComfyUI 执行被意外中断，可检查设备状态后重新提交"
+
+    async def _observe_missing(self, job: dict[str, Any]) -> dict[str, Any] | None:
+        now = time.time()
+        first_at = float(job.get("missing_first_at") or now)
+        observations = int(job.get("missing_observations") or 0) + 1
+        confirmed = (
+            observations >= self._MISSING_CONFIRMATIONS
+            and now - first_at >= self._MISSING_GRACE_SECONDS
+        )
+        if confirmed:
+            return await self.db.update_active_job(
+                job["id"], status="interrupted", stage="意外中断",
+                error_code="missing_upstream",
+                error_summary="连续确认后，ComfyUI 中仍找不到这个未完成任务",
+                finished_at=now, queue_position=None,
+                missing_observations=observations, missing_first_at=first_at,
+            )
+        return await self.db.update_active_job(
+            job["id"], stage=f"确认任务状态（{observations}）",
+            error_code="upstream_temporarily_missing", error_summary=None,
+            missing_observations=observations, missing_first_at=first_at,
         )
 
     @staticmethod
@@ -375,6 +418,8 @@ class JobService:
             "queue_position": 0,
             "progress_value": self._progress_number(node.get("value")),
             "progress_max": self._progress_number(node.get("max")),
+            "missing_observations": 0,
+            "missing_first_at": None,
         }
         if stage:
             values["stage"] = stage
@@ -444,7 +489,10 @@ class JobService:
         updated = None
         if event_type in {"execution_start", "executing"}:
             node = str(data.get("node")) if data.get("node") is not None else None
-            values: dict[str, Any] = {"status": "running", "queue_position": 0}
+            values: dict[str, Any] = {
+                "status": "running", "queue_position": 0,
+                "missing_observations": 0, "missing_first_at": None,
+            }
             if node:
                 values["stage"] = preset.stages.get(node, "运行中")
             if not job.get("started_at"):
@@ -461,6 +509,8 @@ class JobService:
                 stage=stage,
                 progress_value=self._progress_number(data.get("value")),
                 progress_max=self._progress_number(data.get("max")),
+                missing_observations=0,
+                missing_first_at=None,
             )
         elif event_type == "execution_success":
             try:
@@ -473,7 +523,13 @@ class JobService:
             summary = safe_summary(data.get("exception_message") or data.get("exception_type"))
             updated = await self.db.update_active_job(job_id, status="failed", stage="失败", error_code="execution_failed", error_summary=summary, finished_at=time.time(), queue_position=None)
         elif event_type == "execution_interrupted":
-            updated = await self.db.update_active_job(job_id, status="cancelled", stage="已取消", finished_at=time.time(), queue_position=None)
+            status, error_code, error_summary = self._interruption_result(job)
+            updated = await self.db.update_active_job(
+                job_id, status=status,
+                stage="已取消" if status == "cancelled" else "意外中断",
+                error_code=error_code, error_summary=error_summary,
+                finished_at=time.time(), queue_position=None,
+            )
         if updated:
             self.events.publish("job", self.public_job(updated))
 

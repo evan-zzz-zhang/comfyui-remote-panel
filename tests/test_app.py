@@ -417,6 +417,43 @@ async def test_websocket_terminal_state_wins_over_delayed_reconcile(panel_client
 
 
 @pytest.mark.asyncio
+async def test_missing_upstream_requires_persisted_grace_confirmation(panel_client):
+    form = FormData(default_to_multipart=True)
+    form.add_field("prompt", "测试暂时找不到上游任务")
+    response = await panel_client.post("/api/jobs", data=form, headers=LOGIN)
+    job = await response.json()
+
+    await panel_client.app["jobs"].reconcile_once()
+    current = await panel_client.app["db"].get_job(job["id"])
+    assert current["status"] == "queued"
+    assert current["missing_observations"] == 1
+
+    await panel_client.app["db"].update_job(
+        job["id"], missing_observations=2, missing_first_at=time.time() - 31
+    )
+    await panel_client.app["jobs"].reconcile_once()
+    current = await panel_client.app["db"].get_job(job["id"])
+    assert current["status"] == "interrupted"
+    assert current["error_code"] == "missing_upstream"
+
+
+@pytest.mark.asyncio
+async def test_unrequested_execution_interruption_is_not_user_cancellation(panel_client):
+    form = FormData(default_to_multipart=True)
+    form.add_field("prompt", "测试异常中断语义")
+    response = await panel_client.post("/api/jobs", data=form, headers=LOGIN)
+    job = await response.json()
+
+    await panel_client.app["jobs"].handle_ws_event({
+        "type": "execution_interrupted",
+        "data": {"prompt_id": job["id"]},
+    })
+    current = await panel_client.app["db"].get_job(job["id"])
+    assert current["status"] == "interrupted"
+    assert current["error_code"] == "execution_interrupted"
+
+
+@pytest.mark.asyncio
 async def test_prompt_has_independent_streaming_limit(panel_client):
     form = FormData(default_to_multipart=True)
     form.add_field("prompt", "字" * 11_000)

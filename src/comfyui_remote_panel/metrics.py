@@ -41,6 +41,8 @@ class MetricsService:
         self._stop = asyncio.Event()
         self._last_preset_check = 0.0
         self._was_comfy_online = False
+        self._comfy_failures = 0
+        self._last_comfy_success_at: float | None = None
         self._collect_task: asyncio.Task[dict[str, Any]] | None = None
 
     async def collect(self) -> dict[str, Any]:
@@ -59,6 +61,8 @@ class MetricsService:
         try:
             stats, queue = await asyncio.gather(self.comfy.system_stats(), self.comfy.queue())
             comfy_online = True
+            self._comfy_failures = 0
+            self._last_comfy_success_at = time.time()
             comfy_version = stats.get("system", {}).get("comfyui_version")
             queue_count = len(queue.get("queue_running", [])) + len(queue.get("queue_pending", []))
             for index, device in enumerate(stats.get("devices", [])):
@@ -74,13 +78,19 @@ class MetricsService:
                     "power_w": None,
                 })
         except ComfyError:
-            pass
+            self._comfy_failures += 1
 
         gpus = await self._nvidia_gpus()
         if not gpus:
             gpus = fallback_gpus
 
         now = time.time()
+        unresponsive = (
+            not comfy_online
+            and self._comfy_failures >= 3
+            and self._last_comfy_success_at is not None
+            and now - self._last_comfy_success_at <= 60
+        )
         should_check_presets = comfy_online and (
             not self._was_comfy_online or now - self._last_preset_check >= 300
         )
@@ -88,6 +98,15 @@ class MetricsService:
             self._last_preset_check = now
             await self.comfy.validate_presets(list(self.presets.values()), stats)
         self._was_comfy_online = comfy_online
+
+        control = self.lifecycle.snapshot(
+            comfy_online,
+            unresponsive=unresponsive,
+            last_success_at=self._last_comfy_success_at,
+        ) if self.lifecycle else {"enabled": False}
+        device_state = control.get(
+            "state", "online" if comfy_online else ("unresponsive" if unresponsive else "offline")
+        )
 
         self.snapshot = {
             "timestamp": now,
@@ -98,7 +117,9 @@ class MetricsService:
                 "online": comfy_online,
                 "version": comfy_version,
                 "queue_count": queue_count,
-                "control": self.lifecycle.snapshot(comfy_online) if self.lifecycle else {"enabled": False},
+                "state": device_state,
+                "last_success_at": self._last_comfy_success_at,
+                "control": control,
             },
             "gpus": gpus,
             "presets": {preset.id: {"available": preset.available, "diagnostics": preset.diagnostics} for preset in self.presets.values()},

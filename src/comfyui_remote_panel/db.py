@@ -58,6 +58,9 @@ class Database:
                             recovery_attempts INTEGER NOT NULL DEFAULT 0,
                             recovery_next_at REAL,
                             recovery_last_error TEXT,
+                            cancel_requested_at REAL,
+                            missing_observations INTEGER NOT NULL DEFAULT 0,
+                            missing_first_at REAL,
                             updated_at REAL NOT NULL
                         );
                         CREATE INDEX jobs_created_at_idx ON jobs(created_at DESC);
@@ -70,10 +73,10 @@ class Database:
                             size_bytes INTEGER NOT NULL,
                             UNIQUE(job_id, role)
                         );
-                        PRAGMA user_version = 3;
+                        PRAGMA user_version = 4;
                         """
                     )
-                    version = 3
+                    version = 4
                 if version == 1:
                     db.executescript(
                         """
@@ -94,7 +97,17 @@ class Database:
                         """
                     )
                     version = 3
-                if version != 3:
+                if version == 3:
+                    db.executescript(
+                        """
+                        ALTER TABLE jobs ADD COLUMN cancel_requested_at REAL;
+                        ALTER TABLE jobs ADD COLUMN missing_observations INTEGER NOT NULL DEFAULT 0;
+                        ALTER TABLE jobs ADD COLUMN missing_first_at REAL;
+                        PRAGMA user_version = 4;
+                        """
+                    )
+                    version = 4
+                if version != 4:
                     raise RuntimeError(f"unsupported database schema version: {version}")
 
     async def create_job(self, record: dict[str, Any], files: list[dict[str, Any]]) -> None:
@@ -125,6 +138,7 @@ class Database:
             "status", "queue_position", "stage", "progress_value", "progress_max",
             "error_code", "error_summary", "started_at", "finished_at",
             "recovery_attempts", "recovery_next_at", "recovery_last_error",
+            "cancel_requested_at", "missing_observations", "missing_first_at",
         }
         unknown = set(values) - allowed
         if unknown:
@@ -150,6 +164,7 @@ class Database:
             "status", "queue_position", "stage", "progress_value", "progress_max",
             "error_code", "error_summary", "started_at", "finished_at",
             "recovery_attempts", "recovery_next_at", "recovery_last_error",
+            "cancel_requested_at", "missing_observations", "missing_first_at",
         }
         unknown = set(values) - allowed
         if unknown:

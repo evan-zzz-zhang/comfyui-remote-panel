@@ -34,9 +34,20 @@
 
 仓库的 `scripts/windows/Start-RemotePanel.ps1` 是独立示例，只启动面板并等待健康检查。若集成进自定义 ComfyUI 启动器，应只识别专用虚拟环境与 `-m comfyui_remote_panel` 命令行，记录本次新建的 PID，并在 ComfyUI 退出时只停止该 PID。启动器不应管理 Tailscale Serve。
 
+长期运行建议注册当前用户的 Windows 计划任务：
+
+```powershell
+.\scripts\windows\Register-RemotePanelTask.ps1 -ProjectRoot (Get-Location)
+.\scripts\windows\Get-RemotePanelTaskStatus.ps1
+```
+
+该任务在用户登录时直接运行 Panel 主进程，并由 Task Scheduler 在异常退出后每分钟重试。Panel 日志写入配置的 `storage.data_dir/panel.log`，最多保留三个 5 MB 备份。卸载时运行 `.\scripts\windows\Unregister-RemotePanelTask.ps1`。此方案不负责 Windows 自动登录、睡眠唤醒或 WoL。
+
 ## English
 
 Create a Python 3.11+ virtual environment, install the project, and copy `config.example.toml` to the ignored `config.toml`. Point the input/output settings at the same-host ComfyUI folders. Set `allowed_logins` to the signed-in Tailscale user's exact `LoginName` and set `public_origin` to the HTTPS origin printed by Tailscale Serve.
+
+For unattended operation after sign-in, register the current-user scheduled task with `scripts/windows/Register-RemotePanelTask.ps1`. Inspect it with `Get-RemotePanelTaskStatus.ps1` and remove it with `Unregister-RemotePanelTask.ps1`. Task Scheduler restarts unexpected exits; rotating logs are stored under `storage.data_dir`.
 
 Install every model named in the preset manifest, start the panel, verify `/healthz`, then run `tailscale serve --bg 8190`. Install Tailscale on the phone and join the same tailnet. Never enable Funnel, router port forwarding, or external listening for either port 8188 or 8190.
 
