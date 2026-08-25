@@ -65,7 +65,7 @@ ComfyUI Remote Panel is a mobile-first, local companion for reviewed ComfyUI wor
 
 The H3 preset supports eight fixed aspect ratios plus a reference-image ratio. It uses the first frame when present and otherwise falls back to the last frame.
 
-It requires Python 3.11+, ComfyUI 0.26.0+, same-host filesystem access, and Tailscale Serve. Copy `config.example.toml`, install the package in a virtual environment, start the panel, and run `tailscale serve --bg 8190`. Every route except the minimal health endpoint requires an allowed `Tailscale-User-Login` header.
+It requires Python 3.11+, ComfyUI 0.26.0+, and same-host filesystem access. Tailscale Serve remains the recommended/default access provider: copy `config.example.toml`, install the package in a virtual environment, start the panel, and run `tailscale serve --bg 8190`. Set `auth.provider = "local"` only for loopback-only local use; this mode refuses non-loopback origins and clients. Every route except the minimal health endpoint passes through the selected authentication provider.
 
 See [SECURITY.md](SECURITY.md) before deployment. Models, LoRAs, user uploads, generated videos, databases, logs, identities, and machine-specific configuration are never distributed with this repository.
 

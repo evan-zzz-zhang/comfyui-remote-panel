@@ -14,6 +14,7 @@ from typing import Any
 
 from aiohttp import web
 
+from .auth import AuthProvider, create_auth_provider
 from .comfy import ComfyClient, ComfyError
 from .config import Config
 from .db import TERMINAL_STATUSES, Database
@@ -43,7 +44,8 @@ def json_error(message: str, status: int, code: str = "request_error") -> web.Re
     return web.json_response({"error": {"code": code, "message": message}}, status=status)
 
 
-def create_app(config: Config) -> web.Application:
+def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web.Application:
+    auth_provider = auth_provider or create_auth_provider(config)
     @web.middleware
     async def security_headers(request: web.Request, handler):
         try:
@@ -68,16 +70,19 @@ def create_app(config: Config) -> web.Application:
     async def authenticate(request: web.Request, handler):
         if request.path == "/healthz":
             return await handler(request)
-        if request.headers.get("Tailscale-User-Login") not in config.allowed_logins:
+        principal = auth_provider.authenticate(request)
+        if principal is None:
             return json_error("无权访问", 403, "forbidden")
+        request["principal"] = principal
         if request.method in UNSAFE_METHODS:
             origin = request.headers.get("Origin")
-            if origin is not None and origin.rstrip("/") != config.public_origin:
+            if origin is not None and not auth_provider.allows_origin(origin):
                 return json_error("拒绝跨来源写请求", 403, "origin_mismatch")
         return await handler(request)
 
     app = web.Application(client_max_size=MAX_REQUEST_BYTES, middlewares=[security_headers, authenticate])
     app["config"] = config
+    app["auth_provider"] = auth_provider
     app["db"] = Database(config.database_path)
     app["files"] = FileStore(config.dedicated_input_dir, config.dedicated_output_dir, config.data_dir)
     app["presets"] = load_presets(config.workflow_dir)

@@ -33,6 +33,7 @@ class Config:
     minimum_free_bytes: int = 512 * 1024 * 1024
     output_reserve_bytes: int = 1024 * 1024 * 1024
     max_tracked_bytes: int | None = None
+    auth_provider: str = "tailscale"
 
     @property
     def database_path(self) -> Path:
@@ -83,24 +84,40 @@ def load_config(path: str | Path) -> Config:
     port = server.get("port")
     if port != 8190:
         raise ConfigError("server.port must be exactly 8190")
+    auth_provider = auth.get("provider", "tailscale")
+    if auth_provider not in {"tailscale", "local"}:
+        raise ConfigError("auth.provider must be tailscale or local")
+
     public_origin = server.get("public_origin")
+    if auth_provider == "local" and public_origin is None:
+        public_origin = f"http://127.0.0.1:{port}"
     parsed_origin = urlsplit(public_origin) if isinstance(public_origin, str) else None
     if (
         not parsed_origin
-        or parsed_origin.scheme != "https"
+        or parsed_origin.scheme != ("https" if auth_provider == "tailscale" else "http")
         or not parsed_origin.hostname
         or parsed_origin.username is not None
         or parsed_origin.password is not None
         or parsed_origin.path not in ("", "/")
         or parsed_origin.query
         or parsed_origin.fragment
+        or auth_provider == "local" and (
+            parsed_origin.hostname not in {"127.0.0.1", "localhost"}
+            or parsed_origin.port != port
+        )
     ):
-        raise ConfigError("server.public_origin must be an HTTPS origin without a path")
+        raise ConfigError(
+            "server.public_origin must be an HTTPS origin without a path"
+            if auth_provider == "tailscale"
+            else "server.public_origin must be a local HTTP origin without a path"
+        )
     public_origin = public_origin.rstrip("/")
 
-    logins = auth.get("allowed_logins")
-    if not isinstance(logins, list) or not logins or not all(isinstance(v, str) and v.strip() == v and v for v in logins):
-        raise ConfigError("auth.allowed_logins must contain at least one login")
+    logins = auth.get("allowed_logins", [])
+    if not isinstance(logins, list) or not all(isinstance(v, str) and v.strip() == v and v for v in logins):
+        raise ConfigError("auth.allowed_logins must be an array of non-empty logins")
+    if auth_provider == "tailscale" and not logins:
+        raise ConfigError("auth.allowed_logins must contain at least one login for tailscale")
     if len(set(logins)) != len(logins):
         raise ConfigError("auth.allowed_logins must not contain duplicates")
 
@@ -174,4 +191,5 @@ def load_config(path: str | Path) -> Config:
         minimum_free_bytes=minimum_free_bytes,
         output_reserve_bytes=output_reserve_bytes,
         max_tracked_bytes=max_tracked_bytes,
+        auth_provider=auth_provider,
     )
