@@ -151,7 +151,11 @@ async def test_wai_img2img_inspect_save_enable_submit_and_artifact(panel_client,
 
     artifacts_response = await panel_client.get(f"/api/jobs/{job['id']}/artifacts", headers=LOGIN)
     assert artifacts_response.status == 200
-    [artifact] = (await artifacts_response.json())["items"]
+    artifacts = (await artifacts_response.json())["items"]
+    assert any(item["direction"] == "input" and item["kind"] == "image" for item in artifacts)
+    outputs = [item for item in artifacts if item["direction"] == "output"]
+    assert len(outputs) == 1
+    [artifact] = outputs
     assert artifact["kind"] == "image"
     download = await panel_client.get(f"/api/jobs/{job['id']}/artifacts/{artifact['id']}?download=1", headers=LOGIN)
     assert download.status == 200
