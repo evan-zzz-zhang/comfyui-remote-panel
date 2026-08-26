@@ -69,6 +69,10 @@ def install_workflow_runtime() -> None:
         preset = service.presets.get(workflow_id)
         if not preset or preset.manifest.get("family", "generic") != "generic":
             return
+        try:
+            revision = int(job.get("workflow_revision") or preset.revision)
+        except (TypeError, ValueError):
+            revision = preset.revision
 
         job_status = str(job["status"])
         if job_status == "succeeded":
@@ -86,16 +90,18 @@ def install_workflow_runtime() -> None:
             details = [summary[:500]]
         runtime = {"status": status, "message": message, "details": details, "tested_at": time.time()}
 
-        # Update the live preset immediately so /api/presets reflects the result.
-        preset.manifest.setdefault("preflight", {})["runtime"] = dict(runtime)
+        # A result from an older running revision must never change the live
+        # metadata of a newer revision selected in the creation UI.
+        if revision == preset.revision:
+            preset.manifest.setdefault("preflight", {})["runtime"] = dict(runtime)
 
-        # Persist only the latest workflow definition and never create a new
-        # revision merely because runtime evidence changed.
+        # Persist runtime evidence on the exact revision used by this job. Runtime
+        # evidence is mutable metadata and must not create another revision.
         async with service.db._lock:
             with service.db._connect() as db:
                 row = db.execute(
-                    "SELECT revision, definition_json FROM workflows WHERE id = ? ORDER BY revision DESC LIMIT 1",
-                    (workflow_id,),
+                    "SELECT definition_json FROM workflows WHERE id = ? AND revision = ?",
+                    (workflow_id, revision),
                 ).fetchone()
                 if row is None:
                     return
@@ -103,7 +109,7 @@ def install_workflow_runtime() -> None:
                 definition.setdefault("manifest", {}).setdefault("preflight", {})["runtime"] = runtime
                 db.execute(
                     "UPDATE workflows SET definition_json = ?, updated_at = ? WHERE id = ? AND revision = ?",
-                    (json.dumps(definition, ensure_ascii=False), time.time(), workflow_id, row["revision"]),
+                    (json.dumps(definition, ensure_ascii=False), time.time(), workflow_id, revision),
                 )
 
     async def apply_history(self: JobService, job: dict[str, Any], entry: dict[str, Any]) -> dict[str, Any]:
