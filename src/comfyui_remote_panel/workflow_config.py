@@ -79,6 +79,14 @@ def _legacy_view(result: dict[str, Any]) -> dict[str, Any]:
                 }
                 for item in media.get("reference_image", [])
             ]
+        # v0.2 exposed only warnings that affected its basic auto-bindings. The
+        # new LOW-confidence/manual-mapping warning belongs to Configurator 2.0
+        # diagnostics and must not retroactively change that legacy field.
+        basic["warnings"] = [
+            message for message in basic.get("warnings", [])
+            if not str(message).startswith(("提示词仅通过字段名推测",))
+            and "低置信度候选" not in str(message)
+        ]
     return result
 
 
