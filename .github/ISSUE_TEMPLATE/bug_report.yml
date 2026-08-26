@@ -1,0 +1,46 @@
+name: Bug report
+description: Report a reproducible Comfy Remote problem
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please run `comfyui-remote-panel doctor --report` first. Do not paste tokens, cookies, API keys, or other secrets.
+  - type: input
+    id: version
+    attributes:
+      label: Comfy Remote version
+      placeholder: 0.3.x
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+    validations:
+      required: true
+  - type: input
+    id: comfyui
+    attributes:
+      label: ComfyUI version
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: What did you do, what happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Doctor report
+      render: markdown
+    validations:
+      required: true
