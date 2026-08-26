@@ -135,17 +135,25 @@ def _required_input_summary(preset: Preset) -> str:
     return "none"
 
 
-def _preflight_warnings(preset: Preset) -> list[str]:
+def _preflight_messages(preset: Preset, severity: str) -> list[str]:
     preflight = preset.manifest.get("preflight")
     if not isinstance(preflight, dict):
         return []
-    warnings: list[str] = []
+    messages: list[str] = []
     for section, item in preflight.items():
-        if not isinstance(item, dict) or item.get("status") != WARN:
+        if not isinstance(item, dict) or item.get("status") != severity:
             continue
-        message = str(item.get("message") or "warning")
-        warnings.append(f"{section}: {message}")
-    return warnings
+        message = str(item.get("message") or severity.lower())
+        messages.append(f"{section}: {message}")
+    return messages
+
+
+def _preflight_warnings(preset: Preset) -> list[str]:
+    return _preflight_messages(preset, WARN)
+
+
+def _preflight_failures(preset: Preset) -> list[str]:
+    return _preflight_messages(preset, FAIL)
 
 
 def workflow_compatibility_detail(preset: Preset, diagnostics: list[str]) -> str:
@@ -158,7 +166,8 @@ def workflow_compatibility_detail(preset: Preset, diagnostics: list[str]) -> str
     )
     missing_nodes = [item.removeprefix("缺少节点：") for item in diagnostics if item.startswith("缺少节点：")]
     other_runtime = [item for item in diagnostics if not item.startswith("缺少节点：")]
-    warnings = _preflight_warnings(preset)
+    warnings = [f"FAIL {item}" for item in _preflight_failures(preset)]
+    warnings.extend(_preflight_warnings(preset))
     if other_runtime:
         warnings.extend(other_runtime[:4])
     warning_text = "; ".join(warnings[:4]) or "none"
@@ -292,7 +301,8 @@ def _collect(config_path: str | Path) -> list[DoctorCheck]:
             diagnostics = workflow_diagnostics[preset_id]
             preset = checked_presets.get(preset_id)
             optional = bool(preset and _builtin(preset))
-            if diagnostics:
+            preflight_failures = _preflight_failures(preset) if preset else []
+            if diagnostics or preflight_failures:
                 status = WARN if optional else FAIL
             elif preset and _preflight_warnings(preset):
                 status = WARN
