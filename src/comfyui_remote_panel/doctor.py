@@ -12,8 +12,9 @@ from typing import Iterable
 from . import __version__
 from .comfy import ComfyClient, ComfyError
 from .config import Config, ConfigError, load_config
+from .doctor_workflows import load_doctor_presets
 from .panel_control import PanelController, PanelControlError, port_available
-from .preset import BUILTIN_WORKFLOW_DIR, Preset, PresetError, load_presets
+from .preset import BUILTIN_WORKFLOW_DIR, Preset, PresetError
 from .tailscale import TailscaleError, inspect_tailscale, serve_active
 
 
@@ -54,14 +55,16 @@ def _path_readable(path: Path) -> bool:
         return False
 
 
-async def _validate_workflows(config: Config) -> tuple[dict[str, list[str]], dict]:
-    presets = load_presets(config.workflow_dir)
+async def _validate_workflows(
+    config: Config,
+) -> tuple[dict[str, list[str]], dict, dict[str, Preset]]:
+    presets = await load_doctor_presets(config)
     client = ComfyClient(config.comfyui_base_url, config.minimum_comfyui_version, "doctor")
     await client.start()
     try:
         stats = await client.system_stats()
         diagnostics = await client.validate_presets(list(presets.values()), stats)
-        return diagnostics, stats
+        return diagnostics, stats, presets
     finally:
         await client.close()
 
@@ -209,8 +212,9 @@ def _collect(config_path: str | Path) -> list[DoctorCheck]:
 
     comfy_stats: dict = {}
     workflow_diagnostics: dict[str, list[str]] = {}
+    checked_presets: dict[str, Preset] = {}
     try:
-        workflow_diagnostics, comfy_stats = asyncio.run(_validate_workflows(config))
+        workflow_diagnostics, comfy_stats, checked_presets = asyncio.run(_validate_workflows(config))
         version = str(comfy_stats.get("system", {}).get("comfyui_version") or "unknown")
         checks.append(DoctorCheck("ComfyUI", "API", PASS, f"reachable; version {version}"))
     except (ComfyError, PresetError, OSError, RuntimeError) as exc:
@@ -284,13 +288,9 @@ def _collect(config_path: str | Path) -> list[DoctorCheck]:
         checks.append(DoctorCheck("Remote access", "Tailscale", WARN, str(exc)))
 
     if workflow_diagnostics:
-        try:
-            presets = load_presets(config.workflow_dir)
-        except PresetError:
-            presets = {}
         for preset_id in sorted(workflow_diagnostics):
             diagnostics = workflow_diagnostics[preset_id]
-            preset = presets.get(preset_id)
+            preset = checked_presets.get(preset_id)
             optional = bool(preset and _builtin(preset))
             if diagnostics:
                 status = WARN if optional else FAIL
