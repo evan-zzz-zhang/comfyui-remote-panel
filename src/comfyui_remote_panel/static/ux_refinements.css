@@ -57,6 +57,14 @@
 .workflow-item-main {
   align-self: center;
 }
+.workflow-item-actions button,
+.workflow-item-actions a {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
 .toggle-button.syncing {
   opacity: .78;
 }
