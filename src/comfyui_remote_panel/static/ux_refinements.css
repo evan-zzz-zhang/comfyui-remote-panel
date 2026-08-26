@@ -10,6 +10,13 @@
   background: var(--surface-1) !important;
 }
 
+/* Main navigation already names these pages; do not repeat the same title below it. */
+#view-generate > .page-heading,
+#view-jobs > .page-heading,
+#view-device > .page-heading {
+  display: none !important;
+}
+
 /* Information that is already expressed by position, control type, or state. */
 .creation-heading .heading-meta,
 .workflow-picker small,
@@ -27,7 +34,8 @@
 .subpage-heading small,
 .semantic-detected small,
 .generic-advanced > p,
-.control-card .card-heading small {
+.control-card .card-heading small,
+.job-card .job-prompt {
   display: none !important;
 }
 
@@ -48,6 +56,58 @@
 }
 .toggle-button.syncing {
   opacity: .78;
+}
+
+/* Tapping the selected Tasks tab also acts as refresh. */
+#nav-jobs.nav-refreshing svg {
+  animation: task-refresh-spin .65s linear infinite;
+}
+@keyframes task-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Task prompt belongs to details, with an explicit copy action. */
+.detail-prompt-section {
+  display: grid;
+  gap: 9px;
+  margin-top: 18px;
+}
+.detail-prompt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.detail-copy-button {
+  min-height: 34px;
+  padding: 0 11px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid rgba(200,243,106,.18);
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.detail-prompt-text {
+  max-height: min(34vh, 280px);
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Generic image workflows follow the same information hierarchy as video workflows:
+   prompt -> generation settings -> advanced settings -> generate. */
+.generic-advanced[data-refined-order="true"] {
+  width: 100%;
 }
 
 /* Keep useful retry state, but remove redundant "add reference" helper copy. */

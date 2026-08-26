@@ -74,18 +74,56 @@
       node.textContent = node.textContent.includes("已使用") ? "负面提示词 · 已使用默认值" : "负面提示词";
     });
     syncAspectControls();
+    syncGenericAdvancedOrder();
   }
 
   function syncAspectControls() {
     const select = $('select[name="aspect_ratio"]');
     if (!select) return;
-    for (const option of select.options) {
-      if (option.value === "2:3" || option.value === "3:2") option.hidden = true;
-    }
     const image = $("#reference-aspect-image-option");
     const video = $("#reference-aspect-video-option");
     if (image) image.textContent = "参考图";
     if (video) video.textContent = "参考视频";
+
+    const order = ["9:16", "16:9", "1:1", "3:4", "4:3", "21:9"];
+    for (const value of order) {
+      const option = [...select.options].find(item => item.value === value);
+      if (option) select.append(option);
+    }
+    if (image) select.append(image);
+    if (video) select.append(video);
+    for (const option of select.options) {
+      if (option.value === "2:3" || option.value === "3:2") {
+        option.hidden = true;
+        select.append(option);
+      }
+    }
+  }
+
+  function genericHasAdvanced(preset) {
+    if (!preset || preset.family !== "generic") return false;
+    const basic = new Set(["prompt", "positive_prompt", "negative_prompt", "width", "height", "batch_size"]);
+    return Object.keys(preset.parameters || {}).some(name => !basic.has(name));
+  }
+
+  function syncGenericAdvancedOrder() {
+    const root = $("#generic-parameters");
+    const basic = $("#basic-settings");
+    if (!root || !basic) return;
+    const preset = selectedPreset();
+    const moved = $(".generic-advanced[data-refined-order='true']");
+    if (!preset || preset.family !== "generic") {
+      moved?.remove();
+      return;
+    }
+    const fresh = $(".generic-advanced", root);
+    if (fresh) {
+      if (moved && moved !== fresh) moved.remove();
+      fresh.dataset.refinedOrder = "true";
+      basic.insertAdjacentElement("afterend", fresh);
+      return;
+    }
+    if (!genericHasAdvanced(preset)) moved?.remove();
   }
 
   function workflowIsShown(item) {
@@ -203,6 +241,70 @@
     }
   }
 
+  function taskPrompt(job) {
+    const values = job?.input_values || job?.values || {};
+    return values.positive_prompt ?? values.prompt ?? job?.prompt ?? "";
+  }
+
+  async function copyText(value) {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+    const input = document.createElement("textarea");
+    input.value = value;
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.append(input);
+    input.select();
+    document.execCommand("copy");
+    input.remove();
+  }
+
+  function enhanceTaskDetails(jobId) {
+    const job = state.jobs.get(jobId);
+    const prompt = taskPrompt(job);
+    const body = $("#sheet-body");
+    if (!job || !prompt || !body || $(".detail-prompt-section", body)) return;
+
+    const section = document.createElement("section");
+    section.className = "sheet-section detail-prompt-section";
+    const head = document.createElement("div");
+    head.className = "detail-prompt-head";
+    const label = document.createElement("span");
+    label.className = "sheet-label";
+    label.textContent = "提示词";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "detail-copy-button";
+    button.textContent = "复制";
+    const text = document.createElement("p");
+    text.className = "detail-prompt-text";
+    text.textContent = prompt;
+    head.append(label, button);
+    section.append(head, text);
+    const hideButton = $("#detail-hide-job", body);
+    if (hideButton) body.insertBefore(section, hideButton);
+    else body.append(section);
+    button.addEventListener("click", async () => {
+      try {
+        await copyText(prompt);
+        button.textContent = "已复制";
+        window.setTimeout(() => { button.textContent = "复制"; }, 1200);
+      } catch (_) {
+        button.textContent = "复制失败";
+        window.setTimeout(() => { button.textContent = "复制"; }, 1200);
+      }
+    });
+  }
+
+  function refreshJobsFromTab() {
+    const nav = $("#nav-jobs");
+    if (!nav || nav.classList.contains("nav-refreshing")) return;
+    nav.classList.add("nav-refreshing");
+    Promise.resolve(loadJobs(true)).finally(() => nav.classList.remove("nav-refreshing"));
+  }
+
   applyPreset = function(presetId, overrides = {}) {
     ensurePreset(presetId);
     const result = baseApplyPreset(presetId, overrides);
@@ -236,6 +338,13 @@
       requestVisibility(button.dataset.id, shown);
     }, true);
 
+    document.addEventListener("click", event => {
+      const details = event.target.closest("[data-task-details]");
+      if (!details) return;
+      window.setTimeout(() => enhanceTaskDetails(details.dataset.taskDetails), 0);
+    }, true);
+
+    $("#nav-jobs")?.addEventListener("click", refreshJobsFromTab, true);
     $("#preset-select")?.addEventListener("change", () => queueMicrotask(syncCompactCopy));
     $("#clear-retry")?.addEventListener("click", () => queueMicrotask(syncCompactCopy));
 
