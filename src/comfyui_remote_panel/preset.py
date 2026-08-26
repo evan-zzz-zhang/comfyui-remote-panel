@@ -33,7 +33,18 @@ class Preset:
 
     @property
     def output_node(self) -> str:
-        return self.manifest["output_node"]
+        return self.manifest["output_bindings"][0]["node"]
+
+    @property
+    def revision(self) -> int:
+        return int(self.manifest.get("revision", 1))
+
+    @property
+    def media_binding(self) -> dict[str, Any]:
+        return self.manifest["input_bindings"]["media"]
+
+    def snapshot(self) -> dict[str, Any]:
+        return {"manifest": copy.deepcopy(self.manifest), "workflow": copy.deepcopy(self.template)}
 
     @property
     def stages(self) -> dict[str, str]:
@@ -51,11 +62,13 @@ class Preset:
     def public_metadata(self) -> dict[str, Any]:
         parameters = self.manifest["parameters"]
         exposed = {}
-        for name in ("duration_seconds", "aspect_ratio", "megapixels", "scheduler", "sampler", "steps"):
-            spec = parameters[name]
+        family = self.manifest.get("family", "generic")
+        for name, spec in parameters.items():
+            if family != "generic" and name in {"prompt", "seed"}:
+                continue
             exposed[name] = {
                 key: copy.deepcopy(spec[key])
-                for key in ("type", "minimum", "maximum", "step", "default", "values")
+                for key in ("type", "minimum", "maximum", "step", "default", "values", "ui")
                 if key in spec
             }
         media = self.manifest.get("reference_media")
@@ -64,14 +77,57 @@ class Preset:
         }
         return {
             "id": self.id,
+            "revision": self.revision,
             "name": self.manifest["name"],
-            "family": self.manifest.get("family", "fl2va"),
+            "family": family,
             "description": self.manifest.get("description", ""),
             "available": self.available,
             "diagnostics": self.diagnostics,
             "parameters": exposed,
             "reference_media": public_media,
+            "input_bindings": copy.deepcopy(self.manifest["input_bindings"]),
+            "output_bindings": copy.deepcopy(self.manifest["output_bindings"]),
         }
+
+    def validate_media_roles(self, roles: set[str]) -> tuple[str, bool]:
+        media = self.media_binding
+        if media["type"] == "frame_pair":
+            allowed = set(media["roles"])
+            if roles - allowed:
+                raise PresetError("工作流收到了未声明的媒体槽位")
+            labels = media.get("mode_labels", {})
+            key = "+".join(role for role in media["roles"] if role in roles)
+            return labels.get(key, "纯文字" if not roles else f"{len(roles)} 个输入"), bool(roles)
+        if media["type"] == "collection":
+            counts = {
+                kind: sum(FileStore.role_kind(role) == kind for role in roles)
+                for kind in ("image", "video", "audio")
+            }
+            if any(FileStore.role_kind(role) is None for role in roles):
+                raise PresetError("工作流收到了未声明的媒体槽位")
+            for kind, count in counts.items():
+                if count > media["kinds"][f"{kind}s"]["max"]:
+                    raise PresetError("参考素材数量超过工作流允许范围")
+            mode = " · ".join(
+                f"{counts[kind]}{label}" for kind, label in (("image", "图"), ("video", "视频"), ("audio", "音频"))
+                if counts[kind]
+            ) or "纯文字"
+            return mode, False
+        if media["type"] == "slots":
+            if roles - set(media.get("slots", {})):
+                raise PresetError("工作流收到了未声明的媒体槽位")
+            return ("纯文字" if not roles else f"{len(roles)} 个媒体输入"), False
+        if roles:
+            raise PresetError("该工作流不接受媒体输入")
+        return "纯文字", False
+
+    def retry_role_compatible(self, role: str) -> bool:
+        media = self.media_binding
+        if media["type"] == "frame_pair":
+            return role in media.get("roles", {})
+        if media["type"] == "slots":
+            return role in media.get("slots", {})
+        return FileStore.role_kind(role) is not None
 
     def validate_parameters(self, values: dict[str, Any], *, allow_empty_prompt: bool = False) -> dict[str, Any]:
         specs = self.manifest["parameters"]
@@ -114,6 +170,12 @@ class Preset:
                     raise PresetError(f"{name} 步进不合法")
                 if name == "megapixels" and value not in self.MEGAPIXEL_VALUES:
                     raise PresetError("megapixels 不是可用的分辨率预设")
+            elif spec["type"] == "string":
+                if not isinstance(value, str):
+                    raise PresetError(f"{name} 必须是文本")
+            elif spec["type"] == "boolean":
+                if not isinstance(value, bool):
+                    raise PresetError(f"{name} 必须是布尔值")
             elif spec["type"] == "enum":
                 if value not in spec["values"]:
                     raise PresetError(f"不支持的 {name}")
@@ -125,7 +187,7 @@ class Preset:
         return result
 
     def build_prompt(self, values: dict[str, Any], job_id: str, media: dict[str, str]) -> dict[str, Any]:
-        allow_empty_prompt = self.manifest.get("family") == "fl2va" and bool({"first", "last"} & media.keys())
+        _, allow_empty_prompt = self.validate_media_roles(set(media))
         normalized = self.validate_parameters(values, allow_empty_prompt=allow_empty_prompt)
         reference = self.manifest.get("reference_aspect", {})
         aspect_value = normalized.get("aspect_ratio")
@@ -144,10 +206,19 @@ class Preset:
                     continue
             prompt[spec["node"]]["inputs"][spec["input"]] = value
         output_key = FileStore.storage_key(job_id) if len(str(job_id)) >= 36 else str(job_id)
-        prompt[self.output_node]["inputs"]["filename_prefix"] = f"h3_remote/{output_key}"
+        if "filename_prefix" in prompt[self.output_node].get("inputs", {}):
+            prompt[self.output_node]["inputs"]["filename_prefix"] = f"h3_remote/{output_key}"
         reference_source: str | None = None
-        target = self.manifest["frame_inputs"]["target_node"]
-        if self.manifest.get("family") == "ref2va":
+        media_binding = self.media_binding
+        if media_binding["type"] == "none":
+            return prompt
+        if media_binding["type"] == "slots":
+            for role, filename in media.items():
+                slot = media_binding["slots"][role]
+                prompt[str(slot["node"])]["inputs"][slot["input"]] = filename
+            return prompt
+        target = media_binding["target_node"]
+        if media_binding["type"] == "collection":
             reference_sources = self._add_reference_media(prompt, media)
             source_kind = "video" if aspect_value == reference.get("video_parameter_value") else "image"
             reference_source = reference_sources.get(source_kind)
@@ -160,7 +231,7 @@ class Preset:
                     continue
                 node_id = str(index)
                 prompt[node_id] = {"class_type": "LoadImage", "inputs": {"image": media[role]}}
-                input_name = self.manifest["frame_inputs"][role]
+                input_name = media_binding["roles"][role]
                 prompt[target]["inputs"][input_name] = [node_id, 0]
                 if reference_source is None:
                     reference_source = node_id
@@ -186,23 +257,24 @@ class Preset:
         return prompt
 
     def _add_reference_media(self, prompt: dict[str, Any], media: dict[str, str]) -> dict[str, str | None]:
-        config = self.manifest["reference_media"]
+        config = self.media_binding
         target = config["target_node"]
         image_roles = [role for role in ("first", "last") if role in media]
         image_roles.extend(sorted((role for role in media if role.startswith("image_")), key=lambda role: int(role[6:])))
         video_roles = sorted((role for role in media if role.startswith("video_")), key=lambda role: int(role[6:]))
         audio_roles = sorted((role for role in media if role.startswith("audio_")), key=lambda role: int(role[6:]))
-        if len(image_roles) > config["images"]["max"] or len(video_roles) > config["videos"]["max"] or len(audio_roles) > config["audios"]["max"]:
+        kinds = config["kinds"]
+        if len(image_roles) > kinds["images"]["max"] or len(video_roles) > kinds["videos"]["max"] or len(audio_roles) > kinds["audios"]["max"]:
             raise PresetError("参考素材数量超过工作流允许范围")
         reference_sources: dict[str, str | None] = {"image": None, "video": None}
         for index, role in enumerate(image_roles):
             node_id = str(9100 + index)
-            prompt[node_id] = {"class_type": config["images"]["loader"], "inputs": {config["images"]["loader_input"]: media[role]}}
-            prompt[target]["inputs"][f"{config['images']['input_prefix']}{index}"] = [node_id, 0]
+            prompt[node_id] = {"class_type": kinds["images"]["loader"], "inputs": {kinds["images"]["loader_input"]: media[role]}}
+            prompt[target]["inputs"][f"{kinds['images']['input_prefix']}{index}"] = [node_id, 0]
             reference_sources["image"] = reference_sources["image"] or node_id
         for index, role in enumerate(video_roles):
             load_id, components_id = str(9200 + index), str(9300 + index)
-            video = config["videos"]
+            video = kinds["videos"]
             prompt[load_id] = {"class_type": video["loader"], "inputs": {video["loader_input"]: media[role]}}
             prompt[components_id] = {"class_type": video["components"], "inputs": {"video": [load_id, 0]}}
             prompt[target]["inputs"][f"{video['input_prefix']}{index}"] = [components_id, 0]
@@ -210,7 +282,7 @@ class Preset:
             reference_sources["video"] = reference_sources["video"] or components_id
         for index, role in enumerate(audio_roles):
             node_id = str(9400 + index)
-            audio = config["audios"]
+            audio = kinds["audios"]
             prompt[node_id] = {"class_type": audio["loader"], "inputs": {audio["loader_input"]: media[role]}}
             prompt[target]["inputs"][f"{audio['input_prefix']}{index}"] = [node_id, 0]
         return reference_sources
@@ -222,7 +294,7 @@ BUILTIN_WORKFLOW_DIR = Path(__file__).with_name("workflows")
 def _load_presets_from(root: Path) -> dict[str, Preset]:
     presets: dict[str, Preset] = {}
     for manifest_path in sorted(root.glob("*/manifest.json")):
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = _normalize_manifest(json.loads(manifest_path.read_text(encoding="utf-8")))
         directory = manifest_path.parent
         template_path = directory / manifest["workflow"]
         template = json.loads(template_path.read_text(encoding="utf-8"))
@@ -243,19 +315,44 @@ def load_presets(root: Path | None = None) -> dict[str, Preset]:
     return presets
 
 
+def preset_from_definition(definition: dict[str, Any], directory: Path | None = None) -> Preset:
+    if not isinstance(definition, dict) or not isinstance(definition.get("manifest"), dict):
+        raise PresetError("workflow definition must contain a manifest")
+    if not isinstance(definition.get("workflow"), dict):
+        raise PresetError("workflow definition must contain an API workflow")
+    preset = Preset(
+        directory or Path("."), _normalize_manifest(definition["manifest"]),
+        copy.deepcopy(definition["workflow"]),
+    )
+    _validate_manifest(preset)
+    return preset
+
+
 def _validate_manifest(preset: Preset) -> None:
     manifest, template = preset.manifest, preset.template
-    if manifest.get("schema_version") != 1:
+    if manifest.get("schema_version") != 2:
         raise PresetError("unsupported manifest schema")
     for key in ("id", "name", "workflow", "parameters", "locked", "dependencies", "output_node"):
         if key not in manifest:
             raise PresetError(f"manifest missing {key}")
     if manifest["output_node"] not in template:
         raise PresetError("output node is missing")
+    outputs = manifest.get("output_bindings")
+    if not isinstance(outputs, list) or not outputs:
+        raise PresetError("output bindings are missing")
+    for output in outputs:
+        if (
+            not isinstance(output, dict) or not isinstance(output.get("id"), str)
+            or str(output.get("node")) not in template
+            or output.get("kind") not in {"image", "video", "audio", "file"}
+        ):
+            raise PresetError("output binding is invalid")
     for name, spec in manifest["parameters"].items():
         node = template.get(spec.get("node"))
         if not node or spec.get("input") not in node.get("inputs", {}):
             raise PresetError(f"parameter mapping is invalid: {name}")
+        if spec.get("type") not in {"string", "integer", "number", "boolean", "enum"}:
+            raise PresetError(f"parameter type is invalid: {name}")
     for assertion in manifest["locked"]:
         node = template.get(assertion["node"])
         if not node or node.get("class_type") != assertion["class_type"]:
@@ -264,13 +361,51 @@ def _validate_manifest(preset: Preset) -> None:
             if node["inputs"].get(key) != value:
                 raise PresetError(f"locked input mismatch: {assertion['node']}.{key}")
     reference = manifest.get("reference_aspect")
-    if not isinstance(reference, dict) or reference.get("parameter_value") not in manifest["parameters"]["aspect_ratio"]["values"]:
-        raise PresetError("reference aspect mapping is invalid")
-    for key in ("legacy_parameter_value", "video_parameter_value"):
-        value = reference.get(key)
-        if value is not None and value not in manifest["parameters"]["aspect_ratio"]["values"]:
+    if "aspect_ratio" in manifest["parameters"]:
+        if not isinstance(reference, dict) or reference.get("parameter_value") not in manifest["parameters"]["aspect_ratio"]["values"]:
             raise PresetError("reference aspect mapping is invalid")
-    if manifest.get("family") == "ref2va":
-        media = manifest.get("reference_media")
-        if not isinstance(media, dict) or media.get("target_node") not in template:
-            raise PresetError("reference media mapping is invalid")
+        for key in ("legacy_parameter_value", "video_parameter_value"):
+            value = reference.get(key)
+            if value is not None and value not in manifest["parameters"]["aspect_ratio"]["values"]:
+                raise PresetError("reference aspect mapping is invalid")
+    media = manifest.get("input_bindings", {}).get("media")
+    if not isinstance(media, dict) or media.get("type") not in {"none", "frame_pair", "collection", "slots"}:
+        raise PresetError("media input binding is invalid")
+    if media.get("type") in {"frame_pair", "collection"} and media.get("target_node") not in template:
+        raise PresetError("media target node is invalid")
+    if media.get("type") == "slots":
+        for role, slot in media.get("slots", {}).items():
+            node = template.get(str(slot.get("node"))) if isinstance(slot, dict) else None
+            if FileStore.role_kind(role) is None or not node or slot.get("input") not in node.get("inputs", {}):
+                raise PresetError(f"media slot is invalid: {role}")
+
+
+def _normalize_manifest(source: dict[str, Any]) -> dict[str, Any]:
+    manifest = copy.deepcopy(source)
+    if manifest.get("schema_version") not in {1, 2}:
+        raise PresetError("unsupported manifest schema")
+    manifest["schema_version"] = 2
+    manifest.setdefault("revision", 1)
+    bindings = manifest.setdefault("input_bindings", {})
+    bindings.setdefault("values", copy.deepcopy(manifest.get("parameters", {})))
+    if "media" not in bindings:
+        if manifest.get("reference_media"):
+            legacy = copy.deepcopy(manifest["reference_media"])
+            bindings["media"] = {
+                "type": "collection", "target_node": legacy["target_node"],
+                "kinds": {key: legacy[key] for key in ("images", "videos", "audios")},
+            }
+        elif manifest.get("frame_inputs"):
+            frames = manifest["frame_inputs"]
+            bindings["media"] = {
+                "type": "frame_pair", "target_node": frames["target_node"],
+                "roles": {key: frames[key] for key in ("first", "last")},
+                "mode_labels": copy.deepcopy(manifest.get("mode_labels", {})),
+            }
+        else:
+            bindings["media"] = {"type": "none"}
+    manifest.setdefault("output_bindings", [{
+        "id": "primary", "node": manifest["output_node"], "kind": "video",
+        "history_keys": ["videos", "video", "files", "images"], "primary": True,
+    }])
+    return manifest

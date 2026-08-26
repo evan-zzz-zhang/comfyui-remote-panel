@@ -20,9 +20,10 @@ dependencies = [
 [project.optional-dependencies]
 test = [
   "build>=1.2,<2",
-  "pytest>=8,<10",
+  "pytest>=8.2,<10",
   "pytest-aiohttp>=1.1,<2",
   "pytest-asyncio>=0.24,<2",
+  "setuptools>=83",
 ]
 
 [project.scripts]

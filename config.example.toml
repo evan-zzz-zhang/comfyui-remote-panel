@@ -4,6 +4,7 @@ port = 8190
 public_origin = "https://your-device.your-tailnet.ts.net"
 
 [auth]
+provider = "tailscale"
 allowed_logins = ["you@example.com"]
 
 [comfyui]

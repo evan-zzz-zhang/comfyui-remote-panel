@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP_PARTS = {".git", ".venv", ".pytest_cache", "__pycache__", "build", "dist", "data"}
+SKIP_PARTS = {".git", ".venv", ".pytest_cache", ".pytest_tmp", "__pycache__", "build", "dist", "data"}
 BANNED_SUFFIXES = {".safetensors", ".ckpt", ".pt", ".pth", ".mp4", ".mov", ".webm", ".png", ".jpg", ".jpeg", ".webp", ".db", ".sqlite", ".log"}
 WINDOWS_ABSOLUTE = re.compile(r"(?i)(?:^|[\s='\"])[a-z]:[\\/]")
 
@@ -15,7 +15,10 @@ WINDOWS_ABSOLUTE = re.compile(r"(?i)(?:^|[\s='\"])[a-z]:[\\/]")
 def repository_files() -> list[Path]:
     try:
         result = subprocess.run(
-            ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+            [
+                "git", "-c", f"safe.directory={ROOT.as_posix()}",
+                "ls-files", "--cached", "--others", "--exclude-standard",
+            ],
             cwd=ROOT,
             check=True,
             capture_output=True,

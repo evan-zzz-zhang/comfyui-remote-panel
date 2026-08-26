@@ -1,3 +1,5 @@
+import json
+import sqlite3
 import time
 
 import pytest
@@ -86,3 +88,63 @@ async def test_compare_and_set_requires_exact_expected_status(tmp_path):
     updated, job = await db.update_job_if_status("job", {"submitting"}, status="cancelled")
     assert updated is True
     assert job["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_builtin_refresh_preserves_user_display_name_and_status(tmp_path):
+    db = Database(tmp_path / "workflows.db")
+    await db.initialize()
+    original = {
+        "manifest": {
+            "id": "builtin-demo", "name": "官方名称", "revision": 1,
+        },
+        "workflow": {},
+    }
+    saved = await db.save_workflow(original, status="enabled", builtin=True)
+    assert saved["name"] == "官方名称"
+
+    renamed = json.loads(json.dumps(original))
+    renamed["manifest"]["name"] = "我的显示名称"
+    renamed["manifest"]["revision"] = 1
+    await db.save_workflow(renamed, status="draft", builtin=False)
+    await db.set_workflow_status("builtin-demo", "disabled")
+
+    refreshed = await db.save_workflow(original, status="enabled", builtin=True)
+    assert refreshed["name"] == "我的显示名称"
+    assert refreshed["definition"]["manifest"]["name"] == "我的显示名称"
+    assert refreshed["status"] == "disabled"
+    assert refreshed["builtin"] is True
+
+
+@pytest.mark.asyncio
+async def test_schema_v3_migrates_recovery_intent_fields(tmp_path):
+    path = tmp_path / "jobs.db"
+    with sqlite3.connect(path) as db:
+        db.executescript(
+            """
+            CREATE TABLE jobs (
+                id TEXT PRIMARY KEY, preset_id TEXT NOT NULL, status TEXT NOT NULL,
+                mode TEXT NOT NULL, prompt TEXT NOT NULL, duration_seconds INTEGER NOT NULL,
+                aspect_ratio TEXT NOT NULL, megapixels REAL NOT NULL, seed TEXT NOT NULL,
+                scheduler TEXT NOT NULL, sampler TEXT NOT NULL, steps INTEGER NOT NULL,
+                queue_position INTEGER, stage TEXT, progress_value INTEGER, progress_max INTEGER,
+                error_code TEXT, error_summary TEXT, created_at REAL NOT NULL,
+                started_at REAL, finished_at REAL, recovery_attempts INTEGER NOT NULL DEFAULT 0,
+                recovery_next_at REAL, recovery_last_error TEXT, updated_at REAL NOT NULL
+            );
+            CREATE TABLE job_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+                role TEXT NOT NULL, path TEXT NOT NULL UNIQUE, size_bytes INTEGER NOT NULL,
+                UNIQUE(job_id, role)
+            );
+            PRAGMA user_version = 3;
+            """
+        )
+
+    db = Database(path)
+    await db.initialize()
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 5
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(jobs)")}
+    assert {"cancel_requested_at", "missing_observations", "missing_first_at"} <= columns

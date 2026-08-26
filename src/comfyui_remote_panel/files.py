@@ -19,6 +19,12 @@ MAX_AUDIO_BYTES = 50 * 1024 * 1024
 MAX_IMAGE_SIDE = 8192
 MAX_IMAGE_PIXELS = 40_000_000
 FORMAT_EXTENSIONS = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}
+ARTIFACT_EXTENSIONS = {
+    "image": {".png", ".jpg", ".jpeg", ".webp"},
+    "video": {".mp4", ".mov", ".webm"},
+    "audio": {".wav", ".mp3", ".flac", ".ogg", ".m4a"},
+    "file": {".json", ".txt", ".csv", ".zip", ".bin"},
+}
 VIDEO_SIGNATURES = {b"\x1aE\xdf\xa3": ".webm"}
 _JOB_DIR_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.I)
 _FLAT_FILE_PATTERN = re.compile(r"^rp_(?:[0-9a-f]{12}|legacy_[0-9a-f-]+)_.+", re.I)
@@ -193,6 +199,29 @@ class FileStore:
     def register_output(self, job_id: str, descriptor: dict[str, Any]) -> Path:
         if descriptor.get("type", "output") != "output":
             raise FileValidationError("unexpected output type")
+        subfolder, filename = descriptor.get("subfolder", ""), descriptor.get("filename")
+        if not isinstance(subfolder, str) or not isinstance(filename, str) or not filename:
+            raise FileValidationError("invalid output descriptor")
+        expected_prefix = self.storage_key(job_id)
+        if subfolder.replace("\\", "/").strip("/") != "h3_remote" or Path(filename).name != filename:
+            raise FileValidationError("output is outside the managed flat directory")
+        if not filename.lower().startswith(expected_prefix.lower() + "_"):
+            raise FileValidationError("output does not belong to the job")
+        path = self._safe_child(self.output_root, filename)
+        final = self._safe_child(self.output_root, self.flat_output_name(job_id))
+        if not path.exists() and final.exists():
+            path = final
+        self._assert_managed_file(path.resolve(strict=True), self.output_root)
+        if path.suffix.lower() != ".mp4":
+            raise FileValidationError("output is not an MP4 file")
+        return path
+
+    def register_artifact(
+        self, job_id: str, binding_id: str, ordinal: int,
+        descriptor: dict[str, Any], kind: str,
+    ) -> Path:
+        if descriptor.get("type", "output") != "output":
+            raise FileValidationError("unexpected output type")
         subfolder = descriptor.get("subfolder", "")
         filename = descriptor.get("filename")
         if not isinstance(subfolder, str) or not isinstance(filename, str) or not filename:
@@ -204,13 +233,26 @@ class FileStore:
         if not filename.lower().startswith(expected_prefix.lower() + "_"):
             raise FileValidationError("output does not belong to the job")
         path = self._safe_child(self.output_root, filename)
-        final = self._safe_child(self.output_root, self.flat_output_name(job_id))
+        suffix = path.suffix.lower()
+        if kind not in ARTIFACT_EXTENSIONS or suffix not in ARTIFACT_EXTENSIONS[kind]:
+            raise FileValidationError("output file type does not match its binding")
+        safe_binding = re.sub(r"[^A-Za-z0-9_-]+", "-", binding_id).strip("-") or "result"
+        final_name = self.flat_output_name(job_id) if kind == "video" and binding_id == "primary" and ordinal == 0 else f"{expected_prefix}_{safe_binding}_{ordinal}{suffix}"
+        final = self._safe_child(self.output_root, final_name)
         if not path.exists() and final.exists():
             path = final
         self._assert_managed_file(path.resolve(strict=True), self.output_root)
-        if path.suffix.lower() != ".mp4" or final.suffix.lower() != ".mp4":
-            raise FileValidationError("output is not an MP4 file")
-        return path
+        if path != final:
+            if final.exists():
+                self._assert_managed_file(final.resolve(strict=True), self.output_root)
+                return final
+            os.replace(path, final)
+        return final
+
+    def validate_artifact_file(self, path: Path) -> Path:
+        resolved = path.resolve(strict=True)
+        self._assert_managed_file(resolved, self.output_root)
+        return resolved
 
     def finalize_output(self, job_id: str, path: Path) -> Path:
         source = path.resolve(strict=True)

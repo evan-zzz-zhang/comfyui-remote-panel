@@ -5,15 +5,19 @@ import pytest
 from comfyui_remote_panel.config import ConfigError, load_config
 
 
-def write_config(tmp_path: Path, host: str = "127.0.0.1", port: int = 8190) -> Path:
+def write_config(
+    tmp_path: Path, host: str = "127.0.0.1", port: int = 8190,
+    provider: str = "tailscale", public_origin: str = "https://device.example.ts.net",
+) -> Path:
     path = tmp_path / "config.toml"
     path.write_text(
         f"""
 [server]
 host = "{host}"
 port = {port}
-public_origin = "https://device.example.ts.net"
+public_origin = "{public_origin}"
 [auth]
+provider = "{provider}"
 allowed_logins = ["owner@example.com"]
 [comfyui]
 base_url = "http://127.0.0.1:8188"
@@ -82,3 +86,20 @@ working_dir = "comfy-portable"
     path.write_text(text, encoding="utf-8")
     with pytest.raises(ConfigError, match="start_command"):
         load_config(path)
+
+
+def test_local_auth_accepts_only_loopback_http_origin(tmp_path):
+    config = load_config(write_config(
+        tmp_path, provider="local", public_origin="http://127.0.0.1:8190"
+    ))
+    assert config.auth_provider == "local"
+
+    with pytest.raises(ConfigError, match="local HTTP"):
+        load_config(write_config(
+            tmp_path, provider="local", public_origin="http://192.168.1.10:8190"
+        ))
+
+
+def test_rejects_unknown_auth_provider(tmp_path):
+    with pytest.raises(ConfigError, match="tailscale or local"):
+        load_config(write_config(tmp_path, provider="lan"))

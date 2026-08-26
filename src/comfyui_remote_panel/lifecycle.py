@@ -35,15 +35,36 @@ class ComfyLifecycle:
         self.record_path = config.data_dir / "comfyui-process.json"
         self.log_path = config.data_dir / "comfyui-control.log"
         self.operation: str | None = None
+        self.phase: str | None = None
         self.last_error: str | None = None
+        self.last_error_action: str | None = None
         self._task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
 
-    def snapshot(self, online: bool) -> dict:
+    def snapshot(
+        self, online: bool, *, unresponsive: bool = False,
+        last_success_at: float | None = None,
+    ) -> dict:
         busy = self.operation is not None
+        if self.phase == "starting":
+            state, summary = "starting", "正在启动并等待 ComfyUI 节点加载"
+        elif self.phase == "stopping":
+            state, summary = "stopping", "正在关闭 ComfyUI 并等待端口释放"
+        elif online:
+            state, summary = "online", "ComfyUI 在线"
+        elif self.last_error and self.last_error_action in {"start", "restart"}:
+            state, summary = "start_failed", self.last_error
+        elif unresponsive:
+            state, summary = "unresponsive", "ComfyUI 端口或进程可能仍在，但健康检查连续超时"
+        else:
+            state, summary = "offline", "ComfyUI 离线"
         return {
             "enabled": self.enabled,
             "operation": self.operation,
+            "phase": self.phase,
+            "state": state,
+            "summary": summary,
+            "last_success_at": last_success_at,
             "last_error": self.last_error,
             "can_start": self.enabled and not online and not busy,
             "can_stop": self.enabled and online and not busy,
@@ -64,7 +85,9 @@ class ComfyLifecycle:
             if action in {"stop", "restart"} and not online:
                 raise LifecycleError("ComfyUI 当前不在线")
             self.operation = action
+            self.phase = "starting" if action == "start" else "stopping"
             self.last_error = None
+            self.last_error_action = None
             self._task = asyncio.create_task(self._run(action))
         return self.snapshot(online)
 
@@ -81,11 +104,14 @@ class ComfyLifecycle:
             raise
         except Exception as exc:
             self.last_error = str(exc)[:300] or "ComfyUI 控制操作失败"
+            self.last_error_action = action
             log.exception("ComfyUI %s operation failed", action)
         finally:
             self.operation = None
+            self.phase = None
 
     async def _start(self) -> None:
+        self.phase = "starting"
         existing = self._recorded_process()
         if existing is not None and existing.is_running():
             raise LifecycleError("已记录的 ComfyUI 进程仍在运行，请稍后再试")
@@ -144,6 +170,7 @@ class ComfyLifecycle:
         raise LifecycleError("等待 ComfyUI 启动超时；进程可能仍在加载，请稍后刷新")
 
     async def _stop(self) -> None:
+        self.phase = "stopping"
         process = await asyncio.to_thread(self._recorded_process)
         if process is None:
             raise LifecycleError("无法通过进程记录安全确认 ComfyUI 主进程；未执行关闭")

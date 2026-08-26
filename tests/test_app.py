@@ -14,6 +14,7 @@ from PIL import Image
 from comfyui_remote_panel.app import _write_sse, create_app
 from comfyui_remote_panel.config import Config
 from comfyui_remote_panel.jobs import safe_summary
+from test_workflow_config import remote_config, save_image_workflow
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -109,7 +110,9 @@ async def test_panel_opens_when_comfyui_is_offline(tmp_path, aiohttp_client):
 
     response = await client.get("/", headers=LOGIN)
     assert response.status == 200
-    assert "H3 生成台" in await response.text()
+    html = await response.text()
+    assert "Comfy Remote" in html
+    assert "H3 生成台" not in html
 
     presets = await client.get("/api/presets", headers=LOGIN)
     assert presets.status == 200
@@ -417,6 +420,43 @@ async def test_websocket_terminal_state_wins_over_delayed_reconcile(panel_client
 
 
 @pytest.mark.asyncio
+async def test_missing_upstream_requires_persisted_grace_confirmation(panel_client):
+    form = FormData(default_to_multipart=True)
+    form.add_field("prompt", "测试暂时找不到上游任务")
+    response = await panel_client.post("/api/jobs", data=form, headers=LOGIN)
+    job = await response.json()
+
+    await panel_client.app["jobs"].reconcile_once()
+    current = await panel_client.app["db"].get_job(job["id"])
+    assert current["status"] == "queued"
+    assert current["missing_observations"] == 1
+
+    await panel_client.app["db"].update_job(
+        job["id"], missing_observations=2, missing_first_at=time.time() - 31
+    )
+    await panel_client.app["jobs"].reconcile_once()
+    current = await panel_client.app["db"].get_job(job["id"])
+    assert current["status"] == "interrupted"
+    assert current["error_code"] == "missing_upstream"
+
+
+@pytest.mark.asyncio
+async def test_unrequested_execution_interruption_is_not_user_cancellation(panel_client):
+    form = FormData(default_to_multipart=True)
+    form.add_field("prompt", "测试异常中断语义")
+    response = await panel_client.post("/api/jobs", data=form, headers=LOGIN)
+    job = await response.json()
+
+    await panel_client.app["jobs"].handle_ws_event({
+        "type": "execution_interrupted",
+        "data": {"prompt_id": job["id"]},
+    })
+    current = await panel_client.app["db"].get_job(job["id"])
+    assert current["status"] == "interrupted"
+    assert current["error_code"] == "execution_interrupted"
+
+
+@pytest.mark.asyncio
 async def test_prompt_has_independent_streaming_limit(panel_client):
     form = FormData(default_to_multipart=True)
     form.add_field("prompt", "字" * 11_000)
@@ -545,6 +585,46 @@ async def test_delete_hides_history_and_purge_is_explicit(panel_client):
     assert purged.status == 204
     assert not path.exists()
     assert await db.get_job(job_id) is None
+
+
+@pytest.mark.asyncio
+async def test_generic_saveimage_workflow_crud_submit_and_artifact(panel_client, comfy_server):
+    created = await panel_client.post(
+        "/api/workflows", headers={**LOGIN, "Content-Type": "application/json"},
+        json={"workflow": save_image_workflow(), "config": remote_config()},
+    )
+    assert created.status == 201, await created.text()
+    assert (await created.json())["status"] == "draft"
+
+    enabled = await panel_client.post(
+        "/api/workflows/standard-save-image/status", headers={**LOGIN, "Content-Type": "application/json"},
+        json={"status": "enabled"},
+    )
+    assert enabled.status == 200, await enabled.text()
+
+    form = FormData(default_to_multipart=True)
+    form.add_field("preset_id", "standard-save-image")
+    form.add_field("values_json", json.dumps({"positive_prompt": "A generic dog", "steps": 11}))
+    response = await panel_client.post("/api/jobs", data=form, headers=LOGIN)
+    assert response.status == 201, await response.text()
+    job = await response.json()
+    submitted = comfy_server.app["submitted"][-1]["prompt"]
+    assert submitted["2"]["inputs"]["text"] == "A generic dog"
+    assert submitted["4"]["inputs"]["steps"] == 11
+
+    output_name = f"{panel_client.app['files'].storage_key(job['id'])}_00001_.png"
+    output_path = panel_client.app["files"].output_root / output_name
+    output_path.write_bytes(b"png-result")
+    captured = await panel_client.app["jobs"]._capture_output(job["id"], {
+        "outputs": {"6": {"images": [{"filename": output_name, "subfolder": "h3_remote", "type": "output"}]}}
+    })
+    assert captured is True
+    response = await panel_client.get(f"/api/jobs/{job['id']}/artifacts", headers=LOGIN)
+    [artifact] = (await response.json())["items"]
+    assert artifact["kind"] == "image"
+    downloaded = await panel_client.get(f"/api/jobs/{job['id']}/artifacts/{artifact['id']}", headers=LOGIN)
+    assert downloaded.status == 200
+    assert await downloaded.read() == b"png-result"
 
 
 def test_error_summary_removes_local_paths_and_addresses():

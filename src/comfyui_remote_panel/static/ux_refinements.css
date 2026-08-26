@@ -1,0 +1,147 @@
+/* v0.2 mobile polish: reduce explanatory copy and keep high-frequency controls light. */
+.settings-entry {
+  border: 0 !important;
+  background: transparent !important;
+  border-radius: 50%;
+}
+.settings-entry:hover,
+.settings-entry:focus-visible {
+  border-color: transparent !important;
+  background: var(--surface-1) !important;
+}
+
+/* Main navigation already names these pages; do not repeat the same title below it. */
+#view-generate > .page-heading,
+#view-jobs > .page-heading,
+#view-device > .page-heading {
+  display: none !important;
+}
+
+/* Information that is already expressed by position, control type, or state. */
+.creation-heading .heading-meta,
+.workflow-picker small,
+.workflow-choice small,
+#reference-section-hint,
+#prompt-hint,
+.upload-card small,
+.reference-add small,
+.reference-tag-tip,
+#preset-description,
+.workflow-item-main small,
+#jobs-empty p,
+#settings-home .settings-row small,
+#settings-home .row-value,
+.subpage-heading small,
+.semantic-detected small,
+.generic-advanced > p,
+.control-card .card-heading small,
+.job-card .job-prompt {
+  display: none !important;
+}
+
+.workflow-picker {
+  min-height: 54px;
+}
+.upload-card {
+  min-height: 102px;
+}
+.reference-add span {
+  display: block;
+}
+.workflow-item {
+  align-items: center;
+}
+.workflow-item[hidden] {
+  display: none !important;
+}
+.workflow-item-main {
+  align-self: center;
+}
+.workflow-item-actions button,
+.workflow-item-actions a {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+.toggle-button.syncing {
+  opacity: .78;
+}
+
+/* Workflow manager tabs are real client-side filters. */
+.workflow-manager-tabs {
+  align-items: center;
+}
+.workflow-manager-tabs button {
+  padding: 4px 0;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 0;
+  font-size: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.workflow-manager-tabs button.active {
+  color: var(--accent);
+}
+.workflow-manager-tabs button:focus-visible {
+  color: var(--accent);
+  outline: 0;
+}
+
+/* Tapping the selected Tasks tab also acts as refresh. */
+#nav-jobs.nav-refreshing svg {
+  animation: task-refresh-spin .65s linear infinite;
+}
+@keyframes task-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Prompt stays in its existing task-detail row; copy is intentionally lightweight. */
+.detail-prompt-row {
+  align-items: flex-start;
+}
+.detail-prompt-row > span {
+  flex: 1;
+}
+.detail-prompt-row small {
+  display: block;
+  max-height: min(34vh, 280px);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.detail-copy-button {
+  flex: none;
+  min-height: 28px;
+  padding: 4px 0 4px 10px;
+  color: var(--accent);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.detail-copy-button:focus-visible {
+  text-decoration: underline;
+  outline: 0;
+}
+
+/* Generic image workflows follow the same information hierarchy as video workflows:
+   prompt -> generation settings -> advanced settings -> generate. */
+.generic-advanced[data-refined-order="true"] {
+  width: 100%;
+}
+
+/* Keep useful retry state, but remove redundant "add reference" helper copy. */
+.generic-reference-card small:empty {
+  display: none;
+}
+
+@media (max-width: 390px) {
+  .brand h1 { font-size: 17px; }
+  .status-pill { padding-inline: 9px; }
+}

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import mimetypes
 import re
 import secrets
 import time
@@ -40,6 +41,8 @@ class JobService:
     _PROGRESS_STARTS = {"build": 0, "sampling": 10, "decode": 70, "compose": 85, "save": 95}
     _PROGRESS_WEIGHTS = {"build": 10, "sampling": 60, "decode": 15, "compose": 10, "save": 5}
     _SUBMISSION_CONFIRMATION_TIMEOUT = 60.0
+    _MISSING_CONFIRMATIONS = 3
+    _MISSING_GRACE_SECONDS = 30.0
 
     def __init__(self, db: Database, files: FileStore, comfy: ComfyClient, presets: dict[str, Preset], events: EventBus):
         self.db = db
@@ -50,7 +53,10 @@ class JobService:
         self._stop = asyncio.Event()
         self._last_output_recovery = 0.0
 
-    async def create(self, fields: dict[str, Any], uploaded: list[dict[str, Any]], job_id: str | None = None) -> dict[str, Any]:
+    async def create(
+        self, fields: dict[str, Any], uploaded: list[dict[str, Any]],
+        job_id: str | None = None, *, is_test: bool = False,
+    ) -> dict[str, Any]:
         job_id = job_id or new_job_id()
         preset_id = fields.get("preset_id") or "h3-fl2va-v4step600"
         preset = self.presets.get(preset_id)
@@ -90,33 +96,18 @@ class JobService:
                 for file in source["files"]:
                     role = file["role"]
                     kind = self.files.role_kind(role)
-                    compatible = role in {"first", "last"} if preset.manifest.get("family") != "ref2va" else kind is not None
+                    compatible = preset.retry_role_compatible(role)
                     if keep_roles is not None:
                         should_copy = role in keep_roles
                     else:
-                        replaced = role in supplied_roles if preset.manifest.get("family") != "ref2va" else kind in supplied_kinds
+                        replaced = role in supplied_roles if preset.media_binding["type"] in {"frame_pair", "slots"} else kind in supplied_kinds
                         should_copy = not replaced
                     if compatible and should_copy and role not in supplied_roles:
                         copied_file = await self.files.copy_input_async(Path(file["path"]), job_id, file["role"])
                         copied.append(copied_file)
                         effective_uploads.append(copied_file)
             roles = {file["role"] for file in effective_uploads}
-            if preset.manifest.get("family") == "ref2va":
-                limits = preset.manifest["reference_media"]
-                counts = {
-                    kind: sum(self.files.role_kind(role) == kind for role in roles)
-                    for kind in ("image", "video", "audio")
-                }
-                if any(self.files.role_kind(role) is None for role in roles):
-                    raise PresetError("Ref2VA 收到了不支持的参考素材")
-                if counts["image"] > limits["images"]["max"] or counts["video"] > limits["videos"]["max"] or counts["audio"] > limits["audios"]["max"]:
-                    raise PresetError("参考素材数量超过工作流允许范围")
-                mode = " · ".join(f"{counts[kind]}{label}" for kind, label in (("image", "图"), ("video", "视频"), ("audio", "音频")) if counts[kind]) or "纯文字"
-            else:
-                if roles - {"first", "last"}:
-                    raise PresetError("FL2VA 仅支持首帧和尾帧")
-                mode = {frozenset(): "纯文字", frozenset({"first"}): "仅首帧", frozenset({"last"}): "仅尾帧", frozenset({"first", "last"}): "首尾帧"}[frozenset(roles)]
-            allow_empty_prompt = preset.manifest.get("family") == "fl2va" and bool({"first", "last"} & roles)
+            mode, allow_empty_prompt = preset.validate_media_roles(roles)
             normalized = preset.validate_parameters(fields, allow_empty_prompt=allow_empty_prompt)
             seed = normalized.get("seed")
             if seed is None:
@@ -128,6 +119,11 @@ class JobService:
             record = {
                 "id": job_id,
                 "preset_id": preset_id,
+                "workflow_id": preset_id,
+                "workflow_revision": preset.revision,
+                "workflow_snapshot": preset.snapshot(),
+                "input_values": normalized,
+                "is_test": is_test,
                 "status": "submitting",
                 "mode": mode,
                 **normalized,
@@ -174,13 +170,17 @@ class JobService:
         running = {str(item[1]) for item in queue.get("queue_running", []) if isinstance(item, list) and len(item) > 1}
         pending_list = [str(item[1]) for item in queue.get("queue_pending", []) if isinstance(item, list) and len(item) > 1]
         if job_id in running:
-            values: dict[str, Any] = {"status": "running", "queue_position": 0}
+            values: dict[str, Any] = {
+                "status": "running", "queue_position": 0,
+                "missing_observations": 0, "missing_first_at": None,
+            }
             if not job.get("started_at"):
                 values["started_at"] = time.time()
             return True, await self.db.update_active_job(job_id, **values)
         if job_id in pending_list:
             return True, await self.db.update_active_job(
                 job_id, status="queued", stage="等待执行", queue_position=pending_list.index(job_id) + 1,
+                missing_observations=0, missing_first_at=None,
             )
         history = await self.comfy.history(job_id)
         entry = history.get(job_id) if isinstance(history, dict) else None
@@ -210,6 +210,7 @@ class JobService:
             "steps": original["steps"],
             "input_roles": [file["role"] for file in original["files"] if self.files.role_kind(file["role"]) is not None],
             "retry_keep_roles": [file["role"] for file in original["files"] if self.files.role_kind(file["role"]) is not None],
+            "values": original.get("input_values", {}),
         }
 
     async def cancel(self, job_id: str) -> dict[str, Any]:
@@ -218,11 +219,13 @@ class JobService:
             raise KeyError(job_id)
         if job["status"] in TERMINAL_STATUSES:
             return job
+        requested_at = time.time()
+        job = await self.db.update_active_job(job_id, cancel_requested_at=requested_at)
         acted = await self.comfy.cancel(job_id)
         if acted:
             updated, job = await self.db.update_job_if_status(
                 job_id, ACTIVE_STATUSES, status="cancelled", stage="已取消",
-                finished_at=time.time(), queue_position=None,
+                finished_at=time.time(), queue_position=None, cancel_requested_at=requested_at,
             )
             if updated:
                 self.events.publish("job", self.public_job(job))
@@ -265,12 +268,19 @@ class JobService:
             for job in active:
                 job_id = job["id"]
                 if job_id in running:
-                    values: dict[str, Any] = {"status": "running", "queue_position": 0}
+                    values: dict[str, Any] = {
+                        "status": "running", "queue_position": 0,
+                        "missing_observations": 0, "missing_first_at": None,
+                    }
                     if not job.get("started_at"):
                         values["started_at"] = time.time()
                     updated = await self.db.update_active_job(job_id, **values)
                 elif job_id in pending:
-                    updated = await self.db.update_active_job(job_id, status="queued", stage="等待执行", queue_position=pending_list.index(job_id) + 1)
+                    updated = await self.db.update_active_job(
+                        job_id, status="queued", stage="等待执行",
+                        queue_position=pending_list.index(job_id) + 1,
+                        missing_observations=0, missing_first_at=None,
+                    )
                 else:
                     history = await self.comfy.history(job_id)
                     entry = history.get(job_id) if isinstance(history, dict) else None
@@ -281,7 +291,7 @@ class JobService:
                     elif job["status"] == "submitting":
                         updated = await self.db.update_active_job(job_id, status="failed", stage="提交失败", error_code="submission_unconfirmed", error_summary="提交响应异常，超过确认时间后仍未在 ComfyUI 中找到任务", finished_at=time.time(), queue_position=None)
                     else:
-                        updated = await self.db.update_active_job(job_id, status="interrupted", stage="意外中断", error_code="missing_upstream", error_summary="ComfyUI 中找不到这个未完成任务", finished_at=time.time(), queue_position=None)
+                        updated = await self._observe_missing(job)
                 self.events.publish("job", self.public_job(updated))
         if time.time() - self._last_output_recovery >= 30:
             self._last_output_recovery = time.time()
@@ -299,14 +309,12 @@ class JobService:
             if isinstance(message, list) and message
         }
         if "execution_interrupted" in message_types:
-            status = "cancelled"
-            error_code = error_summary = None
+            status, error_code, error_summary = self._interruption_result(current)
         elif completed or status_text in {"success", "succeeded", "completed"}:
             status = "succeeded"
             error_code = error_summary = None
         elif status_text in {"cancelled", "canceled", "interrupted"}:
-            status = "cancelled"
-            error_code = error_summary = None
+            status, error_code, error_summary = self._interruption_result(current)
         else:
             status = "failed"
             error_code = "execution_failed"
@@ -314,8 +322,38 @@ class JobService:
         if status == "succeeded":
             await self._capture_output(job["id"], entry)
         return await self.db.update_active_job(
-            job["id"], status=status, stage={"succeeded": "已完成", "failed": "失败", "cancelled": "已取消"}[status],
+            job["id"], status=status,
+            stage={"succeeded": "已完成", "failed": "失败", "cancelled": "已取消", "interrupted": "意外中断"}[status],
             finished_at=time.time(), queue_position=None, error_code=error_code, error_summary=error_summary,
+            missing_observations=0, missing_first_at=None,
+        )
+
+    @staticmethod
+    def _interruption_result(job: dict[str, Any]) -> tuple[str, str | None, str | None]:
+        if job.get("cancel_requested_at") is not None:
+            return "cancelled", None, None
+        return "interrupted", "execution_interrupted", "ComfyUI 执行被意外中断，可检查设备状态后重新提交"
+
+    async def _observe_missing(self, job: dict[str, Any]) -> dict[str, Any] | None:
+        now = time.time()
+        first_at = float(job.get("missing_first_at") or now)
+        observations = int(job.get("missing_observations") or 0) + 1
+        confirmed = (
+            observations >= self._MISSING_CONFIRMATIONS
+            and now - first_at >= self._MISSING_GRACE_SECONDS
+        )
+        if confirmed:
+            return await self.db.update_active_job(
+                job["id"], status="interrupted", stage="意外中断",
+                error_code="missing_upstream",
+                error_summary="连续确认后，ComfyUI 中仍找不到这个未完成任务",
+                finished_at=now, queue_position=None,
+                missing_observations=observations, missing_first_at=first_at,
+            )
+        return await self.db.update_active_job(
+            job["id"], stage=f"确认任务状态（{observations}）",
+            error_code="upstream_temporarily_missing", error_summary=None,
+            missing_observations=observations, missing_first_at=first_at,
         )
 
     @staticmethod
@@ -375,6 +413,8 @@ class JobService:
             "queue_position": 0,
             "progress_value": self._progress_number(node.get("value")),
             "progress_max": self._progress_number(node.get("max")),
+            "missing_observations": 0,
+            "missing_first_at": None,
         }
         if stage:
             values["stage"] = stage
@@ -382,23 +422,33 @@ class JobService:
 
     async def _capture_output(self, job_id: str, entry: dict[str, Any]) -> bool:
         preset = self.presets[(await self.db.get_job(job_id))["preset_id"]]
-        output = entry.get("outputs", {}).get(preset.output_node, {})
-        descriptors: list[dict[str, Any]] = []
-        for key in ("videos", "video", "files", "images"):
-            value = output.get(key)
-            if isinstance(value, list):
-                descriptors.extend(item for item in value if isinstance(item, dict))
-            elif isinstance(value, dict):
-                descriptors.append(value)
-        for descriptor in descriptors:
-            try:
-                path = self.files.register_output(job_id, descriptor)
-                path = self.files.finalize_output(job_id, path)
-            except (FileValidationError, OSError):
-                continue
-            await self.db.add_file(job_id, "output", path, path.stat().st_size)
-            return True
-        return False
+        captured = False
+        for binding in preset.manifest["output_bindings"]:
+            output = entry.get("outputs", {}).get(str(binding["node"]), {})
+            descriptors: list[dict[str, Any]] = []
+            for key in binding.get("history_keys", ("images", "videos", "files")):
+                value = output.get(key)
+                if isinstance(value, list):
+                    descriptors.extend(item for item in value if isinstance(item, dict))
+                elif isinstance(value, dict):
+                    descriptors.append(value)
+            for ordinal, descriptor in enumerate(descriptors):
+                try:
+                    path = self.files.register_artifact(
+                        job_id, str(binding["id"]), ordinal, descriptor, str(binding["kind"])
+                    )
+                except (FileValidationError, OSError):
+                    continue
+                size = path.stat().st_size
+                await self.db.add_artifact(
+                    job_id, "output", str(binding["id"]), ordinal, path,
+                    str(binding["kind"]), mimetypes.guess_type(path.name)[0],
+                    descriptor.get("filename"), size,
+                )
+                if binding.get("primary") and binding["kind"] == "video" and ordinal == 0:
+                    await self.db.add_file(job_id, "output", path, size)
+                captured = True
+        return captured
 
     async def _recover_missing_outputs(self) -> None:
         for job in await self.db.succeeded_without_output():
@@ -444,7 +494,10 @@ class JobService:
         updated = None
         if event_type in {"execution_start", "executing"}:
             node = str(data.get("node")) if data.get("node") is not None else None
-            values: dict[str, Any] = {"status": "running", "queue_position": 0}
+            values: dict[str, Any] = {
+                "status": "running", "queue_position": 0,
+                "missing_observations": 0, "missing_first_at": None,
+            }
             if node:
                 values["stage"] = preset.stages.get(node, "运行中")
             if not job.get("started_at"):
@@ -461,6 +514,8 @@ class JobService:
                 stage=stage,
                 progress_value=self._progress_number(data.get("value")),
                 progress_max=self._progress_number(data.get("max")),
+                missing_observations=0,
+                missing_first_at=None,
             )
         elif event_type == "execution_success":
             try:
@@ -473,7 +528,13 @@ class JobService:
             summary = safe_summary(data.get("exception_message") or data.get("exception_type"))
             updated = await self.db.update_active_job(job_id, status="failed", stage="失败", error_code="execution_failed", error_summary=summary, finished_at=time.time(), queue_position=None)
         elif event_type == "execution_interrupted":
-            updated = await self.db.update_active_job(job_id, status="cancelled", stage="已取消", finished_at=time.time(), queue_position=None)
+            status, error_code, error_summary = self._interruption_result(job)
+            updated = await self.db.update_active_job(
+                job_id, status=status,
+                stage="已取消" if status == "cancelled" else "意外中断",
+                error_code=error_code, error_summary=error_summary,
+                finished_at=time.time(), queue_position=None,
+            )
         if updated:
             self.events.publish("job", self.public_job(updated))
 
@@ -510,7 +571,7 @@ class JobService:
     def public_job(self, job: dict[str, Any] | None) -> dict[str, Any] | None:
         if job is None:
             return None
-        result = {key: value for key, value in job.items() if key != "files"}
+        result = {key: value for key, value in job.items() if key not in {"files", "workflow_snapshot"}}
         result["seed"] = str(result["seed"])
         preset = self.presets.get(job["preset_id"])
         result["preset_name"] = preset.manifest["name"] if preset else job["preset_id"]
