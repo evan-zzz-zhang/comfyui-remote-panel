@@ -4,6 +4,8 @@ import asyncio
 import csv
 import io
 import shutil
+import subprocess
+import sys
 import time
 from typing import Any
 
@@ -132,8 +134,20 @@ class MetricsService:
             "--query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw",
             "--format=csv,noheader,nounits",
         )
+        subprocess_options: dict[str, Any] = {}
+        if sys.platform == "win32":
+            # The panel itself is normally launched detached on Windows. Without
+            # CREATE_NO_WINDOW, every polling nvidia-smi console process gets its
+            # own visible terminal window and flashes on screen once per metrics
+            # interval. Keep the child entirely headless, matching lifecycle.py.
+            subprocess_options["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
         try:
-            process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                **subprocess_options,
+            )
         except OSError:
             return []
         try:
@@ -145,11 +159,13 @@ class MetricsService:
         if process.returncode != 0:
             return []
         result: list[dict[str, Any]] = []
+
         def number(value: str) -> float | None:
             try:
                 return float(value)
             except ValueError:
                 return None
+
         for row in csv.reader(io.StringIO(stdout.decode(errors="replace"))):
             if len(row) != 7:
                 continue
