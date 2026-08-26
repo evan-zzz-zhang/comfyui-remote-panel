@@ -110,7 +110,9 @@ async def test_panel_opens_when_comfyui_is_offline(tmp_path, aiohttp_client):
 
     response = await client.get("/", headers=LOGIN)
     assert response.status == 200
-    assert "H3 生成台" in await response.text()
+    html = await response.text()
+    assert "Comfy Remote" in html
+    assert "H3 生成台" not in html
 
     presets = await client.get("/api/presets", headers=LOGIN)
     assert presets.status == 200
