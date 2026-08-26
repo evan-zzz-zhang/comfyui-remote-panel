@@ -35,3 +35,10 @@ def test_single_image_results_use_centered_single_item_layout() -> None:
     assert '.artifact-grid.gallery:has(>.artifact-item:only-child)' in css
     assert 'max-height:calc(100dvh - 150px)' in css
     assert 'object-fit:contain' in css
+
+
+def test_generic_progress_does_not_monotonically_pin_stale_values() -> None:
+    runtime = _read("configurator_v2_runtime.js")
+
+    assert 'newPercent < oldPercent' not in runtime
+    assert 'if (!hasProgress(next.progress_percent) && hasProgress(previous.progress_percent))' in runtime
