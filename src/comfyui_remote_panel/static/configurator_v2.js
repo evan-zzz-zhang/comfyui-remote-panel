@@ -79,6 +79,8 @@
 
   function renderConfigurator(result) {
     state.workflowInspection = result;
+    const persistedRuntime = state.workflowEditingDetail?.definition?.manifest?.preflight?.runtime;
+    if (persistedRuntime && result.preflight) result.preflight.runtime = persistedRuntime;
     const root = $("#workflow-inspection");
     if (!root) return;
     root.innerHTML = `${renderProfile(result)}${renderMedia(result)}${renderParameters(result)}${renderOutputs(result)}${renderPreflight(result)}`;
@@ -238,6 +240,12 @@
     updateSubmitAvailability();
   }
 
+  function requiredWorkflowMedia(item) {
+    const media = item?.manifest?.input_bindings?.media;
+    if (media?.type !== "slots") return [];
+    return Object.entries(media.slots || {}).filter(([, slot]) => slot?.required === true || slot?.ui?.optional === false);
+  }
+
   const baseApplyPreset = applyPreset;
   applyPreset = function(presetId, overrides = {}) {
     const result = baseApplyPreset(presetId, overrides);
@@ -261,6 +269,36 @@
       message.className = "form-message error";
       message.textContent = `需要上传：${labels.join("、")}`;
       updateSubmitAvailability();
+    }, true);
+
+    // The legacy one-click /test endpoint only carries JSON values. Required
+    // media workflows therefore reuse the normal creation form instead of
+    // inventing a second upload protocol. The real generation becomes Runtime
+    // evidence and will update the persisted preflight result on completion.
+    $("#workflow-list")?.addEventListener("click", async event => {
+      const button = event.target.closest('[data-workflow-action="test"]');
+      if (!button) return;
+      const item = state.workflowItems?.get(button.dataset.id);
+      const required = requiredWorkflowMedia(item);
+      if (!required.length) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      let preset = state.presets.get(button.dataset.id);
+      if (!preset) {
+        try { await loadPresets(); preset = state.presets.get(button.dataset.id); }
+        catch (_) { preset = null; }
+      }
+      if (!preset) {
+        window.alert("请先启用该工作流，再运行需要素材的测试。");
+        return;
+      }
+      applyPreset(preset.id);
+      setView("generate");
+      const labels = required.map(([role, slot]) => slot?.ui?.label || role);
+      const message = $("#form-message");
+      message.className = "form-message";
+      message.textContent = `运行兼容性测试：请上传${labels.join("、")}后生成。完成结果会写入 Runtime Preflight。`;
+      queueMicrotask(updateSubmitAvailability);
     }, true);
 
     const inspection = $("#workflow-inspection");
