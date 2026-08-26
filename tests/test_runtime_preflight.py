@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -25,6 +26,20 @@ async def create_generic_workflow(panel_client):
     return item["id"]
 
 
+async def add_output_artifact(panel_client, job_id: str) -> None:
+    await panel_client.app["db"].add_artifact(
+        job_id,
+        "output",
+        "primary",
+        0,
+        Path("fixture-output") / f"{job_id}.png",
+        "image",
+        "image/png",
+        "result.png",
+        1,
+    )
+
+
 @pytest.mark.asyncio
 async def test_runtime_preflight_persists_pass_and_fail_without_new_revision(panel_client, comfy_server):
     workflow_id = await create_generic_workflow(panel_client)
@@ -39,16 +54,25 @@ async def test_runtime_preflight_persists_pass_and_fail_without_new_revision(pan
     )
     assert test_response.status == 201, await test_response.text()
     test_job = await test_response.json()
-    panel_client.app["comfy"].history = AsyncMock(return_value={
-        test_job["id"]: {
-            "status": {"completed": True, "status_str": "success", "messages": []},
-            "outputs": {},
-        }
-    })
+    history_entry = {
+        "status": {"completed": True, "status_str": "success", "messages": []},
+        "outputs": {},
+    }
+    panel_client.app["comfy"].history = AsyncMock(return_value={test_job["id"]: history_entry})
     await panel_client.app["jobs"].handle_ws_event({
         "type": "execution_success",
         "data": {"prompt_id": test_job["id"]},
     })
+
+    pending = await (await panel_client.get(f"/api/workflows/{workflow_id}", headers=LOGIN)).json()
+    runtime = pending["definition"]["manifest"]["preflight"]["runtime"]
+    assert pending["revision"] == revision
+    assert runtime["status"] == "WARN"
+    assert runtime["message"] == "Runtime execution passed; output capture pending"
+
+    await add_output_artifact(panel_client, test_job["id"])
+    terminal_job = await panel_client.app["db"].get_job(test_job["id"])
+    await panel_client.app["jobs"]._apply_history(terminal_job, history_entry)
 
     passed = await (await panel_client.get(f"/api/workflows/{workflow_id}", headers=LOGIN)).json()
     runtime = passed["definition"]["manifest"]["preflight"]["runtime"]
@@ -112,6 +136,7 @@ async def test_old_job_runtime_result_does_not_overwrite_new_revision(panel_clie
     )
     assert enabled.status == 200
 
+    await add_output_artifact(panel_client, old_job["id"])
     panel_client.app["comfy"].history = AsyncMock(return_value={
         old_job["id"]: {
             "status": {"completed": True, "status_str": "success", "messages": []},
