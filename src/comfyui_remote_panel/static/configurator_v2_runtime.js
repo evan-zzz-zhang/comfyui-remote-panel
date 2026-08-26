@@ -1,68 +1,73 @@
 (() => {
   const ACTIVE_STATUSES = new Set(["submitting", "queued", "running"]);
 
+  const MediaUI = window.ComfyRemoteMediaUI = window.ComfyRemoteMediaUI || {};
+
+  MediaUI.bindSingleImageInput = function(input, { card = null, image = null } = {}) {
+    if (!input || input.dataset.mediaUiBound === "1") return;
+    const targetCard = card || input.closest(".upload-card");
+    if (!targetCard) return;
+    let preview = image || targetCard.querySelector(":scope > img");
+    if (!preview) {
+      preview = document.createElement("img");
+      preview.alt = "图片预览";
+      input.insertAdjacentElement("afterend", preview);
+    }
+
+    const revoke = () => {
+      if (preview.dataset.objectUrl) URL.revokeObjectURL(preview.dataset.objectUrl);
+      delete preview.dataset.objectUrl;
+    };
+    const sync = () => {
+      const file = input.files?.[0];
+      revoke();
+      targetCard.classList.toggle("has-image", Boolean(file));
+      if (!file) {
+        preview.removeAttribute("src");
+        return;
+      }
+      const url = URL.createObjectURL(file);
+      preview.dataset.objectUrl = url;
+      preview.src = url;
+    };
+
+    input.dataset.mediaUiBound = "1";
+    input.addEventListener("change", sync);
+    sync();
+  };
+
   function genericFamily(job) {
     return state.presets.get(job?.preset_id)?.family
       || state.workflowItems?.get(job?.preset_id)?.manifest?.family
       || null;
   }
 
-  function revokePreview(preview) {
-    const url = preview?.dataset?.objectUrl;
-    if (url) URL.revokeObjectURL(url);
-  }
-
-  function removePreview(input) {
-    const card = input.closest(".generic-reference-card");
-    const preview = card?.querySelector(".generic-source-preview");
-    revokePreview(preview);
-    preview?.remove();
-    card?.classList.remove("has-source-preview");
-  }
-
-  function renderPreview(input) {
-    const file = input.files?.[0];
-    const card = input.closest(".generic-reference-card");
-    if (!card) return;
-    removePreview(input);
-    if (!file) return;
-
-    const preview = document.createElement("img");
-    preview.className = "generic-source-preview";
-    preview.alt = "源图预览";
-    const url = URL.createObjectURL(file);
-    preview.dataset.objectUrl = url;
-    preview.src = url;
-    card.insertBefore(preview, card.querySelector("span") || null);
-    card.classList.add("has-source-preview");
-  }
-
-  function bindGenericImagePreviews() {
+  function prepareGenericImageCards() {
     const preset = selectedPreset();
     if (!preset || preset.family !== "generic") return;
     const slots = preset.input_bindings?.media?.slots || {};
     for (const [role, slot] of Object.entries(slots)) {
       if (slot?.kind !== "image") continue;
       const input = document.querySelector(`#job-form input[name="${CSS.escape(role)}"]`);
-      if (!input || input.dataset.v2PreviewBound === "1") continue;
-      input.dataset.v2PreviewBound = "1";
-      input.addEventListener("change", () => renderPreview(input));
-      if (input.files?.length) renderPreview(input);
+      const card = input?.closest(".generic-reference-card");
+      if (!input || !card) continue;
+      card.classList.add("upload-card");
+      let image = card.querySelector(":scope > img");
+      if (!image) {
+        image = document.createElement("img");
+        image.alt = slot.ui?.label ? `${slot.ui.label}预览` : "参考图预览";
+        input.insertAdjacentElement("afterend", image);
+      }
+      MediaUI.bindSingleImageInput(input, { card, image });
     }
   }
 
-  function installPreviewStyles() {
-    if (document.querySelector("#v2-runtime-preview-style")) return;
-    const style = document.createElement("style");
-    style.id = "v2-runtime-preview-style";
-    style.textContent = `
-      .generic-reference-card.has-source-preview{min-height:94px;border-style:solid;align-items:center}
-      .generic-reference-card.has-source-preview>svg{display:none}
-      .generic-source-preview{display:block;width:76px;height:76px;flex:0 0 76px;object-fit:cover;background:#090b08;border:1px solid var(--border-soft);border-radius:10px}
-      @media (max-width:370px){.generic-source-preview{width:64px;height:64px;flex-basis:64px}}
-    `;
-    document.head.append(style);
-  }
+  const baseApplyPresetForMedia = applyPreset;
+  applyPreset = function(...args) {
+    const result = baseApplyPresetForMedia(...args);
+    queueMicrotask(prepareGenericImageCards);
+    return result;
+  };
 
   function stabilizeGenericProgress(job) {
     const previous = state.jobs.get(job?.id);
@@ -127,19 +132,6 @@
   };
 
   document.addEventListener("DOMContentLoaded", () => {
-    installPreviewStyles();
-    const root = document.querySelector("#generic-parameters");
-    if (!root) return;
-    new MutationObserver(records => {
-      for (const record of records) {
-        for (const node of record.removedNodes) {
-          if (!(node instanceof Element)) continue;
-          if (node.matches?.(".generic-source-preview")) revokePreview(node);
-          node.querySelectorAll?.(".generic-source-preview").forEach(revokePreview);
-        }
-      }
-      bindGenericImagePreviews();
-    }).observe(root, { childList: true, subtree: true });
-    bindGenericImagePreviews();
+    queueMicrotask(prepareGenericImageCards);
   });
 })();
