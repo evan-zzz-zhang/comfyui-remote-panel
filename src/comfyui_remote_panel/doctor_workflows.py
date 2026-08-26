@@ -8,11 +8,12 @@ from .preset import Preset, load_presets, preset_from_definition
 
 
 async def load_doctor_presets(config: Config) -> dict[str, Preset]:
-    """Load packaged presets plus latest persisted user workflow revisions.
+    """Load packaged presets plus enabled persisted user workflow revisions.
 
     Built-in packaged presets remain authoritative so Doctor keeps their normal
     optional-dependency severity. Non-builtin Configurator workflows live only
-    in panel.db and must be added explicitly for compatibility reporting.
+    in panel.db and must be added explicitly for compatibility reporting. Draft
+    or disabled user workflows do not block machine readiness.
     """
     presets = load_presets(config.workflow_dir)
     if not config.database_path.is_file():
@@ -26,6 +27,8 @@ async def load_doctor_presets(config: Config) -> dict[str, Preset]:
 
     for item in rows:
         if item.get("builtin") and item["id"] in presets:
+            continue
+        if item.get("status") != "enabled":
             continue
         definition = item.get("definition")
         if not isinstance(definition, dict):
