@@ -85,6 +85,28 @@ async def test_wai_img2img_inspect_save_enable_submit_and_artifact(panel_client,
         headers=LOGIN,
     )
     assert created.status == 201, await created.text()
+    created_item = await created.json()
+
+    duplicate = await panel_client.post(
+        "/api/workflows",
+        json={"workflow": workflow, "config": config},
+        headers=LOGIN,
+    )
+    assert duplicate.status == 409, await duplicate.text()
+    assert (await duplicate.json())["error"]["code"] == "workflow_exists"
+
+    edited = await panel_client.post(
+        "/api/workflows",
+        json={
+            "workflow": workflow,
+            "config": config,
+            "expected_revision": created_item["revision"],
+        },
+        headers=LOGIN,
+    )
+    assert edited.status == 201, await edited.text()
+    edited_item = await edited.json()
+    assert edited_item["revision"] == created_item["revision"] + 1
 
     enabled = await panel_client.post(
         "/api/workflows/wai-img2img-http/status",
@@ -116,6 +138,7 @@ async def test_wai_img2img_inspect_save_enable_submit_and_artifact(panel_client,
         json.dumps({
             "positive_prompt": "new portrait",
             "negative_prompt": "bad hands",
+            "seed": 1234,
             "steps": 17,
             "cfg": 5.2,
             "sampler": "dpmpp_2m",
@@ -132,6 +155,7 @@ async def test_wai_img2img_inspect_save_enable_submit_and_artifact(panel_client,
 
     assert graph["2"]["inputs"]["text"] == "new portrait"
     assert graph["3"]["inputs"]["text"] == "bad hands"
+    assert int(graph["6"]["inputs"]["seed"]) == 1234
     assert graph["6"]["inputs"]["steps"] == 17
     assert graph["6"]["inputs"]["cfg"] == 5.2
     assert graph["6"]["inputs"]["sampler_name"] == "dpmpp_2m"
