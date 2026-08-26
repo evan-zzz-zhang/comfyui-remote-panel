@@ -3,179 +3,207 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#11130f">
-  <meta name="description" content="安全、轻量的 MiniMax H3 远程生成面板">
-  <title>H3 远程生成</title>
-  <link rel="stylesheet" href="/static/app.css?v=0.4.0">
+  <meta name="theme-color" content="#0E100D">
+  <meta name="description" content="Comfy Remote — 手机优先的 ComfyUI 远程创作端">
+  <title>Comfy Remote</title>
+  <link rel="stylesheet" href="/static/app.css?v=0.6.0">
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <p class="eyebrow">COMFYUI REMOTE</p>
-      <h1>H3 生成台</h1>
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><i></i></span>
+      <h1>Comfy Remote</h1>
     </div>
-    <div id="connection-pill" class="status-pill status-offline"><span></span>连接中</div>
+    <div class="topbar-actions">
+      <div id="connection-pill" class="status-pill status-offline"><span></span>连接中</div>
+      <button id="nav-workflows" class="icon-button settings-entry" data-view="workflows" type="button" aria-label="打开设置">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6l-.04.08V21h-4v-.92l-.04-.08a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1l-.08-.04H3v-4h.92L4 9.92a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6l.04-.08V3h4v.92l.04.08a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.12.37.34.72.6 1l.08.04H21v4h-.92L20 14.08c-.26.28-.48.63-.6.92Z"/></svg>
+      </button>
+    </div>
     <nav class="top-nav" aria-label="主导航">
-      <button id="nav-generate" class="active" data-view="generate"><span>＋</span>生成</button>
-      <button id="nav-jobs" data-view="jobs"><span>▤</span>任务<i id="job-badge" class="hidden">0</i></button>
-      <button id="nav-workflows" data-view="workflows"><span>◇</span>工作流</button>
-      <button id="nav-device" data-view="device"><span>◉</span>设备</button>
+      <button id="nav-generate" class="active" data-view="generate" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>创作</span>
+      </button>
+      <button id="nav-jobs" data-view="jobs" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h12M7 12h12M7 19h12"/><path d="M4 5h.01M4 12h.01M4 19h.01"/></svg><span>任务</span><i id="job-badge" class="hidden">0</i>
+      </button>
+      <button id="nav-device" data-view="device" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="2"/><path d="M9 20h6M12 16v4"/></svg><span>设备</span>
+      </button>
     </nav>
   </header>
 
   <main>
     <section id="view-generate" class="view active" aria-labelledby="nav-generate">
-      <div class="composer-heading">
-        <div><p class="eyebrow">NEW GENERATION</p><h2>新建任务</h2></div>
-        <span id="active-preset-label">H3 FL2VA</span>
+      <div class="page-heading creation-heading">
+        <h2>创作</h2>
+        <span id="active-preset-label" class="heading-meta">工作流加载中</span>
       </div>
 
-      <form id="job-form" class="panel-form">
+      <form id="job-form" class="creation-form">
         <input id="retry-source-id" type="hidden" name="retry_source_id" value="">
-        <div id="retry-draft" class="retry-draft hidden"><span>已载入原任务参数和参考图</span><button id="clear-retry" type="button">清除</button></div>
-        <div id="fl2va-media" class="upload-grid">
-          <label class="upload-card">
-            <input id="first-frame" type="file" name="first_frame" accept="image/jpeg,image/png,image/webp">
-            <img alt="首帧预览">
-            <span class="upload-icon">＋</span>
-            <strong id="first-frame-label">首帧</strong>
-            <small id="first-frame-hint">可选</small>
-          </label>
-          <label class="upload-card">
-            <input id="last-frame" type="file" name="last_frame" accept="image/jpeg,image/png,image/webp">
-            <img alt="尾帧预览">
-            <span class="upload-icon">＋</span>
-            <strong id="last-frame-label">尾帧</strong>
-            <small id="last-frame-hint">可选</small>
-          </label>
-        </div>
+        <div id="retry-draft" class="retry-draft hidden"><span>已载入上次任务</span><button id="clear-retry" type="button">清除</button></div>
 
-        <div id="ref2va-media" class="reference-media hidden">
-          <label class="media-picker">
-            <input id="ref-images" type="file" name="ref_images" accept="image/jpeg,image/png,image/webp" multiple>
-            <span>＋</span><div><strong>参考图片</strong><small>最多 9 张 · JPG / PNG / WebP</small></div><b>选择</b>
-          </label>
-          <div id="ref-image-preview" class="media-preview-grid hidden"></div>
-          <label class="media-picker">
-            <input id="ref-videos" type="file" name="ref_videos" accept="video/mp4,video/quicktime,video/webm" multiple>
-            <span>＋</span><div><strong>参考视频</strong><small>最多 3 段 · 建议 24fps、2–15 秒</small></div><b>选择</b>
-          </label>
-          <div id="ref-video-preview" class="media-file-list hidden"></div>
-          <label class="media-picker">
-            <input id="ref-audios" type="file" name="ref_audios" accept=".wav,.mp3,.flac,.ogg,.m4a" multiple>
-            <span>＋</span><div><strong>参考音频</strong><small>最多 3 段 · 选择已有文件，无需麦克风</small></div><b>选择</b></label>
-          <div id="ref-audio-preview" class="media-file-list hidden"></div>
-          <p class="reference-tag-tip">提示词可使用 <code>&lt;Picture 1&gt;</code>、<code>&lt;Video 1&gt;</code>、<code>&lt;Audio 1&gt;</code> 指代对应素材；视频自带音轨会自动一同送入工作流。</p>
-        </div>
+        <section class="creation-section workflow-section" aria-labelledby="workflow-label">
+          <div class="section-heading"><span id="workflow-label">工作流</span></div>
+          <button id="workflow-picker-button" class="workflow-picker" type="button" aria-haspopup="dialog">
+            <span><strong>加载中</strong><small>正在读取可用工作流</small></span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+          <select name="preset_id" id="preset-select" class="native-source" tabindex="-1" aria-hidden="true"></select>
+        </section>
 
-        <label class="field prompt-field">
-          <span>提示词 <small>纯文字模式必填；有首帧或尾帧时可留空</small></span>
-          <textarea name="prompt" rows="6" maxlength="10000" placeholder="描述主体、动作、镜头运动，以及对白、环境声或音乐……"></textarea>
+        <section id="reference-section" class="creation-section reference-section">
+          <div class="section-heading"><span>参考素材</span><small id="reference-section-hint"></small></div>
+          <div id="fl2va-media" class="frame-grid">
+            <label class="upload-card">
+              <input id="first-frame" type="file" name="first_frame" accept="image/jpeg,image/png,image/webp">
+              <img alt="首帧预览">
+              <span class="upload-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
+              <strong id="first-frame-label">首帧</strong>
+              <small id="first-frame-hint">可选</small>
+            </label>
+            <label class="upload-card">
+              <input id="last-frame" type="file" name="last_frame" accept="image/jpeg,image/png,image/webp">
+              <img alt="尾帧预览">
+              <span class="upload-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
+              <strong id="last-frame-label">尾帧</strong>
+              <small id="last-frame-hint">可选</small>
+            </label>
+          </div>
+
+          <div id="ref2va-media" class="reference-media hidden">
+            <button id="add-reference" class="reference-add" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              <span><strong>添加参考</strong><small>图片 / 视频 / 音频</small></span>
+            </button>
+            <label class="legacy-media-input"><input id="ref-images" type="file" name="ref_images" accept="image/jpeg,image/png,image/webp" multiple><span>图片</span></label>
+            <label class="legacy-media-input"><input id="ref-videos" type="file" name="ref_videos" accept="video/mp4,video/quicktime,video/webm" multiple><span>视频</span></label>
+            <label class="legacy-media-input"><input id="ref-audios" type="file" name="ref_audios" accept=".wav,.mp3,.flac,.ogg,.m4a" multiple><span>音频</span></label>
+            <div class="reference-strip" aria-live="polite">
+              <div id="ref-image-preview" class="media-preview-grid hidden"></div>
+              <div id="ref-video-preview" class="media-file-list hidden"></div>
+              <div id="ref-audio-preview" class="media-file-list hidden"></div>
+            </div>
+            <p class="reference-tag-tip">提示词中可使用 <code>&lt;Picture 1&gt;</code>、<code>&lt;Video 1&gt;</code>、<code>&lt;Audio 1&gt;</code> 指代对应素材。</p>
+          </div>
+        </section>
+
+        <label class="creation-section prompt-field">
+          <span class="section-heading"><span>提示词</span><small id="prompt-hint">描述画面、动作、镜头与声音</small></span>
+          <textarea name="prompt" rows="5" maxlength="10000" placeholder="描述主体、动作、镜头运动、对白和声音……"></textarea>
         </label>
 
-        <div class="parameter-grid">
-          <label class="field duration-field"><span>时长 <output id="duration-value">5 秒</output></span><input name="duration_seconds" type="range" min="5" max="15" step="1" value="5"></label>
-          <button id="follow-video-duration" class="secondary-button hidden" type="button" disabled>跟随参考视频 1</button>
-          <label class="field"><span>画幅</span>
-            <select name="aspect_ratio">
-              <option>9:16</option><option id="reference-aspect-image-option" value="reference_image" disabled>参考图 1 画幅（需参考图）</option><option id="reference-aspect-video-option" value="reference_video" disabled>参考视频 1 画幅（需参考视频）</option><option>16:9</option><option>1:1</option><option>2:3</option>
-              <option>3:2</option><option>3:4</option><option>4:3</option><option>21:9</option>
-            </select>
-          </label>
-          <div class="field wide"><span>分辨率 <b id="mp-value">0.4 MP</b></span><input id="megapixels-value" name="megapixels" type="hidden" value="0.4"><div class="resolution-presets" role="group" aria-label="分辨率预设"><button type="button" data-megapixels="0.2" aria-pressed="false">0.2</button><button type="button" data-megapixels="0.4" aria-pressed="true">0.4</button><button type="button" data-megapixels="0.6" aria-pressed="false">0.6</button><button type="button" data-megapixels="0.8" aria-pressed="false">0.8</button><button type="button" data-megapixels="0.9" aria-pressed="false">0.9</button><button type="button" data-megapixels="1.0" aria-pressed="false">1.0</button></div></div>
-        </div>
-        <p id="load-warning" class="notice hidden">当前组合负载较高，可能耗时很久或显存不足；失败后可原参数重试。</p>
+        <div id="generic-parameters" class="generic-parameters hidden"></div>
 
-        <details class="advanced">
-          <summary>高级设置 <span>⌄</span></summary>
+        <section id="basic-settings" class="creation-section settings-summary-section">
+          <div class="section-heading"><span>生成设置</span></div>
+          <button id="open-generation-settings" class="settings-summary" type="button" aria-haspopup="dialog">
+            <span id="settings-chips" class="settings-chips"></span>
+            <span class="settings-adjust">调整<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></span>
+          </button>
+        </section>
+
+        <div id="h3-settings-source" class="settings-source" aria-hidden="true">
+          <div class="parameter-grid">
+            <label class="field duration-field"><span>时长 <output id="duration-value">5 秒</output></span><input name="duration_seconds" type="range" min="5" max="15" step="1" value="5"></label>
+            <button id="follow-video-duration" class="secondary-button hidden" type="button" disabled>跟随参考视频 1</button>
+            <label class="field"><span>画幅</span>
+              <select name="aspect_ratio">
+                <option>9:16</option><option id="reference-aspect-image-option" value="reference_image" disabled>参考图 1 画幅</option><option id="reference-aspect-video-option" value="reference_video" disabled>参考视频 1 画幅</option><option>16:9</option><option>1:1</option><option>2:3</option><option>3:2</option><option>3:4</option><option>4:3</option><option>21:9</option>
+              </select>
+            </label>
+            <div class="field wide"><span>分辨率 <b id="mp-value">0.4 MP</b></span><input id="megapixels-value" name="megapixels" type="hidden" value="0.4"><div class="resolution-presets"><button type="button" data-megapixels="0.2">0.2</button><button type="button" data-megapixels="0.4" aria-pressed="true">0.4</button><button type="button" data-megapixels="0.6">0.6</button><button type="button" data-megapixels="0.8">0.8</button><button type="button" data-megapixels="0.9">0.9</button><button type="button" data-megapixels="1.0">1.0</button></div></div>
+          </div>
+        </div>
+        <p id="load-warning" class="notice hidden">当前组合负载较高，可能耗时较久或显存不足。</p>
+
+        <details id="advanced-settings" class="advanced">
+          <summary><span>高级设置</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
           <div class="advanced-grid">
-            <label class="field wide"><span>工作流</span><select name="preset_id" id="preset-select"></select></label>
             <label class="field"><span>调度器</span><select name="scheduler"></select></label>
             <label class="field"><span>采样器</span><select name="sampler"></select></label>
             <label class="field"><span>迭代步数</span><input name="steps" type="number" min="1" max="50" step="1"></label>
-            <label class="field"><span>种子</span><input name="seed" inputmode="numeric" pattern="[0-9]*" placeholder="留空则随机"></label>
+            <label class="field"><span>种子</span><input name="seed" inputmode="numeric" pattern="[0-9]*" placeholder="随机"></label>
           </div>
-          <p id="preset-description">种子支持 0 至 18446744073709551615；任务会保存实际使用的全部参数。</p>
+          <p id="preset-description"></p>
         </details>
 
-        <div id="generic-parameters" class="parameter-grid hidden"></div>
-
-        <button id="submit-button" class="primary-button" type="submit"><span>提交生成</span><b>→</b></button>
+        <button id="submit-button" class="primary-button generate-button" type="submit"><span>生成</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M14 7l5 5-5 5"/></svg></button>
         <p id="form-message" class="form-message" role="status"></p>
       </form>
     </section>
 
     <section id="view-jobs" class="view" aria-labelledby="nav-jobs">
       <div class="page-heading">
-        <div><p class="eyebrow">GENERATION LOG</p><h2>任务记录</h2></div>
-        <button id="refresh-jobs" class="icon-button" type="button" aria-label="刷新任务">↻</button>
+        <h2>任务</h2>
+        <button id="refresh-jobs" class="icon-button" type="button" aria-label="刷新任务"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5"/><path d="M18.5 15a7 7 0 1 1-.6-7.6L20 11"/></svg></button>
       </div>
       <div id="jobs-list" class="jobs-list"></div>
-      <div id="jobs-empty" class="empty-state"><span>◎</span><h3>还没有任务</h3><p>从“生成”页提交第一个镜头。</p></div>
-      <button id="load-more-jobs" class="primary-button hidden" type="button">加载更多任务</button>
+      <div id="jobs-empty" class="empty-state"><span class="empty-icon"><svg viewBox="0 0 24 24"><path d="M7 5h10M7 12h10M7 19h7"/></svg></span><h3>还没有任务</h3><p>从“创作”页开始第一次生成。</p></div>
+      <button id="load-more-jobs" class="secondary-wide hidden" type="button">加载更多任务</button>
     </section>
 
-    <section id="view-workflows" class="view" aria-labelledby="nav-workflows">
-      <div class="page-heading"><div><p class="eyebrow">REMOTE WORKFLOWS</p><h2>工作流管理</h2></div></div>
-      <div class="metric-card workflow-importer">
-        <label class="field"><span>工作流名称</span><input id="workflow-name" placeholder="例如：SDXL 出图"></label>
-        <label class="field"><span>工作流 ID</span><input id="workflow-id" placeholder="例如：sdxl-image"></label>
-        <label class="media-picker"><input id="workflow-json" type="file" accept="application/json,.json"><span>＋</span><div><strong>导入 API Workflow</strong><small>在 ComfyUI 中选择“导出（API）”</small></div><b>选择</b></label>
-        <div id="workflow-inspection" class="diagnostics"></div>
-        <button id="save-workflow" class="primary-button" type="button" disabled>保存为草稿</button>
-        <p id="workflow-message" class="form-message" role="status"></p>
+    <section id="view-workflows" class="view settings-view" aria-label="设置">
+      <div id="settings-home">
+        <div class="page-heading"><h2>设置</h2><button id="settings-close" class="icon-button" type="button" aria-label="关闭设置"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+        <div class="settings-list">
+          <button id="open-workflow-manager" class="settings-row" type="button"><span><strong>工作流</strong><small>管理生成工作流、导入和显示名称</small></span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+          <div class="settings-row static"><span><strong>连接</strong><small>Tailscale / 本地访问</small></span><span class="row-value">当前配置</span></div>
+          <div class="settings-row static"><span><strong>日志与诊断</strong><small>运行日志与故障信息</small></span><span class="row-value">设备页</span></div>
+          <div class="settings-row static"><span><strong>关于</strong><small>Comfy Remote v0.2</small></span></div>
+        </div>
       </div>
-      <div class="metric-card">
-        <label class="media-picker"><input id="workflow-package" type="file" accept="application/zip,.zip"><span>⇧</span><div><strong>导入 Remote Workflow Package</strong><small>ZIP 不得包含模型、素材、本地路径或密钥</small></div><b>选择</b></label>
+
+      <div id="workflow-manager" class="hidden">
+        <div class="page-heading"><button id="workflow-manager-back" class="icon-button back-button" type="button" aria-label="返回设置"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button><h2>工作流</h2><span class="heading-spacer"></span></div>
+        <div class="workflow-manager-tabs" aria-hidden="true"><span class="active">全部</span><span>视频</span><span>图片</span></div>
+        <div id="workflow-list" class="workflow-list"></div>
+        <button id="open-workflow-importer" class="primary-button compact-primary" type="button"><span>导入工作流</span><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+
+        <div id="workflow-importer" class="workflow-importer hidden">
+          <div class="subpage-heading"><div><strong>导入 API Workflow</strong><small>自动识别基础输入；高级节点映射默认收起</small></div><button id="close-workflow-importer" class="icon-button small" type="button" aria-label="关闭导入"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+          <label class="field"><span>显示名称</span><input id="workflow-name" placeholder="例如：WAI 出图"></label>
+          <label class="field hidden"><span>工作流 ID</span><input id="workflow-id" placeholder="自动生成"></label>
+          <label class="file-drop"><input id="workflow-json" type="file" accept="application/json,.json"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 20h14"/></svg><span><strong>选择 API Workflow JSON</strong><small>请使用 ComfyUI 的“导出（API）”</small></span></label>
+          <div id="workflow-inspection" class="workflow-inspection"></div>
+          <button id="save-workflow" class="primary-button" type="button" disabled><span>保存并启用</span><svg viewBox="0 0 24 24"><path d="M5 12h14M14 7l5 5-5 5"/></svg></button>
+          <p id="workflow-message" class="form-message" role="status"></p>
+          <details class="package-import"><summary>导入 Remote Workflow Package</summary><label class="file-drop small-drop"><input id="workflow-package" type="file" accept="application/zip,.zip"><span><strong>选择 ZIP</strong><small>不得包含模型、素材、本地路径或密钥</small></span></label></details>
+        </div>
       </div>
-      <div id="workflow-list" class="jobs-list"></div>
     </section>
 
     <section id="view-device" class="view" aria-labelledby="nav-device">
-      <div class="page-heading"><div><p class="eyebrow">WORKSTATION</p><h2>设备状态</h2></div></div>
+      <div class="page-heading"><h2>工作站</h2></div>
       <div id="device-overview" class="device-overview"></div>
-      <div class="metric-card control-card">
-        <div class="metric-title"><span>ComfyUI 控制</span><b id="control-state">检查中</b></div>
-        <p class="metric-note">启动和重启可能需要一两分钟，完成后状态会自动更新。</p>
-        <div class="device-actions" id="device-actions">
-          <button type="button" data-control="start">启动</button>
-          <button type="button" data-control="restart">重启</button>
-          <button type="button" class="danger" data-control="stop">关闭</button>
-        </div>
+      <div class="device-card control-card">
+        <div class="card-heading"><span><strong>ComfyUI</strong><small>远程启动、重启或关闭</small></span><b id="control-state">检查中</b></div>
+        <div class="device-actions" id="device-actions"><button type="button" data-control="start">启动</button><button type="button" data-control="restart">重启</button><button type="button" class="danger" data-control="stop">关闭</button></div>
         <p id="control-message" class="control-message" aria-live="polite"></p>
       </div>
-      <div class="metric-card accent">
-        <div class="metric-title"><span>GPU</span><b id="gpu-name">暂不可用</b></div>
-        <div class="metric-hero"><strong id="gpu-util">—</strong><span>%</span></div>
-        <div class="progress-track"><i id="gpu-bar"></i></div>
-        <div class="metric-grid">
-          <div><small>显存</small><strong id="gpu-memory">—</strong></div>
-          <div><small>温度</small><strong id="gpu-temp">—</strong></div>
-          <div><small>功耗</small><strong id="gpu-power">—</strong></div>
-        </div>
+      <div class="device-card gpu-card">
+        <div class="card-heading"><span><strong>GPU</strong><small id="gpu-name">暂不可用</small></span><b><span id="gpu-util">—</span>%</b></div>
+        <div class="metric-progress"><i id="gpu-bar"></i></div>
+        <div class="metric-grid"><div><small>显存</small><strong id="gpu-memory">—</strong></div><div><small>温度</small><strong id="gpu-temp">—</strong></div><div><small>功耗</small><strong id="gpu-power">—</strong></div></div>
       </div>
-      <div class="metric-card">
-        <div class="metric-title"><span>系统内存</span><b id="ram-percent">—</b></div>
-        <div class="progress-track neutral"><i id="ram-bar"></i></div>
-        <p id="ram-memory" class="metric-note">暂不可用</p>
-      </div>
-      <div class="metric-card">
-        <div class="metric-title"><span>存储</span><b id="disk-free">—</b></div>
-        <div class="metric-grid two"><div><small>面板文件</small><strong id="tracked-size">—</strong></div><div><small>运行时间</small><strong id="uptime">—</strong></div></div>
-      </div>
+      <div class="device-card compact-metrics"><div><small>系统内存</small><strong id="ram-percent">—</strong><div class="metric-progress neutral"><i id="ram-bar"></i></div><span id="ram-memory">暂不可用</span></div><div><small>存储</small><strong id="disk-free">—</strong><span>面板文件 <b id="tracked-size">—</b></span></div><div><small>面板运行</small><strong id="uptime">—</strong></div></div>
       <div id="preset-diagnostics" class="diagnostics"></div>
     </section>
   </main>
 
-  <div id="video-modal" class="video-modal hidden" role="dialog" aria-modal="true" aria-labelledby="video-title">
-    <div class="video-dialog">
-      <div class="video-dialog-head"><strong id="video-title">视频预览</strong><button id="video-close" type="button" aria-label="关闭视频">×</button></div>
-      <video id="video-player" controls playsinline preload="none"></video>
-      <p>播放结束后播放器会保留，可拖动进度或重新播放。</p>
-    </div>
+  <div id="sheet-backdrop" class="sheet-backdrop hidden">
+    <section id="bottom-sheet" class="bottom-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+      <header class="sheet-header"><strong id="sheet-title">设置</strong><button id="sheet-close" class="icon-button small" type="button" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
+      <div id="sheet-body" class="sheet-body"></div>
+    </section>
+  </div>
+
+  <div id="video-modal" class="viewer-modal hidden" role="dialog" aria-modal="true" aria-labelledby="video-title">
+    <div class="viewer-dialog"><div class="viewer-head"><strong id="video-title">视频预览</strong><button id="video-close" class="icon-button small" type="button" aria-label="关闭视频"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><video id="video-player" controls playsinline preload="none"></video></div>
   </div>
 
   <script src="/static/app.js?v=0.4.0" defer></script>
-  <script src="/static/workflow_ux.js?v=0.5.0" defer></script>
+  <script src="/static/workflow_ux.js?v=0.6.0" defer></script>
 </body>
 </html>
