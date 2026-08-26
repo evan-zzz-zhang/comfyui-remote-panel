@@ -1,5 +1,9 @@
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
+
+from comfyui_remote_panel.db import Database
 from comfyui_remote_panel.doctor import (
     DoctorCheck,
     FAIL,
@@ -9,7 +13,10 @@ from comfyui_remote_panel.doctor import (
     redact_text,
     workflow_compatibility_detail,
 )
+from comfyui_remote_panel.doctor_workflows import load_doctor_presets
 from comfyui_remote_panel.preset import Preset
+from comfyui_remote_panel.workflow_config import build_definition
+from test_workflow_config import remote_config, save_image_workflow
 
 
 def test_doctor_report_redacts_user_paths_email_tailscale_and_secret():
@@ -70,3 +77,22 @@ def test_workflow_compatibility_detail_is_profile_only_and_never_dumps_workflow_
     assert "batch controlled by workflow" in detail
     assert "DO_NOT_PRINT" not in detail
     assert "secret_workflow_value" not in detail
+
+
+@pytest.mark.asyncio
+async def test_doctor_loads_latest_persisted_nonbuiltin_workflows(tmp_path):
+    database_path = tmp_path / "data" / "panel.db"
+    database = Database(database_path)
+    await database.initialize()
+    definition = build_definition(save_image_workflow(), remote_config())
+    await database.save_workflow(definition, status="enabled")
+
+    config = SimpleNamespace(
+        workflow_dir=tmp_path / "workflows",
+        database_path=database_path,
+    )
+    presets = await load_doctor_presets(config)
+    assert "standard-save-image" in presets
+    preset = presets["standard-save-image"]
+    assert preset.manifest["name"] == "Standard SaveImage"
+    assert preset.manifest["output_bindings"][0]["kind"] == "image"
