@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 import json
 import time
 from typing import Any
@@ -26,6 +27,7 @@ def install_workflow_runtime() -> None:
     _INSTALLED = True
 
     original_validate_media_roles = Preset.validate_media_roles
+    original_validate_parameters = Preset.validate_parameters
     original_public_metadata = Preset.public_metadata
     original_apply_history = JobService._apply_history
     original_handle_ws_event = JobService.handle_ws_event
@@ -55,6 +57,101 @@ def install_workflow_runtime() -> None:
                 raise PresetError(f"缺少必需素材：{'、'.join(labels)}")
             return ("纯文字" if not roles else f"{len(roles)} 个媒体输入"), False
         return original_validate_media_roles(self, roles)
+
+    def _check_step(name: str, value: int | float, spec: dict[str, Any]) -> None:
+        step = spec.get("step")
+        if step is None:
+            return
+        try:
+            step_value = Decimal(str(step))
+            if step_value <= 0:
+                return
+            base = Decimal(str(spec.get("minimum", 0)))
+            quotient = (Decimal(str(value)) - base) / step_value
+        except (InvalidOperation, ValueError, ZeroDivisionError) as exc:
+            raise PresetError(f"{name} 步进配置无效") from exc
+        if quotient != quotient.to_integral_value():
+            raise PresetError(f"{name} 步进不合法")
+
+    def _number_value(name: str, value: Any, spec: dict[str, Any]) -> float:
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise PresetError(f"{name} 必须是数字")
+        number = float(value)
+        _check_step(name, number, spec)
+        step = spec.get("step")
+        if step is None:
+            return number
+        try:
+            decimal_step = Decimal(str(step)).normalize()
+            places = max(0, -decimal_step.as_tuple().exponent)
+        except (InvalidOperation, ValueError):
+            places = 12
+        return round(number, places)
+
+    def validate_parameters(
+        self: Preset, values: dict[str, Any], *, allow_empty_prompt: bool = False
+    ) -> dict[str, Any]:
+        # H3 keeps its established normalization path. Generic workflows instead
+        # honor each `/object_info` Schema step; a 0.01 denoise must not be
+        # silently rounded to one decimal place by the legacy H3 validator.
+        if self.manifest.get("family", "generic") != "generic":
+            return original_validate_parameters(self, values, allow_empty_prompt=allow_empty_prompt)
+
+        specs = self.manifest["parameters"]
+        result: dict[str, Any] = {}
+        for name, spec in specs.items():
+            value = values.get(name, spec.get("default"))
+            if name == "prompt":
+                if not isinstance(value, str) or not value.strip():
+                    if not allow_empty_prompt:
+                        raise PresetError("提示词不能为空")
+                    result[name] = ""
+                    continue
+                result[name] = value.strip()
+                continue
+            if name == "seed":
+                if value is None:
+                    result[name] = None
+                    continue
+                if isinstance(value, int) and not isinstance(value, bool):
+                    seed = value
+                elif isinstance(value, str) and value.isascii() and value.isdigit():
+                    seed = int(value)
+                else:
+                    raise PresetError("种子必须是整数")
+                minimum, maximum = spec.get("minimum"), spec.get("maximum")
+                if minimum is not None and seed < minimum:
+                    raise PresetError(f"{name} 低于允许范围")
+                if maximum is not None and seed > maximum:
+                    raise PresetError(f"{name} 超出允许范围")
+                _check_step(name, seed, spec)
+                result[name] = str(seed)
+                continue
+
+            kind = spec["type"]
+            if kind == "integer":
+                if not isinstance(value, int) or isinstance(value, bool):
+                    raise PresetError(f"{name} 必须是整数")
+                _check_step(name, value, spec)
+            elif kind == "number":
+                value = _number_value(name, value, spec)
+            elif kind == "string":
+                if not isinstance(value, str):
+                    raise PresetError(f"{name} 必须是文本")
+            elif kind == "boolean":
+                if not isinstance(value, bool):
+                    raise PresetError(f"{name} 必须是布尔值")
+            elif kind == "enum":
+                if value not in spec["values"]:
+                    raise PresetError(f"不支持的 {name}")
+
+            minimum, maximum = spec.get("minimum"), spec.get("maximum")
+            if minimum is not None and value < minimum:
+                raise PresetError(f"{name} 低于允许范围")
+            if maximum is not None and value > maximum:
+                raise PresetError(f"{name} 超出允许范围")
+            result[name] = value
+        return result
 
     def public_metadata(self: Preset) -> dict[str, Any]:
         result = original_public_metadata(self)
@@ -152,6 +249,7 @@ def install_workflow_runtime() -> None:
             await persist_runtime_result(self, await self.db.get_job(job_id))
 
     Preset.validate_media_roles = validate_media_roles
+    Preset.validate_parameters = validate_parameters
     Preset.public_metadata = public_metadata
     JobService._apply_history = apply_history
     JobService.handle_ws_event = handle_ws_event
