@@ -98,6 +98,74 @@ def redact_text(value: str) -> str:
     return text
 
 
+def _fallback_output_type(preset: Preset) -> str:
+    bindings = preset.manifest.get("output_bindings")
+    if isinstance(bindings, list) and bindings:
+        primary = next((item for item in bindings if isinstance(item, dict) and item.get("primary")), bindings[0])
+        if isinstance(primary, dict) and primary.get("kind"):
+            return str(primary["kind"])
+    return "unknown"
+
+
+def _required_input_summary(preset: Preset) -> str:
+    profile = preset.manifest.get("capability_profile")
+    if isinstance(profile, dict):
+        required = profile.get("required_media_inputs")
+        if isinstance(required, dict) and required:
+            parts = [f"{kind}×{count}" for kind, count in required.items() if int(count or 0) > 0]
+            if parts:
+                return ", ".join(parts)
+    media = preset.manifest.get("input_bindings", {}).get("media", {})
+    if isinstance(media, dict) and media.get("type") == "slots":
+        counts: dict[str, int] = {}
+        for slot in media.get("slots", {}).values():
+            if not isinstance(slot, dict):
+                continue
+            required = slot.get("required") is True or (
+                isinstance(slot.get("ui"), dict) and slot["ui"].get("optional") is False
+            )
+            if required:
+                kind = str(slot.get("kind") or "file")
+                counts[kind] = counts.get(kind, 0) + 1
+        if counts:
+            return ", ".join(f"{kind}×{count}" for kind, count in counts.items())
+    return "none"
+
+
+def _preflight_warnings(preset: Preset) -> list[str]:
+    preflight = preset.manifest.get("preflight")
+    if not isinstance(preflight, dict):
+        return []
+    warnings: list[str] = []
+    for section, item in preflight.items():
+        if not isinstance(item, dict) or item.get("status") != WARN:
+            continue
+        message = str(item.get("message") or "warning")
+        warnings.append(f"{section}: {message}")
+    return warnings
+
+
+def workflow_compatibility_detail(preset: Preset, diagnostics: list[str]) -> str:
+    """Return a privacy-safe one-line profile; never serializes workflow JSON."""
+    profile = preset.manifest.get("capability_profile")
+    output_type = (
+        str(profile.get("output_type"))
+        if isinstance(profile, dict) and profile.get("output_type")
+        else _fallback_output_type(preset)
+    )
+    missing_nodes = [item.removeprefix("缺少节点：") for item in diagnostics if item.startswith("缺少节点：")]
+    other_runtime = [item for item in diagnostics if not item.startswith("缺少节点：")]
+    warnings = _preflight_warnings(preset)
+    if other_runtime:
+        warnings.extend(other_runtime[:4])
+    warning_text = "; ".join(warnings[:4]) or "none"
+    missing_text = ", ".join(missing_nodes[:6]) or "none"
+    return (
+        f"output={output_type}; required inputs={_required_input_summary(preset)}; "
+        f"missing nodes={missing_text}; warnings={warning_text}"
+    )
+
+
 def _collect(config_path: str | Path) -> list[DoctorCheck]:
     path = Path(config_path).expanduser().resolve()
     checks: list[DoctorCheck] = []
@@ -226,14 +294,13 @@ def _collect(config_path: str | Path) -> list[DoctorCheck]:
             optional = bool(preset and _builtin(preset))
             if diagnostics:
                 status = WARN if optional else FAIL
-                detail = "; ".join(diagnostics[:6])
-                if len(diagnostics) > 6:
-                    detail += f"; +{len(diagnostics) - 6} more"
+            elif preset and _preflight_warnings(preset):
+                status = WARN
             else:
                 status = PASS
-                detail = "compatible with current ComfyUI"
             label = preset.manifest.get("name", preset_id) if preset else preset_id
-            checks.append(DoctorCheck("Workflows", label, status, detail))
+            detail = workflow_compatibility_detail(preset, diagnostics) if preset else "; ".join(diagnostics[:6])
+            checks.append(DoctorCheck("Workflow compatibility", label, status, detail))
 
     devices = comfy_stats.get("devices") if isinstance(comfy_stats, dict) else None
     if isinstance(devices, list) and devices:
