@@ -31,6 +31,7 @@ def install_workflow_runtime() -> None:
     original_handle_ws_event = JobService.handle_ws_event
     original_cancel = JobService.cancel
     original_observe_missing = JobService._observe_missing
+    original_recover_missing_outputs = JobService._recover_missing_outputs
 
     def validate_media_roles(self: Preset, roles: set[str]) -> tuple[str, bool]:
         media = self.media_binding
@@ -76,9 +77,16 @@ def install_workflow_runtime() -> None:
 
         job_status = str(job["status"])
         if job_status == "succeeded":
-            status = "PASS"
-            message = "Runtime execution passed"
-            details: list[str] = []
+            artifacts = await service.db.list_artifacts(str(job["id"]))
+            outputs = [item for item in artifacts if item.get("direction") == "output"]
+            if outputs:
+                status = "PASS"
+                message = "Runtime execution passed"
+                details: list[str] = []
+            else:
+                status = "WARN"
+                message = "Runtime execution passed; output capture pending"
+                details = []
         elif job_status == "cancelled":
             status = "WARN"
             message = "Runtime test cancelled"
@@ -119,6 +127,9 @@ def install_workflow_runtime() -> None:
 
     async def handle_ws_event(self: JobService, event: dict[str, Any]) -> None:
         await original_handle_ws_event(self, event)
+        # execution_success already flows through the patched _apply_history.
+        if event.get("type") == "execution_success":
+            return
         data = event.get("data") if isinstance(event.get("data"), dict) else {}
         prompt_id = data.get("prompt_id")
         if isinstance(prompt_id, str):
@@ -134,9 +145,16 @@ def install_workflow_runtime() -> None:
         await persist_runtime_result(self, result)
         return result
 
+    async def recover_missing_outputs(self: JobService) -> None:
+        pending_ids = [str(job["id"]) for job in await self.db.succeeded_without_output()]
+        await original_recover_missing_outputs(self)
+        for job_id in pending_ids:
+            await persist_runtime_result(self, await self.db.get_job(job_id))
+
     Preset.validate_media_roles = validate_media_roles
     Preset.public_metadata = public_metadata
     JobService._apply_history = apply_history
     JobService.handle_ws_event = handle_ws_event
     JobService.cancel = cancel
     JobService._observe_missing = observe_missing
+    JobService._recover_missing_outputs = recover_missing_outputs
