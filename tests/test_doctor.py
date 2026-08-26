@@ -1,4 +1,15 @@
-from comfyui_remote_panel.doctor import DoctorCheck, FAIL, PASS, WARN, format_markdown, redact_text
+from pathlib import Path
+
+from comfyui_remote_panel.doctor import (
+    DoctorCheck,
+    FAIL,
+    PASS,
+    WARN,
+    format_markdown,
+    redact_text,
+    workflow_compatibility_detail,
+)
+from comfyui_remote_panel.preset import Preset
 
 
 def test_doctor_report_redacts_user_paths_email_tailscale_and_secret():
@@ -30,3 +41,32 @@ def test_markdown_report_uses_only_public_severity_levels():
     assert "**WARN**" in report
     assert "**FAIL**" in report
     assert "NOT READY" in report
+
+
+def test_workflow_compatibility_detail_is_profile_only_and_never_dumps_workflow_json():
+    manifest = {
+        "id": "wai-img2img",
+        "name": "WAI img2img",
+        "minimum_comfyui_version": "0.26.0",
+        "output_bindings": [{"node": "8", "kind": "image", "primary": True}],
+        "input_bindings": {"media": {"type": "slots", "slots": {
+            "image_0": {"kind": "image", "required": True, "ui": {"label": "源图", "optional": False}},
+        }}},
+        "parameters": {},
+        "dependencies": [],
+        "capability_profile": {
+            "output_type": "image",
+            "required_media_inputs": {"image": 1},
+        },
+        "preflight": {
+            "parameters": {"status": "WARN", "message": "batch controlled by workflow"},
+        },
+    }
+    preset = Preset(Path("."), manifest, {"8": {"class_type": "SaveImage", "inputs": {"secret_workflow_value": "DO_NOT_PRINT"}}})
+    detail = workflow_compatibility_detail(preset, ["缺少节点：FooNode"])
+    assert "output=image" in detail
+    assert "required inputs=image×1" in detail
+    assert "missing nodes=FooNode" in detail
+    assert "batch controlled by workflow" in detail
+    assert "DO_NOT_PRINT" not in detail
+    assert "secret_workflow_value" not in detail
