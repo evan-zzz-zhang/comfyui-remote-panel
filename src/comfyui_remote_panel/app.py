@@ -445,9 +445,16 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
             return json_error(str(exc), 400, "validation_error")
 
     async def delete_workflow(request: web.Request) -> web.Response:
-        item = await app["db"].set_workflow_status(request.match_info["workflow_id"], "disabled")
+        workflow_id = request.match_info["workflow_id"]
+        item = await app["db"].get_workflow(workflow_id)
         if item is None:
             return json_error("工作流不存在", 404, "not_found")
+        if item["builtin"]:
+            return json_error("内置工作流不能删除", 409, "builtin_workflow")
+        async with app["db"]._lock:
+            with app["db"]._connect() as db:
+                db.execute("DELETE FROM workflows WHERE id = ?", (workflow_id,))
+        app["presets"].pop(workflow_id, None)
         return web.Response(status=204)
 
     app.router.add_get("/healthz", healthz)
