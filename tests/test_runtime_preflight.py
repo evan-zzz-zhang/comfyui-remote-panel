@@ -123,7 +123,11 @@ async def test_old_job_runtime_result_does_not_overwrite_new_revision(panel_clie
     new_config["name"] = "Standard SaveImage r2"
     saved = await panel_client.post(
         "/api/workflows",
-        json={"workflow": save_image_workflow(), "config": new_config},
+        json={
+            "workflow": save_image_workflow(),
+            "config": new_config,
+            "expected_revision": first_revision,
+        },
         headers=LOGIN,
     )
     assert saved.status == 201, await saved.text()
