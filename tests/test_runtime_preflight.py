@@ -1,0 +1,81 @@
+from __future__ import annotations
+
+from unittest.mock import AsyncMock
+
+import pytest
+
+from test_app import LOGIN, comfy_server, panel_client
+from test_workflow_config import remote_config, save_image_workflow
+
+
+async def create_generic_workflow(panel_client):
+    response = await panel_client.post(
+        "/api/workflows",
+        json={"workflow": save_image_workflow(), "config": remote_config()},
+        headers=LOGIN,
+    )
+    assert response.status == 201, await response.text()
+    item = await response.json()
+    enabled = await panel_client.post(
+        f"/api/workflows/{item['id']}/status",
+        json={"status": "enabled"},
+        headers=LOGIN,
+    )
+    assert enabled.status == 200, await enabled.text()
+    return item["id"]
+
+
+@pytest.mark.asyncio
+async def test_runtime_preflight_persists_pass_and_fail_without_new_revision(panel_client, comfy_server):
+    workflow_id = await create_generic_workflow(panel_client)
+    before = await (await panel_client.get(f"/api/workflows/{workflow_id}", headers=LOGIN)).json()
+    revision = before["revision"]
+    assert before["definition"]["manifest"]["preflight"]["runtime"]["status"] == "WARN"
+
+    test_response = await panel_client.post(
+        f"/api/workflows/{workflow_id}/test",
+        json={"positive_prompt": "runtime pass", "steps": 10},
+        headers=LOGIN,
+    )
+    assert test_response.status == 201, await test_response.text()
+    test_job = await test_response.json()
+    panel_client.app["comfy"].history = AsyncMock(return_value={
+        test_job["id"]: {
+            "status": {"completed": True, "status_str": "success", "messages": []},
+            "outputs": {},
+        }
+    })
+    await panel_client.app["jobs"].handle_ws_event({
+        "type": "execution_success",
+        "data": {"prompt_id": test_job["id"]},
+    })
+
+    passed = await (await panel_client.get(f"/api/workflows/{workflow_id}", headers=LOGIN)).json()
+    runtime = passed["definition"]["manifest"]["preflight"]["runtime"]
+    assert passed["revision"] == revision
+    assert runtime["status"] == "PASS"
+    assert runtime["message"] == "Runtime execution passed"
+    assert isinstance(runtime["tested_at"], float)
+
+    presets = await (await panel_client.get("/api/presets", headers=LOGIN)).json()
+    public = next(item for item in presets["items"] if item["id"] == workflow_id)
+    assert public["preflight"]["runtime"]["status"] == "PASS"
+
+    fail_response = await panel_client.post(
+        f"/api/workflows/{workflow_id}/test",
+        json={"positive_prompt": "runtime fail", "steps": 10},
+        headers=LOGIN,
+    )
+    assert fail_response.status == 201, await fail_response.text()
+    fail_job = await fail_response.json()
+    await panel_client.app["jobs"].handle_ws_event({
+        "type": "execution_error",
+        "data": {"prompt_id": fail_job["id"], "exception_message": "fixture runtime boom"},
+    })
+
+    failed = await (await panel_client.get(f"/api/workflows/{workflow_id}", headers=LOGIN)).json()
+    runtime = failed["definition"]["manifest"]["preflight"]["runtime"]
+    assert failed["revision"] == revision
+    assert runtime["status"] == "FAIL"
+    assert runtime["message"] == "Runtime execution failed"
+    assert runtime["details"] == ["fixture runtime boom"]
