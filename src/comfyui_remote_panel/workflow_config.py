@@ -16,6 +16,11 @@ MAX_PACKAGE_BYTES = 8 * 1024 * 1024
 WORKFLOW_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 WINDOWS_PATH = re.compile(r"(?i)^[a-z]:[\\/]")
 SECRET_KEYS = {"password", "secret", "token", "api_key", "apikey", "authorization"}
+RUNTIME_NOT_TESTED = {
+    "status": "WARN",
+    "message": "Runtime not tested",
+    "details": [],
+}
 
 install_workflow_runtime()
 
@@ -130,6 +135,31 @@ def _analysis_dict(analysis: WorkflowAnalysis | dict[str, Any] | None) -> dict[s
     return analysis if isinstance(analysis, dict) else None
 
 
+def _fresh_preflight(value: Any) -> dict[str, Any]:
+    """Return structural preflight with server-owned Runtime reset.
+
+    Runtime evidence is local execution state. A client cannot claim PASS while
+    saving a revision, and an exported package cannot carry PASS to another
+    workstation. Every newly saved/imported revision must be tested locally.
+    """
+    source = value if isinstance(value, dict) else {}
+    result: dict[str, Any] = {}
+    for key, item in source.items():
+        if key == "runtime" or not isinstance(item, dict):
+            continue
+        status = str(item.get("status") or "WARN")
+        if status not in {"PASS", "WARN", "FAIL"}:
+            status = "WARN"
+        details = item.get("details")
+        result[str(key)] = {
+            "status": status,
+            "message": str(item.get("message") or ""),
+            "details": [str(detail) for detail in details] if isinstance(details, list) else [],
+        }
+    result["runtime"] = dict(RUNTIME_NOT_TESTED)
+    return result
+
+
 def _parameter_spec(item: dict[str, Any], workflow: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     binding_id = item.get("id") or item.get("semantic")
     node_id, input_name = str(item.get("node")), item.get("input")
@@ -237,7 +267,7 @@ def build_definition(
         "workflow_analysis_version": 2,
         "capability_profile": analysis_data.get("capabilities", {}),
         "workflow_confidence": analysis_data.get("confidence", "LOW"),
-        "preflight": analysis_data.get("preflight", {}),
+        "preflight": _fresh_preflight(analysis_data.get("preflight")),
     }
     definition = {"manifest": manifest, "workflow": workflow}
     assert_safe_package(definition)
@@ -283,6 +313,7 @@ def import_package(payload: bytes) -> dict[str, Any]:
             workflow = parse_json_bytes(archive.read("workflow-api.json"))
             manifest = parse_json_bytes(archive.read("remote-config.json"))
             manifest.setdefault("workflow", "workflow-api.json")
+            manifest["preflight"] = _fresh_preflight(manifest.get("preflight"))
     except (zipfile.BadZipFile, KeyError) as exc:
         raise PresetError("工作流包无效") from exc
     definition = {"manifest": manifest, "workflow": workflow}
