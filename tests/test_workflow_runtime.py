@@ -71,6 +71,14 @@ def test_generic_random_seed_respects_schema_range():
     assert spec["minimum"] <= seed <= spec["maximum"]
 
 
+def test_generic_seed_zero_is_literal_not_random():
+    analysis, config = wai_config()
+    preset = preset_from_definition(build_definition(wai_img2img_workflow(), config, analysis))
+    values = {item["id"]: item["default"] for item in analysis["parameters"] if item["confidence"] != "LOW"}
+    values["seed"] = 0
+    assert preset.validate_parameters(values)["seed"] == "0"
+
+
 def test_capability_profile_is_public_without_workflow_json():
     analysis, config = wai_config()
     preset = preset_from_definition(build_definition(wai_img2img_workflow(), config, analysis))
