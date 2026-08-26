@@ -69,22 +69,21 @@
     return result;
   };
 
+  function hasProgress(value) {
+    return value !== null && value !== undefined && Number.isFinite(Number(value));
+  }
+
   function stabilizeGenericProgress(job) {
     const previous = state.jobs.get(job?.id);
     if (!previous || genericFamily(job) !== "generic") return job;
     if (!ACTIVE_STATUSES.has(previous.status) || !ACTIVE_STATUSES.has(job.status)) return job;
 
     const next = { ...job };
-    const oldPercent = Number(previous.progress_percent);
-    const newPercent = Number(next.progress_percent);
-    const oldValid = Number.isFinite(oldPercent);
-    const newValid = Number.isFinite(newPercent);
-
-    if (!newValid && oldValid) next.progress_percent = previous.progress_percent;
-    else if (oldValid && newValid && newPercent < oldPercent) next.progress_percent = previous.progress_percent;
-
-    if ((!next.stage || next.stage === "运行中") && previous.stage && previous.stage !== "运行中") {
-      next.stage = previous.stage;
+    // Missing progress in an intermediate executing event should not blank the
+    // bar, but lower real progress is allowed. A later real sampler event may
+    // legitimately follow a completed helper-node progress_state.
+    if (!hasProgress(next.progress_percent) && hasProgress(previous.progress_percent)) {
+      next.progress_percent = previous.progress_percent;
     }
     return next;
   }
