@@ -1,31 +1,85 @@
-# v0.1.0 实机验收 / Release Acceptance
+# v0.2 实机验收 / Release Acceptance
 
-自动化测试不替代真实模型和手机网络验收。发布源码 Release 前完成并记录以下项目。
+自动化测试不替代真实模型、真实工作流和手机网络验收。发布 v0.2 前完成并记录以下项目。
 
-## 生成
+## Comfy Remote 移动端 UX
 
-- 使用 0.2 MP、5 秒分别提交纯文字、仅首帧、仅尾帧、首尾帧。
-- 核对实际 Prompt 仍为 Euler、Beta、8 步、denoise 1、既定 LoRA/Sigma Shift、24 fps。
+- 首页品牌显示 **Comfy Remote**，不再显示“H3 生成台”。
+- 主导航仅为 **创作 / 任务 / 设备**；工作流管理从右上角设置进入。
+- 在 360、390、430 px 宽度检查无横向溢出、文字遮挡或不可点击控件。
+- 工作流选择使用移动端选择面板；切换工作流后参考素材、提示词和基础设置同步重绘。
+- 点击 Prompt 后检查键盘状态：创作区压缩、输入框仍可编辑、生成按钮可触达，关闭键盘后页面恢复。
+- 生成设置面板可以修改当前工作流支持的基础参数，未声明参数不应出现在主创作页。
+- 图片任务显示图片结果而不是 H3 视频技术参数；视频任务仍可直接播放。
+- `Sampler / Scheduler / Steps / Seed / Workflow Revision` 等技术信息默认不占任务卡主视觉，只在高级设置或任务详情中出现。
+
+## 三类基准工作流
+
+### FL2VA
+
+- 依次验证纯文字、仅首帧、仅尾帧、首尾帧。
+- 验证首帧/尾帧缩略图、替换、画幅、5–15 秒时长和 0.2–1.0 MP 设置。
+- 核对实际 Prompt 仍使用当前工作流声明的 sampler、scheduler、steps、denoise、LoRA/Sigma Shift 和 24 fps，不因 UI 重构改变 graph。
+- 完成后验证视频预览、拖动、下载和“再次生成”。
+
+### Ref2VA
+
+- 验证多参考图、参考视频（含配对音轨）和独立参考音频。
+- 参考素材在手机端以统一横向素材区域管理；验证添加、单项替换、单项删除和数量上限。
+- 验证 `<Picture 1>`、`<Video 1>`、`<Audio 1>` 指代顺序与实际素材顺序一致。
+- 验证参考图画幅、参考视频画幅、时长、分辨率。
+- 完成后执行“再次生成”，确认未替换素材可沿用，替换/删除槽位按用户操作生效。
+
+### 普通生图 / WAI API Workflow
+
+必须使用一套真实、非内置 H3 的 ComfyUI API Workflow。
+
+- 设置 → 工作流 → 导入 API Workflow。
+- 确认自动识别正面提示词、负面提示词、可选参考图、width、height、batch_size 和主要图片输出。
+- 如果存在多个图片/输出候选，确认 UI 只要求用户选择候选，不默认展示全部 node/input。
+- 保存并启用后从创作页选择该工作流。
+- 修改正面提示词；验证负面提示词默认值可保留，也可展开修改。
+- 上传可选参考图。
+- 用快捷画幅切换宽高，确认尺寸遵守 ComfyUI node 的 min/max/step。
+- 修改批次数量并生成至少 2 张图片。
+- 任务页验证多图网格、结果查看、单图下载和“再次生成”。
+- 再次生成后确认 prompt、negative prompt、width/height、batch 和未替换参考素材恢复正确。
+
+## 工作流管理
+
+- 六个内置 H3 工作流可修改前端显示名称、启用和禁用；内部 workflow ID 不改变。
+- 重启 Remote Panel 后显示名称和启用状态仍保留。
+- 禁用的工作流不出现在创作页选择器；历史任务仍可查看。
+- 自定义工作流验证编辑高级映射、测试、复制、导出和删除。
+- 同 ID 保存新 revision 后，旧任务继续使用原 workflow snapshot 和 input values。
+
+## 任务与队列
+
 - 验证排队位置包含 ComfyUI 原界面任务；取消只影响目标 UUID。
-- 验证失败摘要、原参数/图片/实际种子载入表单后再确认提交，以及高负载提示。
-- 验证 Ref2VA 多参考图、参考视频（含配对音轨）、独立参考音频的上传、重试和删除。
+- 验证 submitting、queued、running、succeeded、failed、cancelled、interrupted、output_missing 的移动端状态表达。
+- 验证失败摘要不会泄露本机绝对路径或地址。
+- 图片与视频结果均通过 artifact / 兼容视频接口正确读取，不在任务列表初始化时批量预加载大文件。
 
 ## 恢复与文件
 
 - 在 submitting、queued、running 阶段分别重启面板，核对队列/历史恢复。
 - 手机切到后台再返回，确认 SSE 新快照恢复任务和指标。
-- 验证 MP4 拖动播放、Range 下载和文件名。
-- 删除终态任务，确认只删除数据库登记的专用目录文件；部分删除失败时记录仍保留。
+- 验证 MP4 Range 播放、拖动和下载文件名。
+- “移出历史”只隐藏任务并保留本地输入/输出；显式 purge 才物理清理登记文件。
+- 成功任务输出暂时缺失时验证恢复重试，达到恢复上限后进入 `output_missing`。
 
 ## 设备与网络
 
 - 将 GPU、显存、温度、功耗与 `nvidia-smi` 交叉核对，将内存与 Windows 任务管理器交叉核对。
 - 确认面板监听地址仅为 `127.0.0.1:8190`，ComfyUI 仅为本机 `8188`。
 - 从局域网地址直接访问 8190 应失败；缺失或错误身份头应返回 403。
-- 从手机经 Tailscale HTTPS 完成上传、生成、后台恢复、播放和下载。
-- 确认未启用 Funnel 或端口映射，原工作流、已有输出和 H3 Ledger 未受影响。
+- 从手机经 Tailscale HTTPS 完成上传、生成、后台恢复、播放/查看结果和下载。
+- 至少分别在 Wi-Fi 与 4G/5G 下完成一次远程访问。
+- 确认未启用 Funnel 或公网端口映射。
 
-CI release gates remain: Windows/Linux, Python 3.11/3.13, tests, source build, and repository secret/media scan.
+CI release gates remain: minimum-dependencies, Windows/Linux, Python 3.11/3.13, tests, repository scan, wheel/source build.
+
+---
 
 ## 2026-08-25 阶段验收记录
 
