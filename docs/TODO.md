@@ -70,7 +70,7 @@
 - [x] Node 层基础能力：通过当前 ComfyUI `object_info` 检查 class_type / input compatibility。
 - [x] Input / Output 层基础能力：自动识别 prompt / negative / reference image / width / height / batch / output，并保留高级映射。
 - [x] Runtime 层：工作流“测试”会真实提交一次 ComfyUI 任务。
-- [ ] 把四层结果收敛成明确的 preflight 状态对象和用户可读 PASS/WARN/FAIL 摘要。
+- [x] 把四层结果收敛成明确的 preflight 状态对象和用户可读 PASS/WARN/FAIL 摘要。
 
 ### Windows 安装与文档
 
@@ -88,7 +88,7 @@
 - [x] setup config generation / Portable discovery tests。
 - [x] doctor / report redaction tests。
 - [x] panel stale PID / unknown port occupant safety tests。
-- [ ] explicit preflight tests。
+- [x] explicit preflight tests。
 - [ ] explicit minimal ComfyUI / no-H3 public-readiness test。
 - [ ] 当前 PR 所有 Windows/Linux 3.11/3.13 + minimum-dependencies + repository check + build 全绿。
 
@@ -129,5 +129,6 @@ A / B / D / E 最终需要真机验收，不能由单元测试代替。
 - Windows 睡眠 / 休眠 / 系统重启 / 关机。
 - Wake-on-LAN 或机外 watchdog。
 - 多主机 Host Registry / routing / selector。
+- Seed Policy：把种子数值与运行策略分离，支持 `randomize / fixed / increment`（可扩展 `decrement`），并允许每个工作流配置默认策略、创作页临时覆盖。API Workflow 中的数字 seed（包括 `0`）本身不作为“随机”哨兵；当前 v0.3 保持“留空随机、显式数值固定”的简单语义。
 
 这些项目继续保留为后续版本候选，不作为 v0.3 Phase 1 阻塞项。
