@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "comfyui-remote-panel"
-version = "0.1.0"
-description = "A small, Tailscale-authenticated mobile control panel for trusted ComfyUI workflows."
+version = "0.2.0"
+description = "Comfy Remote: a mobile-first remote creation panel for trusted ComfyUI workflows."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -30,7 +30,7 @@ test = [
 comfyui-remote-panel = "comfyui_remote_panel.__main__:main"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = {"" = "src" }
 include-package-data = true
 
 [tool.setuptools.packages.find]
