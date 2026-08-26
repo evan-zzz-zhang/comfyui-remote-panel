@@ -51,11 +51,35 @@
 .workflow-item {
   align-items: center;
 }
+.workflow-item[hidden] {
+  display: none !important;
+}
 .workflow-item-main {
   align-self: center;
 }
 .toggle-button.syncing {
   opacity: .78;
+}
+
+/* Workflow manager tabs are real client-side filters. */
+.workflow-manager-tabs {
+  align-items: center;
+}
+.workflow-manager-tabs button {
+  padding: 4px 0;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 0;
+  font-size: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.workflow-manager-tabs button.active {
+  color: var(--accent);
+}
+.workflow-manager-tabs button:focus-visible {
+  color: var(--accent);
+  outline: 0;
 }
 
 /* Tapping the selected Tasks tab also acts as refresh. */
@@ -66,42 +90,36 @@
   to { transform: rotate(360deg); }
 }
 
-/* Task prompt belongs to details, with an explicit copy action. */
-.detail-prompt-section {
-  display: grid;
-  gap: 9px;
-  margin-top: 18px;
+/* Prompt stays in its existing task-detail row; copy is intentionally lightweight. */
+.detail-prompt-row {
+  align-items: flex-start;
 }
-.detail-prompt-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.detail-prompt-row > span {
+  flex: 1;
 }
-.detail-copy-button {
-  min-height: 34px;
-  padding: 0 11px;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border: 1px solid rgba(200,243,106,.18);
-  border-radius: 9px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.detail-prompt-text {
+.detail-prompt-row small {
+  display: block;
   max-height: min(34vh, 280px);
   overflow: auto;
-  margin: 0;
-  padding: 12px;
-  color: var(--text-secondary);
-  background: var(--surface-1);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius);
-  font-size: 13px;
-  line-height: 1.65;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.detail-copy-button {
+  flex: none;
+  min-height: 28px;
+  padding: 4px 0 4px 10px;
+  color: var(--accent);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.detail-copy-button:focus-visible {
+  text-decoration: underline;
+  outline: 0;
 }
 
 /* Generic image workflows follow the same information hierarchy as video workflows:

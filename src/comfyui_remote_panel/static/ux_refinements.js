@@ -2,6 +2,7 @@
   const baseApplyPreset = applyPreset;
   const baseLoadWorkflows = loadWorkflows;
   const visibilitySync = new Map();
+  let workflowFilter = "all";
 
   const compactAspectLabel = value => ({
     reference: "参考图",
@@ -130,6 +131,49 @@
     return item?.status === "enabled";
   }
 
+  function workflowCategory(item) {
+    const manifest = item?.manifest || {};
+    if (manifest.family === "fl2va" || manifest.family === "ref2va") return "video";
+    const outputs = manifest.output_bindings || [];
+    const kind = (outputs.find(output => output.primary) || outputs[0] || {}).kind;
+    if (kind === "image") return "image";
+    if (kind === "video") return "video";
+    return "other";
+  }
+
+  function applyWorkflowFilter() {
+    for (const card of $$("#workflow-list .workflow-item")) {
+      const id = card.querySelector("[data-id]")?.dataset.id;
+      const item = id ? state.workflowItems.get(id) : null;
+      const category = workflowCategory(item);
+      card.hidden = workflowFilter !== "all" && category !== workflowFilter;
+    }
+  }
+
+  function setupWorkflowFilters() {
+    const tabs = $(".workflow-manager-tabs");
+    if (!tabs || tabs.dataset.ready === "true") return;
+    tabs.dataset.ready = "true";
+    tabs.removeAttribute("aria-hidden");
+    tabs.setAttribute("role", "tablist");
+    tabs.innerHTML = [
+      ["all", "全部"],
+      ["video", "视频"],
+      ["image", "图片"],
+    ].map(([value, label], index) => `<button type="button" role="tab" data-workflow-filter="${value}" aria-selected="${index === 0}" class="${index === 0 ? "active" : ""}">${label}</button>`).join("");
+    tabs.addEventListener("click", event => {
+      const button = event.target.closest("[data-workflow-filter]");
+      if (!button) return;
+      workflowFilter = button.dataset.workflowFilter;
+      for (const tab of $$('[data-workflow-filter]', tabs)) {
+        const active = tab === button;
+        tab.classList.toggle("active", active);
+        tab.setAttribute("aria-selected", String(active));
+      }
+      applyWorkflowFilter();
+    });
+  }
+
   function updateToggle(button, item) {
     if (!button || !item) return;
     const shown = workflowIsShown(item);
@@ -145,6 +189,7 @@
       const item = state.workflowItems.get(button.dataset.id);
       if (item) updateToggle(button, item);
     }
+    applyWorkflowFilter();
   }
 
   function visibleFallback(excludeId) {
@@ -261,41 +306,91 @@
     input.remove();
   }
 
-  function enhanceTaskDetails(jobId) {
-    const job = state.jobs.get(jobId);
-    const prompt = taskPrompt(job);
-    const body = $("#sheet-body");
-    if (!job || !prompt || !body || $(".detail-prompt-section", body)) return;
-
-    const section = document.createElement("section");
-    section.className = "sheet-section detail-prompt-section";
-    const head = document.createElement("div");
-    head.className = "detail-prompt-head";
-    const label = document.createElement("span");
-    label.className = "sheet-label";
-    label.textContent = "提示词";
+  function addCopyAction(row, value) {
+    if (!row || !value || row.querySelector(".detail-copy-button")) return;
+    row.classList.add("detail-prompt-row");
     const button = document.createElement("button");
     button.type = "button";
     button.className = "detail-copy-button";
     button.textContent = "复制";
-    const text = document.createElement("p");
-    text.className = "detail-prompt-text";
-    text.textContent = prompt;
-    head.append(label, button);
-    section.append(head, text);
-    const hideButton = $("#detail-hide-job", body);
-    if (hideButton) body.insertBefore(section, hideButton);
-    else body.append(section);
+    row.append(button);
     button.addEventListener("click", async () => {
       try {
-        await copyText(prompt);
+        await copyText(value);
         button.textContent = "已复制";
-        window.setTimeout(() => { button.textContent = "复制"; }, 1200);
       } catch (_) {
         button.textContent = "复制失败";
-        window.setTimeout(() => { button.textContent = "复制"; }, 1200);
       }
+      window.setTimeout(() => { button.textContent = "复制"; }, 1200);
     });
+  }
+
+  function inputParameterSection(body) {
+    return [...$$(".sheet-section", body)].find(section => $(".sheet-label", section)?.textContent.trim() === "输入参数") || null;
+  }
+
+  function enhanceTaskDetails(jobId) {
+    const job = state.jobs.get(jobId);
+    const body = $("#sheet-body");
+    if (!job || !body) return;
+
+    const promptLabels = {
+      prompt: "提示词",
+      positive_prompt: "正面提示词",
+      negative_prompt: "负面提示词",
+    };
+    const duplicateLabels = {
+      scheduler: "Scheduler",
+      sampler: "Sampler",
+      steps: "Steps",
+      seed: "Seed",
+    };
+    const summaryLabels = new Set([...$$("#sheet-body > .settings-list:first-child .settings-row strong")].map(node => node.textContent.trim()));
+    let promptFound = false;
+    const inputSection = inputParameterSection(body);
+
+    if (inputSection) {
+      for (const row of [...$$(".settings-row.static", inputSection)]) {
+        const strong = $("strong", row);
+        const small = $("small", row);
+        if (!strong) continue;
+        const key = strong.textContent.trim();
+        if (promptLabels[key]) {
+          promptFound = true;
+          strong.textContent = promptLabels[key];
+          addCopyAction(row, small?.textContent || "");
+          continue;
+        }
+        const summaryLabel = duplicateLabels[key];
+        if (summaryLabel && summaryLabels.has(summaryLabel)) row.remove();
+      }
+    }
+
+    if (!promptFound) {
+      const prompt = taskPrompt(job);
+      if (prompt) {
+        let section = inputSection;
+        let list = section?.querySelector(".settings-list");
+        if (!section || !list) {
+          section = document.createElement("section");
+          section.className = "sheet-section";
+          section.innerHTML = '<span class="sheet-label">输入参数</span><div class="settings-list"></div>';
+          list = section.querySelector(".settings-list");
+          const hideButton = $("#detail-hide-job", body);
+          if (hideButton) body.insertBefore(section, hideButton);
+          else body.append(section);
+        }
+        const row = document.createElement("div");
+        row.className = "settings-row static detail-prompt-row";
+        row.innerHTML = "<span><strong>提示词</strong><small></small></span>";
+        row.querySelector("small").textContent = prompt;
+        list.prepend(row);
+        addCopyAction(row, prompt);
+      }
+    }
+
+    const section = inputParameterSection(body);
+    if (section && !section.querySelector(".settings-row")) section.remove();
   }
 
   function refreshJobsFromTab() {
@@ -325,6 +420,7 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     syncCompactCopy();
+    setupWorkflowFilters();
     refineWorkflowList();
 
     document.addEventListener("click", event => {
@@ -352,5 +448,7 @@
     if (generic) new MutationObserver(() => queueMicrotask(syncCompactCopy)).observe(generic, { childList: true });
     const sheet = $("#sheet-body");
     if (sheet) new MutationObserver(() => queueMicrotask(filterPickerChoices)).observe(sheet, { childList: true });
+    const workflowList = $("#workflow-list");
+    if (workflowList) new MutationObserver(() => queueMicrotask(refineWorkflowList)).observe(workflowList, { childList: true });
   });
 })();
