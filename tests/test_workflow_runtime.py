@@ -45,7 +45,20 @@ def test_uploaded_source_image_replaces_original_loadimage_literal():
     prompt = preset.build_prompt(values, "123e4567-e89b-42d3-a456-426614174000", {"image_0": "h3_remote/source.png"})
     assert prompt["4"]["inputs"]["image"] == "h3_remote/source.png"
     assert prompt["6"]["inputs"]["steps"] == 24
-    assert prompt["6"]["inputs"]["denoise"] == pytest.approx(0.6)
+    assert prompt["6"]["inputs"]["denoise"] == pytest.approx(0.62)
+
+
+def test_generic_number_honors_schema_step_precision_and_rejects_misalignment():
+    analysis, config = wai_config()
+    preset = preset_from_definition(build_definition(wai_img2img_workflow(), config, analysis))
+    values = {item["id"]: item["default"] for item in analysis["parameters"] if item["confidence"] != "LOW"}
+    values["denoise"] = 0.55
+    normalized = preset.validate_parameters(values)
+    assert normalized["denoise"] == pytest.approx(0.55)
+
+    values["denoise"] = 0.555
+    with pytest.raises(PresetError, match="denoise 步进不合法"):
+        preset.validate_parameters(values)
 
 
 def test_capability_profile_is_public_without_workflow_json():
