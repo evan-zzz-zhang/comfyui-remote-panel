@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 import json
+import secrets
 import time
 from typing import Any
 
@@ -88,6 +89,14 @@ def install_workflow_runtime() -> None:
             places = 12
         return round(number, places)
 
+    def _random_seed(spec: dict[str, Any]) -> int:
+        minimum = int(spec.get("minimum", 0))
+        maximum = int(spec.get("maximum", 2**64 - 1))
+        if maximum < minimum:
+            raise PresetError("seed 范围无效")
+        span = maximum - minimum + 1
+        return minimum + secrets.randbelow(span)
+
     def validate_parameters(
         self: Preset, values: dict[str, Any], *, allow_empty_prompt: bool = False
     ) -> dict[str, Any]:
@@ -111,9 +120,8 @@ def install_workflow_runtime() -> None:
                 continue
             if name == "seed":
                 if value is None:
-                    result[name] = None
-                    continue
-                if isinstance(value, int) and not isinstance(value, bool):
+                    seed = _random_seed(spec)
+                elif isinstance(value, int) and not isinstance(value, bool):
                     seed = value
                 elif isinstance(value, str) and value.isascii() and value.isdigit():
                     seed = int(value)
