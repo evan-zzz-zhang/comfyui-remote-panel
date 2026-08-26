@@ -339,16 +339,23 @@ class Database:
                 latest = db.execute(
                     "SELECT COALESCE(MAX(revision), 0) FROM workflows WHERE id = ?", (workflow_id,)
                 ).fetchone()[0]
+                existing = None
                 if builtin and latest:
                     existing = db.execute(
-                        "SELECT status FROM workflows WHERE id = ? AND revision = ?",
+                        "SELECT status, name FROM workflows WHERE id = ? AND revision = ?",
                         (workflow_id, latest),
                     ).fetchone()
                     if existing:
-                        status = existing[0]
+                        status = existing["status"]
+                        # The registry definition is refreshed from packaged files at
+                        # startup, but a user-facing display name is a preference and
+                        # must survive that refresh.
+                        name = existing["name"]
                 revision = max(int(definition["manifest"].get("revision", 1)), int(latest) + (0 if builtin and latest else 1))
                 definition = json.loads(json.dumps(definition))
                 definition["manifest"]["revision"] = revision
+                if existing:
+                    definition["manifest"]["name"] = name
                 db.execute(
                     """INSERT OR REPLACE INTO workflows(
                         id, revision, status, name, definition_json, builtin, created_at, updated_at

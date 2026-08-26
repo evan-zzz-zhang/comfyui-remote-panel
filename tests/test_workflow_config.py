@@ -23,6 +23,14 @@ def save_image_workflow():
     }
 
 
+def semantic_image_workflow():
+    workflow = save_image_workflow()
+    workflow["7"] = {"class_type": "CLIPTextEncode", "inputs": {"text": "low quality", "clip": ["1", 1]}}
+    workflow["8"] = {"class_type": "LoadImage", "inputs": {"image": "reference.png"}}
+    workflow["4"]["inputs"]["negative"] = ["7", 0]
+    return workflow
+
+
 def remote_config():
     return {
         "id": "standard-save-image", "name": "Standard SaveImage",
@@ -48,6 +56,32 @@ def test_inspection_never_suggests_connected_inputs():
     result = inspect_api_workflow(save_image_workflow())
     clip = next(node for node in result["nodes"] if node["id"] == "2")
     assert next(value for value in clip["inputs"] if value["name"] == "clip")["suggested_control"] is None
+    sampler = next(node for node in result["nodes"] if node["id"] == "4")
+    positive = next(value for value in sampler["inputs"] if value["name"] == "positive")
+    assert positive["connection"] == {"node": "2", "output": 0}
+
+
+def test_inspection_suggests_only_basic_user_facing_inputs():
+    result = inspect_api_workflow(semantic_image_workflow())
+    basic = result["basic_bindings"]
+    parameters = {item["semantic"]: item for item in basic["parameters"]}
+
+    assert parameters["positive_prompt"]["node"] == "2"
+    assert parameters["positive_prompt"]["input"] == "text"
+    assert parameters["negative_prompt"]["node"] == "7"
+    assert parameters["negative_prompt"]["input"] == "text"
+    assert parameters["width"]["node"] == "3"
+    assert parameters["height"]["node"] == "3"
+    assert parameters["batch_size"]["node"] == "3"
+    assert {item["semantic"] for item in basic["parameters"]} == {
+        "positive_prompt", "negative_prompt", "width", "height", "batch_size"
+    }
+    assert basic["media"]["reference_image"] == [{
+        "semantic": "reference_image", "node": "8", "input": "image", "label": "参考图",
+        "kind": "image", "class_type": "LoadImage", "default": "reference.png",
+    }]
+    assert basic["outputs"][0]["node"] == "6"
+    assert basic["warnings"] == []
 
 
 def test_workflow_json_parser_accepts_bom_and_markdown_fence():

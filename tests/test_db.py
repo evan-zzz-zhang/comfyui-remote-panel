@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import time
 
@@ -87,6 +88,32 @@ async def test_compare_and_set_requires_exact_expected_status(tmp_path):
     updated, job = await db.update_job_if_status("job", {"submitting"}, status="cancelled")
     assert updated is True
     assert job["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_builtin_refresh_preserves_user_display_name_and_status(tmp_path):
+    db = Database(tmp_path / "workflows.db")
+    await db.initialize()
+    original = {
+        "manifest": {
+            "id": "builtin-demo", "name": "官方名称", "revision": 1,
+        },
+        "workflow": {},
+    }
+    saved = await db.save_workflow(original, status="enabled", builtin=True)
+    assert saved["name"] == "官方名称"
+
+    renamed = json.loads(json.dumps(original))
+    renamed["manifest"]["name"] = "我的显示名称"
+    renamed["manifest"]["revision"] = 1
+    await db.save_workflow(renamed, status="draft", builtin=False)
+    await db.set_workflow_status("builtin-demo", "disabled")
+
+    refreshed = await db.save_workflow(original, status="enabled", builtin=True)
+    assert refreshed["name"] == "我的显示名称"
+    assert refreshed["definition"]["manifest"]["name"] == "我的显示名称"
+    assert refreshed["status"] == "disabled"
+    assert refreshed["builtin"] is True
 
 
 @pytest.mark.asyncio

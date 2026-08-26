@@ -32,6 +32,217 @@ def parse_json_bytes(payload: bytes) -> dict[str, Any]:
     return value
 
 
+def _connection(value: Any) -> tuple[str, int] | None:
+    if not isinstance(value, list) or len(value) != 2:
+        return None
+    node_id, output_index = value
+    if not isinstance(node_id, (str, int)) or isinstance(node_id, bool):
+        return None
+    if not isinstance(output_index, int) or isinstance(output_index, bool):
+        return None
+    return str(node_id), output_index
+
+
+def _literal_text_binding(workflow: dict[str, Any], node_id: str, visited: set[str] | None = None) -> dict[str, Any] | None:
+    visited = set() if visited is None else visited
+    node_id = str(node_id)
+    if node_id in visited:
+        return None
+    visited.add(node_id)
+    node = workflow.get(node_id)
+    if not isinstance(node, dict):
+        return None
+    inputs = node.get("inputs")
+    if not isinstance(inputs, dict):
+        return None
+
+    preferred = ("text", "prompt", "positive_prompt", "negative_prompt", "caption")
+    for input_name in preferred:
+        value = inputs.get(input_name)
+        if isinstance(value, str):
+            return {"node": node_id, "input": input_name, "default": value}
+    for input_name, value in inputs.items():
+        if isinstance(value, str) and re.search(r"(?:text|prompt|caption)", input_name, re.IGNORECASE):
+            return {"node": node_id, "input": input_name, "default": value}
+
+    for value in inputs.values():
+        source = _connection(value)
+        if source:
+            binding = _literal_text_binding(workflow, source[0], visited)
+            if binding:
+                return binding
+    return None
+
+
+def _numeric_literal(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _suggest_basic_bindings(
+    workflow: dict[str, Any], output_candidates: list[dict[str, str]]
+) -> dict[str, Any]:
+    parameters: list[dict[str, Any]] = []
+    seen_parameter_targets: set[tuple[str, str]] = set()
+
+    def add_parameter(semantic: str, binding: dict[str, Any], label: str, kind: str, control: str) -> None:
+        target = (str(binding["node"]), str(binding["input"]))
+        if target in seen_parameter_targets:
+            return
+        seen_parameter_targets.add(target)
+        parameters.append({
+            "semantic": semantic,
+            "node": target[0],
+            "input": target[1],
+            "label": label,
+            "type": kind,
+            "control": control,
+            "default": binding.get("default"),
+        })
+
+    # Prefer the sampler's explicit positive/negative graph edges. This is much
+    # less ambiguous than simply listing every CLIP text node in the workflow.
+    sampler_nodes: list[tuple[int, str, dict[str, Any]]] = []
+    for node_id, node in workflow.items():
+        if not isinstance(node, dict) or not isinstance(node.get("inputs"), dict):
+            continue
+        inputs = node["inputs"]
+        class_name = str(node.get("class_type", ""))
+        score = 0
+        if _connection(inputs.get("positive")):
+            score += 4
+        if _connection(inputs.get("negative")):
+            score += 4
+        if "sampler" in class_name.lower():
+            score += 2
+        if score:
+            sampler_nodes.append((score, str(node_id), node))
+    sampler_nodes.sort(reverse=True, key=lambda item: item[0])
+
+    positive: dict[str, Any] | None = None
+    negative: dict[str, Any] | None = None
+    for _, _, node in sampler_nodes:
+        inputs = node["inputs"]
+        if positive is None:
+            source = _connection(inputs.get("positive"))
+            if source:
+                positive = _literal_text_binding(workflow, source[0])
+        if negative is None:
+            source = _connection(inputs.get("negative"))
+            if source:
+                negative = _literal_text_binding(workflow, source[0])
+        if positive and negative:
+            break
+
+    # Fallback for simple workflows that omit a conventional sampler node.
+    text_candidates: list[dict[str, Any]] = []
+    for node_id, node in workflow.items():
+        if not isinstance(node, dict) or not isinstance(node.get("inputs"), dict):
+            continue
+        for input_name, value in node["inputs"].items():
+            if not isinstance(value, str):
+                continue
+            if not re.search(r"(?:text|prompt|caption)", input_name, re.IGNORECASE):
+                continue
+            if re.search(r"(?:file|path|model|ckpt|lora|vae)", input_name, re.IGNORECASE):
+                continue
+            text_candidates.append({"node": str(node_id), "input": input_name, "default": value})
+    if positive is None and text_candidates:
+        positive = text_candidates[0]
+    if negative is None and len(text_candidates) > 1:
+        for candidate in text_candidates:
+            if not positive or (candidate["node"], candidate["input"]) != (positive["node"], positive["input"]):
+                negative = candidate
+                break
+
+    if positive:
+        add_parameter("positive_prompt", positive, "正面提示词", "string", "textarea")
+    if negative:
+        add_parameter("negative_prompt", negative, "负面提示词", "string", "textarea")
+
+    # Prefer one image/latent size node and expose width/height/batch as a unit.
+    size_candidates: list[tuple[int, str, dict[str, Any]]] = []
+    for node_id, node in workflow.items():
+        if not isinstance(node, dict) or not isinstance(node.get("inputs"), dict):
+            continue
+        inputs = node["inputs"]
+        if not (_numeric_literal(inputs.get("width")) and _numeric_literal(inputs.get("height"))):
+            continue
+        class_name = str(node.get("class_type", "")).lower()
+        score = 1
+        if re.search(r"(?:latent|image|size|empty)", class_name):
+            score += 3
+        if _numeric_literal(inputs.get("batch_size")):
+            score += 2
+        size_candidates.append((score, str(node_id), node))
+    size_candidates.sort(reverse=True, key=lambda item: item[0])
+    if size_candidates:
+        _, node_id, node = size_candidates[0]
+        inputs = node["inputs"]
+        add_parameter("width", {"node": node_id, "input": "width", "default": inputs["width"]}, "宽度", "integer", "number")
+        add_parameter("height", {"node": node_id, "input": "height", "default": inputs["height"]}, "高度", "integer", "number")
+        if _numeric_literal(inputs.get("batch_size")):
+            add_parameter(
+                "batch_size",
+                {"node": node_id, "input": "batch_size", "default": inputs["batch_size"]},
+                "批次数量",
+                "integer",
+                "number",
+            )
+
+    if not any(item["semantic"] == "batch_size" for item in parameters):
+        for node_id, node in workflow.items():
+            if not isinstance(node, dict) or not isinstance(node.get("inputs"), dict):
+                continue
+            value = node["inputs"].get("batch_size")
+            if _numeric_literal(value):
+                add_parameter(
+                    "batch_size",
+                    {"node": str(node_id), "input": "batch_size", "default": value},
+                    "批次数量",
+                    "integer",
+                    "number",
+                )
+                break
+
+    image_candidates: list[dict[str, Any]] = []
+    for node_id, node in workflow.items():
+        if not isinstance(node, dict) or not isinstance(node.get("inputs"), dict):
+            continue
+        class_name = str(node.get("class_type", ""))
+        lowered = class_name.lower()
+        if not ("load" in lowered and "image" in lowered):
+            continue
+        for input_name in ("image", "file"):
+            if input_name in node["inputs"] and _connection(node["inputs"][input_name]) is None:
+                image_candidates.append({
+                    "semantic": "reference_image",
+                    "node": str(node_id),
+                    "input": input_name,
+                    "label": "参考图",
+                    "kind": "image",
+                    "class_type": class_name,
+                    "default": node["inputs"][input_name],
+                })
+                break
+
+    warnings: list[str] = []
+    if not positive:
+        warnings.append("未能自动识别正面提示词")
+    if not output_candidates:
+        warnings.append("未能自动识别输出节点")
+    if len(image_candidates) > 1:
+        warnings.append("检测到多个图片输入，需要确认参考图槽位")
+    if len(output_candidates) > 1:
+        warnings.append("检测到多个输出节点，需要确认主要输出")
+
+    return {
+        "parameters": parameters,
+        "media": {"reference_image": image_candidates},
+        "outputs": output_candidates,
+        "warnings": warnings,
+    }
+
+
 def inspect_api_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(workflow, dict):
         raise PresetError("API Workflow 顶层必须是对象")
@@ -46,17 +257,24 @@ def inspect_api_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
             raise PresetError(f"节点 {node_id} 缺少 class_type 或 inputs")
         items = []
         for name, value in inputs.items():
-            connected = isinstance(value, list) and len(value) == 2 and isinstance(value[0], str)
+            connection = _connection(value)
             items.append({
-                "name": name, "value": None if connected else value, "connected": connected,
-                "suggested_control": suggest_control(name, value) if not connected else None,
+                "name": name,
+                "value": None if connection else value,
+                "connected": connection is not None,
+                "connection": None if connection is None else {"node": connection[0], "output": connection[1]},
+                "suggested_control": suggest_control(name, value) if connection is None else None,
             })
         nodes.append({"id": node_id, "class_type": class_type, "inputs": items})
         lowered = class_type.lower()
         if "save" in lowered or "output" in lowered:
             kind = "image" if "image" in lowered else ("video" if "video" in lowered else "file")
             output_candidates.append({"node": node_id, "class_type": class_type, "kind": kind})
-    return {"nodes": nodes, "output_candidates": output_candidates}
+    return {
+        "nodes": nodes,
+        "output_candidates": output_candidates,
+        "basic_bindings": _suggest_basic_bindings(workflow, output_candidates),
+    }
 
 
 def suggest_control(name: str, value: Any) -> str:

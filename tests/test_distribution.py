@@ -21,7 +21,9 @@ def test_wheel_contains_and_loads_all_workflow_resources(tmp_path):
             name for name in archive.namelist()
             if "/workflows/" in name and name.endswith(".json")
         ]
+        static_files = [name for name in archive.namelist() if "/static/" in name]
     assert len(workflow_files) == 12
+    assert any(name.endswith("/static/workflow_ux.js") for name in static_files)
 
     install_dir = tmp_path / "installed"
     subprocess.run(
@@ -90,3 +92,8 @@ def test_mobile_generation_controls_have_fixed_presets_and_sticky_navigation():
     assert 'name="duration_seconds" type="range" min="5" max="15" step="1"' in html
     assert [f'data-megapixels="{value}"' in html for value in ("0.2", "0.4", "0.6", "0.8", "0.9", "1.0")] == [True] * 6
     assert 'accept=".wav,.mp3,.flac,.ogg,.m4a"' in html
+    assert '/static/workflow_ux.js?v=0.5.0' in html
+    ux = (ROOT / "src" / "comfyui_remote_panel" / "static" / "workflow_ux.js").read_text(encoding="utf-8")
+    assert "已识别的基础输入" in ux
+    assert "保存并启用" in ux
+    assert "data-generic-aspect" in ux
