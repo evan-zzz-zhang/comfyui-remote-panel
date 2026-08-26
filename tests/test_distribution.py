@@ -24,6 +24,8 @@ def test_wheel_contains_and_loads_all_workflow_resources(tmp_path):
         static_files = [name for name in archive.namelist() if "/static/" in name]
     assert len(workflow_files) == 12
     assert any(name.endswith("/static/workflow_ux.js") for name in static_files)
+    assert any(name.endswith("/static/ux_refinements.js") for name in static_files)
+    assert any(name.endswith("/static/ux_refinements.css") for name in static_files)
 
     install_dir = tmp_path / "installed"
     subprocess.run(
@@ -90,6 +92,8 @@ def test_mobile_creation_shell_uses_comfy_remote_design_system():
     html = (static / "index.html").read_text(encoding="utf-8")
     css = (static / "app.css").read_text(encoding="utf-8")
     ux = (static / "workflow_ux.js").read_text(encoding="utf-8")
+    refinements_css = (static / "ux_refinements.css").read_text(encoding="utf-8")
+    refinements_js = (static / "ux_refinements.js").read_text(encoding="utf-8")
 
     assert "Comfy Remote" in html
     assert "H3 生成台" not in html
@@ -101,7 +105,11 @@ def test_mobile_creation_shell_uses_comfy_remote_design_system():
     assert 'name="duration_seconds" type="range" min="5" max="15" step="1"' in html
     assert all(f'data-megapixels="{value}"' in html for value in ("0.2", "0.4", "0.6", "0.8", "0.9", "1.0"))
     assert 'accept=".wav,.mp3,.flac,.ogg,.m4a"' in html
+    assert '<option hidden>2:3</option>' in html
+    assert '<option hidden>3:2</option>' in html
     assert '/static/workflow_ux.js?v=0.6.0' in html
+    assert '/static/ux_refinements.js?v=0.1.0' in html
+    assert '/static/ux_refinements.css?v=0.1.0' in html
 
     assert "--accent: #c8f36a" in css
     assert "body.prompt-focused" in css
@@ -109,3 +117,9 @@ def test_mobile_creation_shell_uses_comfy_remote_design_system():
     assert "保存并启用" in ux
     assert "data-generic-ratio" in ux
     assert "再次生成" in ux
+    assert ".settings-entry" in refinements_css
+    assert "border: 0 !important" in refinements_css
+    assert "compactAspectLabel" in refinements_js
+    assert "参考视频" in refinements_js
+    assert "keepalive: true" in refinements_js
+    assert 'record.desired = shown ? "enabled" : "disabled"' in refinements_js

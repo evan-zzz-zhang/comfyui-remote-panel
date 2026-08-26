@@ -7,6 +7,7 @@
   <meta name="description" content="Comfy Remote — 手机优先的 ComfyUI 远程创作端">
   <title>Comfy Remote</title>
   <link rel="stylesheet" href="/static/app.css?v=0.6.0">
+  <link rel="stylesheet" href="/static/ux_refinements.css?v=0.1.0">
 </head>
 <body>
   <header class="topbar">
@@ -17,7 +18,7 @@
     <div class="topbar-actions">
       <div id="connection-pill" class="status-pill status-offline"><span></span>连接中</div>
       <button id="nav-workflows" class="icon-button settings-entry" data-view="workflows" type="button" aria-label="打开设置">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6l-.04.08V21h-4v-.92l-.04-.08a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1l-.08-.04H3v-4h.92L4 9.92a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6l.04-.08V3h4v.92l.04.08a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.12.37.34.72.6 1l.08.04H21v4h-.92L20 14.08c-.26.28-.48.63-.6.92Z"/></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6l-.04.08V21h-4v-.92l-.04-.08a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1l-.08-.04H3v-4h.92L4 9.92a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6l.04-.08V3h4v.92l.04-.08a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.12.37.34.72.6 1l.08.04H21v4h-.92L20 14.08c-.26.28-.48.63-.6.92Z"/></svg>
       </button>
     </div>
     <nav class="top-nav" aria-label="主导航">
@@ -91,7 +92,7 @@
 
         <label class="creation-section prompt-field">
           <span class="section-heading"><span>提示词</span><small id="prompt-hint">描述画面、动作、镜头与声音</small></span>
-          <textarea name="prompt" rows="5" maxlength="10000" placeholder="描述主体、动作、镜头运动、对白和声音……"></textarea>
+          <textarea name="prompt" rows="5" maxlength="10000" placeholder="输入提示词……"></textarea>
         </label>
 
         <div id="generic-parameters" class="generic-parameters hidden"></div>
@@ -110,7 +111,7 @@
             <button id="follow-video-duration" class="secondary-button hidden" type="button" disabled>跟随参考视频 1</button>
             <label class="field"><span>画幅</span>
               <select name="aspect_ratio">
-                <option>9:16</option><option id="reference-aspect-image-option" value="reference_image" disabled>参考图 1 画幅</option><option id="reference-aspect-video-option" value="reference_video" disabled>参考视频 1 画幅</option><option>16:9</option><option>1:1</option><option>2:3</option><option>3:2</option><option>3:4</option><option>4:3</option><option>21:9</option>
+                <option>9:16</option><option id="reference-aspect-image-option" value="reference_image" disabled>参考图</option><option id="reference-aspect-video-option" value="reference_video" disabled>参考视频</option><option>16:9</option><option>1:1</option><option hidden>2:3</option><option hidden>3:2</option><option>3:4</option><option>4:3</option><option>21:9</option>
               </select>
             </label>
             <div class="field wide"><span>分辨率 <b id="mp-value">0.4 MP</b></span><input id="megapixels-value" name="megapixels" type="hidden" value="0.4"><div class="resolution-presets"><button type="button" data-megapixels="0.2">0.2</button><button type="button" data-megapixels="0.4" aria-pressed="true">0.4</button><button type="button" data-megapixels="0.6">0.6</button><button type="button" data-megapixels="0.8">0.8</button><button type="button" data-megapixels="0.9">0.9</button><button type="button" data-megapixels="1.0">1.0</button></div></div>
@@ -205,5 +206,6 @@
 
   <script src="/static/app.js?v=0.4.0" defer></script>
   <script src="/static/workflow_ux.js?v=0.6.0" defer></script>
+  <script src="/static/ux_refinements.js?v=0.1.0" defer></script>
 </body>
 </html>

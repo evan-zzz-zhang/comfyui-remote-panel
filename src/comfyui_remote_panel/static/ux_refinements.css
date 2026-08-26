@@ -1,0 +1,61 @@
+/* v0.2 mobile polish: reduce explanatory copy and keep high-frequency controls light. */
+.settings-entry {
+  border: 0 !important;
+  background: transparent !important;
+  border-radius: 50%;
+}
+.settings-entry:hover,
+.settings-entry:focus-visible {
+  border-color: transparent !important;
+  background: var(--surface-1) !important;
+}
+
+/* Information that is already expressed by position, control type, or state. */
+.creation-heading .heading-meta,
+.workflow-picker small,
+.workflow-choice small,
+#reference-section-hint,
+#prompt-hint,
+.upload-card small,
+.reference-add small,
+.reference-tag-tip,
+#preset-description,
+.workflow-item-main small,
+#jobs-empty p,
+#settings-home .settings-row small,
+#settings-home .row-value,
+.subpage-heading small,
+.semantic-detected small,
+.generic-advanced > p,
+.control-card .card-heading small {
+  display: none !important;
+}
+
+.workflow-picker {
+  min-height: 54px;
+}
+.upload-card {
+  min-height: 102px;
+}
+.reference-add span {
+  display: block;
+}
+.workflow-item {
+  align-items: center;
+}
+.workflow-item-main {
+  align-self: center;
+}
+.toggle-button.syncing {
+  opacity: .78;
+}
+
+/* Keep useful retry state, but remove redundant "add reference" helper copy. */
+.generic-reference-card small:empty {
+  display: none;
+}
+
+@media (max-width: 390px) {
+  .brand h1 { font-size: 17px; }
+  .status-pill { padding-inline: 9px; }
+}
