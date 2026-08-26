@@ -427,10 +427,13 @@ def _preflight(
 ) -> dict[str, dict[str, Any]]:
     def section(name: str, default: Severity, message: str) -> dict[str, Any]:
         relevant = [item for item in diagnostics if item.section == name]
+        # Known frontend-only helper fields such as LoadImage.upload are useful
+        # diagnostic context but do not make the runtime node incompatible.
+        gating = [item for item in relevant if item.code != "frontend_helper_input"]
         severity = default
-        if any(item.severity == Severity.FAIL for item in relevant):
+        if any(item.severity == Severity.FAIL for item in gating):
             severity = Severity.FAIL
-        elif any(item.severity == Severity.WARN for item in relevant) and severity != Severity.FAIL:
+        elif any(item.severity == Severity.WARN for item in gating) and severity != Severity.FAIL:
             severity = Severity.WARN
         return {
             "status": severity.value,
