@@ -35,6 +35,8 @@ def install_workflow_runtime() -> None:
     original_cancel = JobService.cancel
     original_observe_missing = JobService._observe_missing
     original_recover_missing_outputs = JobService._recover_missing_outputs
+    original_handle_progress_state = JobService._handle_progress_state
+    original_public_job = JobService.public_job
 
     def validate_media_roles(self: Preset, roles: set[str]) -> tuple[str, bool]:
         media = self.media_binding
@@ -119,6 +121,9 @@ def install_workflow_runtime() -> None:
                 result[name] = value.strip()
                 continue
             if name == "seed":
+                # Generic workflow semantics intentionally preserve ComfyUI's
+                # literal seed contract: only an empty/null value means random.
+                # Integer 0 is a real, reproducible seed and must stay 0.
                 if value is None:
                     seed = _random_seed(spec)
                 elif isinstance(value, int) and not isinstance(value, bool):
@@ -166,6 +171,51 @@ def install_workflow_runtime() -> None:
         result["capability_profile"] = self.manifest.get("capability_profile", {})
         result["workflow_confidence"] = self.manifest.get("workflow_confidence")
         result["preflight"] = self.manifest.get("preflight", {})
+        return result
+
+    async def handle_progress_state(
+        self: JobService, job_id: str, preset: Preset, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        if preset.manifest.get("family", "generic") != "generic" or preset.stages:
+            return await original_handle_progress_state(self, job_id, preset, data)
+
+        # ComfyUI progress_state can contain completed helper nodes such as 1/1.
+        # For an arbitrary imported graph that value is not an overall progress
+        # percentage. Keep it as liveness only and let real `progress` events
+        # drive numeric progress.
+        nodes = data.get("nodes")
+        if not isinstance(nodes, dict) or not any(isinstance(node, dict) for node in nodes.values()):
+            return None
+        return await self.db.update_active_job(
+            job_id,
+            status="running",
+            queue_position=0,
+            missing_observations=0,
+            missing_first_at=None,
+        )
+
+    def public_job(self: JobService, job: dict[str, Any] | None) -> dict[str, Any] | None:
+        result = original_public_job(self, job)
+        if result is None or job is None:
+            return result
+        preset = self.presets.get(job["preset_id"])
+        if not preset or preset.manifest.get("family", "generic") != "generic":
+            return result
+
+        if job.get("status") == "succeeded":
+            result["progress_percent"] = 100
+            return result
+
+        value = job.get("progress_value")
+        maximum = job.get("progress_max")
+        if value is not None and maximum:
+            sample = max(0, min(100, round(float(value) * 100 / float(maximum))))
+            # Reserve 100 for execution_success. Imported graphs may still have
+            # decode/save nodes after the sampler reaches its own 100%.
+            result["progress_percent"] = min(95, sample)
+            result["progress_phase"] = "sampling"
+        elif job.get("status") in {"submitting", "queued", "running"}:
+            result["progress_percent"] = 0
         return result
 
     async def persist_runtime_result(service: JobService, job: dict[str, Any] | None) -> None:
@@ -259,6 +309,8 @@ def install_workflow_runtime() -> None:
     Preset.validate_media_roles = validate_media_roles
     Preset.validate_parameters = validate_parameters
     Preset.public_metadata = public_metadata
+    JobService._handle_progress_state = handle_progress_state
+    JobService.public_job = public_job
     JobService._apply_history = apply_history
     JobService.handle_ws_event = handle_ws_event
     JobService.cancel = cancel
