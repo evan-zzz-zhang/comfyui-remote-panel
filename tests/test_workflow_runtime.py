@@ -61,6 +61,16 @@ def test_generic_number_honors_schema_step_precision_and_rejects_misalignment():
         preset.validate_parameters(values)
 
 
+def test_generic_random_seed_respects_schema_range():
+    analysis, config = wai_config()
+    preset = preset_from_definition(build_definition(wai_img2img_workflow(), config, analysis))
+    values = {item["id"]: item["default"] for item in analysis["parameters"] if item["confidence"] != "LOW"}
+    values["seed"] = None
+    seed = int(preset.validate_parameters(values)["seed"])
+    spec = preset.manifest["parameters"]["seed"]
+    assert spec["minimum"] <= seed <= spec["maximum"]
+
+
 def test_capability_profile_is_public_without_workflow_json():
     analysis, config = wai_config()
     preset = preset_from_definition(build_definition(wai_img2img_workflow(), config, analysis))
