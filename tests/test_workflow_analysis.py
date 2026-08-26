@@ -108,6 +108,7 @@ def test_wai_img2img_profile_uses_graph_and_schema_without_dimensions():
     source = next(item for item in result["media_inputs"] if item["semantic"] == "source_image")
     assert source["required"] is True
     assert source["confidence"] == "HIGH"
+    assert result["preflight"]["nodes"]["status"] == "PASS"
     assert result["preflight"]["outputs"]["status"] == "PASS"
     assert result["preflight"]["parameters"]["status"] == "PASS"
     assert any(item["code"] == "frontend_helper_input" and item["severity"] == "WARN" for item in result["diagnostics"])
@@ -161,3 +162,17 @@ def test_connected_schema_mismatch_fails_but_literal_unknown_only_warns():
     result = inspect_api_workflow(graph, schemas)
     assert any(item["code"] == "unknown_connected_input" and item["severity"] == "FAIL" for item in result["diagnostics"])
     assert any(item["code"] == "legacy_or_unknown_input" and item["severity"] == "WARN" for item in result["diagnostics"])
+
+
+def test_unrecognized_scalar_stays_low_confidence_manual_candidate():
+    workflow = {
+        "1": {"class_type": "MysteryTransform", "inputs": {"strength": 0.42}},
+        "2": {"class_type": "SaveImage", "inputs": {"images": ["1", 0], "filename_prefix": "ComfyUI"}},
+    }
+    result = inspect_api_workflow(workflow)
+    candidate = next(item for item in result["parameters"] if item["input"] == "strength")
+    assert candidate["semantic"] == "denoise"
+    assert candidate["confidence"] == "LOW"
+    assert candidate["source"] == "heuristic"
+    assert result["preflight"]["parameters"]["status"] == "WARN"
+    assert any(item["code"] == "manual_mapping_required" for item in result["diagnostics"])
