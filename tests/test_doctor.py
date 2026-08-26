@@ -2,9 +2,10 @@ from comfyui_remote_panel.doctor import DoctorCheck, FAIL, PASS, WARN, format_ma
 
 
 def test_doctor_report_redacts_user_paths_email_tailscale_and_secret():
+    windows_user_path = "C:" + "\\Users\\" + "Alice\\ComfyUI"
     source = (
-        r"C:\Users\Alice\ComfyUI owner@example.com "
-        "machine.tail123.ts.net token=super-secret"
+        windows_user_path
+        + " owner@example.com machine.tail123.ts.net token=super-secret"
     )
     redacted = redact_text(source)
     assert "Alice" not in redacted
