@@ -44,18 +44,42 @@ def _connection(value: Any) -> tuple[str, int] | None:
     return str(node_id), output_index
 
 
+class InspectionResult(dict[str, Any]):
+    """A dict that upgrades itself when app.py attaches `/object_info`.
+
+    v0.2's endpoint first called `inspect_api_workflow()` and only afterwards
+    fetched per-node schemas into `result["object_info"]`. Keeping that public
+    endpoint shape lets Configurator 2.0 merge Schema + Graph without a risky
+    rewrite of the main aiohttp router during this migration.
+    """
+
+    def __init__(self, workflow: dict[str, Any], initial: dict[str, Any]):
+        super().__init__(initial)
+        self._workflow = workflow
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        if key == "object_info" and isinstance(value, dict):
+            try:
+                merged = analyze_workflow(self._workflow, value).to_dict()
+            except ValueError as exc:
+                raise PresetError(str(exc)) from exc
+            self.clear()
+            self.update(merged)
+        super().__setitem__(key, value)
+
+
 def inspect_api_workflow(
     workflow: dict[str, Any], object_info: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    """Return Configurator 2.0's single authoritative workflow analysis.
-
-    The optional object_info map is keyed by class_type. Values may be either a
-    raw node schema or ComfyUI's `{class_type: schema}` endpoint response.
-    """
+    """Return Configurator 2.0's single authoritative workflow analysis."""
     try:
-        return analyze_workflow(workflow, object_info).to_dict()
+        result = analyze_workflow(workflow, object_info).to_dict()
     except ValueError as exc:
         raise PresetError(str(exc)) from exc
+    if object_info is not None:
+        result["object_info"] = object_info
+        return result
+    return InspectionResult(workflow, result)
 
 
 def suggest_control(name: str, value: Any) -> str:
@@ -120,6 +144,8 @@ def build_definition(
     if not isinstance(workflow, dict) or not isinstance(remote_config, dict):
         raise PresetError("工作流配置无效")
     analysis_data = _analysis_dict(analysis)
+    if analysis_data is None:
+        analysis_data = _analysis_dict(remote_config.get("analysis"))
     if analysis_data is None:
         analysis_data = inspect_api_workflow(workflow)
 
