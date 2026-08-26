@@ -80,11 +80,14 @@
   function renderConfigurator(result) {
     state.workflowInspection = result;
     const persistedRuntime = state.workflowEditingDetail?.definition?.manifest?.preflight?.runtime;
-    if (persistedRuntime && result.preflight) result.preflight.runtime = persistedRuntime;
+    const displayResult = persistedRuntime ? {
+      ...result,
+      preflight: { ...(result.preflight || {}), runtime: persistedRuntime },
+    } : result;
     const root = $("#workflow-inspection");
     if (!root) return;
-    root.innerHTML = `${renderProfile(result)}${renderMedia(result)}${renderParameters(result)}${renderOutputs(result)}${renderPreflight(result)}`;
-    const fatal = Object.values(result.preflight || {}).some(item => item?.status === "FAIL");
+    root.innerHTML = `${renderProfile(displayResult)}${renderMedia(displayResult)}${renderParameters(displayResult)}${renderOutputs(displayResult)}${renderPreflight(displayResult)}`;
+    const fatal = Object.entries(result.preflight || {}).some(([key, item]) => key !== "runtime" && item?.status === "FAIL");
     const button = $("#save-workflow");
     if (button) button.disabled = fatal || !(result.outputs || []).length;
   }
