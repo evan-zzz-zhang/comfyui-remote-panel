@@ -8,6 +8,7 @@ from typing import Any
 
 from .preset import PresetError, preset_from_definition
 from .workflow_analysis import WorkflowAnalysis, analyze_workflow
+from .workflow_runtime import install_workflow_runtime
 
 
 MAX_WORKFLOW_BYTES = 4 * 1024 * 1024
@@ -15,6 +16,8 @@ MAX_PACKAGE_BYTES = 8 * 1024 * 1024
 WORKFLOW_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 WINDOWS_PATH = re.compile(r"(?i)^[a-z]:[\\/]")
 SECRET_KEYS = {"password", "secret", "token", "api_key", "apikey", "authorization"}
+
+install_workflow_runtime()
 
 
 def parse_json_bytes(payload: bytes) -> dict[str, Any]:
@@ -44,44 +47,6 @@ def _connection(value: Any) -> tuple[str, int] | None:
     return str(node_id), output_index
 
 
-class InspectionResult(dict[str, Any]):
-    """A dict that upgrades itself when app.py attaches `/object_info`.
-
-    v0.2's endpoint first called `inspect_api_workflow()` and only afterwards
-    fetched per-node schemas into `result["object_info"]`. Keeping that public
-    endpoint shape lets Configurator 2.0 merge Schema + Graph without a risky
-    rewrite of the main aiohttp router during this migration.
-    """
-
-    def __init__(self, workflow: dict[str, Any], initial: dict[str, Any]):
-        super().__init__(initial)
-        self._workflow = workflow
-
-    def __setitem__(self, key: str, value: Any) -> None:
-        if key == "object_info" and isinstance(value, dict):
-            try:
-                merged = analyze_workflow(self._workflow, value).to_dict()
-            except ValueError as exc:
-                raise PresetError(str(exc)) from exc
-            self.clear()
-            self.update(merged)
-        super().__setitem__(key, value)
-
-
-def inspect_api_workflow(
-    workflow: dict[str, Any], object_info: dict[str, Any] | None = None
-) -> dict[str, Any]:
-    """Return Configurator 2.0's single authoritative workflow analysis."""
-    try:
-        result = analyze_workflow(workflow, object_info).to_dict()
-    except ValueError as exc:
-        raise PresetError(str(exc)) from exc
-    if object_info is not None:
-        result["object_info"] = object_info
-        return result
-    return InspectionResult(workflow, result)
-
-
 def suggest_control(name: str, value: Any) -> str:
     """Legacy fallback used by older exported clients/manual mapping UIs."""
     lowered = name.lower()
@@ -96,6 +61,57 @@ def suggest_control(name: str, value: Any) -> str:
     if isinstance(value, str):
         return "textarea" if "text" in lowered or "prompt" in lowered else "text"
     return "unsupported"
+
+
+def _legacy_view(result: dict[str, Any]) -> dict[str, Any]:
+    """Keep v0.2 response fields while exposing the richer v0.3 model."""
+    for node in result.get("nodes", []):
+        for item in node.get("inputs", []):
+            item["suggested_control"] = None if item.get("connected") else suggest_control(item.get("name", ""), item.get("value"))
+    basic = result.get("basic_bindings")
+    if isinstance(basic, dict):
+        media = basic.get("media")
+        if isinstance(media, dict):
+            media["reference_image"] = [
+                {
+                    key: item.get(key)
+                    for key in ("semantic", "node", "input", "label", "kind", "class_type", "default")
+                }
+                for item in media.get("reference_image", [])
+            ]
+    return result
+
+
+class InspectionResult(dict[str, Any]):
+    """A dict that upgrades itself when app.py attaches `/object_info`."""
+
+    def __init__(self, workflow: dict[str, Any], initial: dict[str, Any]):
+        super().__init__(_legacy_view(initial))
+        self._workflow = workflow
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        if key == "object_info" and isinstance(value, dict):
+            try:
+                merged = _legacy_view(analyze_workflow(self._workflow, value).to_dict())
+            except ValueError as exc:
+                raise PresetError(str(exc)) from exc
+            self.clear()
+            self.update(merged)
+        super().__setitem__(key, value)
+
+
+def inspect_api_workflow(
+    workflow: dict[str, Any], object_info: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Return Configurator 2.0's single authoritative workflow analysis."""
+    try:
+        result = _legacy_view(analyze_workflow(workflow, object_info).to_dict())
+    except ValueError as exc:
+        raise PresetError(str(exc)) from exc
+    if object_info is not None:
+        result["object_info"] = object_info
+        return result
+    return InspectionResult(workflow, result)
 
 
 def _analysis_dict(analysis: WorkflowAnalysis | dict[str, Any] | None) -> dict[str, Any] | None:
