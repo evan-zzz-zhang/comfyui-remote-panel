@@ -10,6 +10,7 @@ from urllib.parse import urlsplit, urlunsplit
 import aiohttp
 
 from .preset import Preset
+from .workflow_analysis import Severity, advertised_inputs, classify_unknown_input, connection
 
 
 log = logging.getLogger(__name__)
@@ -95,6 +96,14 @@ class ComfyClient:
     async def validate_presets(
         self, presets: list[Preset], stats: dict[str, Any] | None = None
     ) -> dict[str, list[str]]:
+        """Validate only incompatibilities that can actually prevent execution.
+
+        Configurator 2.0 deliberately distinguishes runtime inputs from frontend
+        helper/legacy literal fields. A JSON literal that is absent from the
+        current `/object_info` schema is retained and reported by workflow
+        preflight as WARN; it no longer makes the workflow unavailable. Missing
+        connected inputs remain FAIL because they change graph execution.
+        """
         async with self._validation_lock:
             node_cache: dict[str, Any] = {}
             model_cache: dict[str, Any] = {}
@@ -124,6 +133,7 @@ class ComfyClient:
                         if isinstance(video_spec, dict) and video_spec.get("components"):
                             dynamic_inputs.setdefault(str(video_spec["components"]), set()).add("video")
                         dynamic_inputs.pop("None", None)
+
                         node_types = sorted(
                             {node["class_type"] for node in preset.template.values()}
                             | {"LoadImage"}
@@ -141,28 +151,38 @@ class ComfyClient:
                             if not isinstance(info, dict) or node_type not in info:
                                 diagnostics.append(f"缺少节点：{node_type}")
                                 continue
+
+                            advertised = advertised_inputs({node_type: info}, node_type)
                             node_info = info[node_type]
-                            advertised: set[str] = set()
                             if isinstance(node_info, dict):
-                                for group in node_info.get("input", {}).values():
-                                    if isinstance(group, dict):
-                                        advertised.update(group)
                                 for group in node_info.get("input_order", {}).values():
                                     if isinstance(group, list):
                                         advertised.update(str(value) for value in group)
-                            if advertised:
-                                expected = {
-                                    input_name
-                                    for node in preset.template.values()
-                                    if node["class_type"] == node_type
-                                    for input_name in node.get("inputs", {})
-                                    if "." not in input_name
-                                }
-                                expected.update(dynamic_inputs.get(node_type, set()))
-                                diagnostics.extend(
-                                    f"节点输入不兼容：{node_type}.{missing}"
-                                    for missing in sorted(expected - advertised)
-                                )
+                            if not advertised:
+                                # Some test doubles / old custom nodes expose no
+                                # field list. There is not enough evidence to call
+                                # every literal input incompatible.
+                                continue
+
+                            expected: dict[str, bool] = {}
+                            for node in preset.template.values():
+                                if node["class_type"] != node_type:
+                                    continue
+                                for input_name, value in node.get("inputs", {}).items():
+                                    if "." in input_name:
+                                        continue
+                                    expected[input_name] = expected.get(input_name, False) or connection(value) is not None
+                            for input_name in dynamic_inputs.get(node_type, set()):
+                                expected[input_name] = True
+
+                            for missing in sorted(set(expected) - advertised):
+                                severity = classify_unknown_input(node_type, missing, connected=expected[missing])
+                                if severity == Severity.FAIL:
+                                    diagnostics.append(f"节点输入不兼容：{node_type}.{missing}")
+                                # WARN is intentionally not added to `diagnostics`:
+                                # `preset.available` must only reflect blockers.
+                                # The persisted preflight retains the warning.
+
                         for dependency in preset.manifest["dependencies"]:
                             category = dependency["category"]
                             if category not in model_cache:
@@ -176,13 +196,13 @@ class ComfyClient:
                             models = model_cache[category]
                             if isinstance(models, ComfyError):
                                 raise models
-                            expected = dependency["name"].replace("\\", "/")
-                            if expected not in models:
+                            expected_name = dependency["name"].replace("\\", "/")
+                            if expected_name not in models:
                                 diagnostics.append(f"缺少模型：{dependency['name']}")
                             elif dependency.get("node") and dependency.get("input"):
                                 overrides.setdefault(str(dependency["node"]), {})[
                                     str(dependency["input"])
-                                ] = models[expected]
+                                ] = models[expected_name]
                     except ComfyError as exc:
                         diagnostics.append(str(exc))
                     results[preset.id] = (diagnostics, overrides)
