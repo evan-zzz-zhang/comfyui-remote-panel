@@ -59,9 +59,25 @@
       .generic-reference-card.has-source-preview{min-height:94px;border-style:solid;align-items:center}
       .generic-reference-card.has-source-preview>svg{display:none}
       .generic-source-preview{display:block;width:76px;height:76px;flex:0 0 76px;object-fit:cover;background:#090b08;border:1px solid var(--border-soft);border-radius:10px}
+      .artifact-grid.gallery.single-image{grid-template-columns:minmax(0,1fr)!important;justify-items:center}
+      .artifact-grid.single-image .artifact-item{width:min(100%,680px);justify-self:center}
+      .artifact-grid.single-image .artifact-item img{display:block;width:auto;max-width:100%;height:auto;max-height:calc(100dvh - 180px);margin:0 auto;object-fit:contain}
+      .artifact-preview.one{grid-template-columns:minmax(0,1fr);place-items:center}
+      .artifact-preview.one .artifact-preview-item{display:grid;width:100%;place-items:center}
+      .artifact-preview.one .artifact-preview-item img{display:block;width:auto;max-width:100%;height:auto;max-height:430px;margin:0 auto;object-fit:contain}
       @media (max-width:370px){.generic-source-preview{width:64px;height:64px;flex-basis:64px}}
     `;
     document.head.append(style);
+  }
+
+  function normalizeSingleImageLayouts(root = document) {
+    root.querySelectorAll?.(".artifact-grid").forEach(grid => {
+      const items = [...grid.children].filter(item => item.classList?.contains("artifact-item"));
+      const singleImage = items.length === 1
+        && Boolean(items[0].querySelector("img"))
+        && !items[0].querySelector("video,audio");
+      grid.classList.toggle("single-image", singleImage);
+    });
   }
 
   function stabilizeGenericProgress(job) {
@@ -129,17 +145,29 @@
   document.addEventListener("DOMContentLoaded", () => {
     installPreviewStyles();
     const root = document.querySelector("#generic-parameters");
-    if (!root) return;
-    new MutationObserver(records => {
-      for (const record of records) {
-        for (const node of record.removedNodes) {
-          if (!(node instanceof Element)) continue;
-          if (node.matches?.(".generic-source-preview")) revokePreview(node);
-          node.querySelectorAll?.(".generic-source-preview").forEach(revokePreview);
+    if (root) {
+      new MutationObserver(records => {
+        for (const record of records) {
+          for (const node of record.removedNodes) {
+            if (!(node instanceof Element)) continue;
+            if (node.matches?.(".generic-source-preview")) revokePreview(node);
+            node.querySelectorAll?.(".generic-source-preview").forEach(revokePreview);
+          }
         }
-      }
+        bindGenericImagePreviews();
+      }).observe(root, { childList: true, subtree: true });
       bindGenericImagePreviews();
-    }).observe(root, { childList: true, subtree: true });
-    bindGenericImagePreviews();
+    }
+
+    const body = document.body;
+    if (body) {
+      new MutationObserver(() => normalizeSingleImageLayouts(body)).observe(body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["class"],
+      });
+      normalizeSingleImageLayouts(body);
+    }
   });
 })();
