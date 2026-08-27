@@ -19,6 +19,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install -e ".[test]"
       - run: python -m pytest
+      - run: node --check src/comfyui_remote_panel/static/i18n.js
       - run: node --check src/comfyui_remote_panel/static/app.js
       - run: node --check src/comfyui_remote_panel/static/workflow_ux.js
       - run: node --check src/comfyui_remote_panel/static/configurator_v2.js
