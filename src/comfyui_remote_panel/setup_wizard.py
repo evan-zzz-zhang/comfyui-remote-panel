@@ -173,6 +173,12 @@ def _confirm(
     return value in {"y", "yes", "1", "true", "是"}
 
 
+def _default_control_visible_window(existing: Config | None) -> bool:
+    if existing is not None:
+        return existing.comfyui_visible_window
+    return os.name == "nt"
+
+
 def _toml_string(value: str | Path) -> str:
     return json.dumps(str(value), ensure_ascii=False)
 
@@ -361,12 +367,19 @@ def run_setup(
         if existing and existing.comfyui_working_dir
         else installation.root
     )
+    visible_window = _default_control_visible_window(existing)
     if control_enabled:
         output_fn("将使用以下启动命令：")
         output_fn("  " + " ".join(control_command))
         if not _confirm("确认这个命令", input_fn=input_fn, default=True):
             control_enabled = False
             output_fn("已保持 ComfyUI 控制关闭；远程生成不受影响。")
+        elif os.name == "nt":
+            visible_window = _confirm(
+                "启动 ComfyUI 时显示控制台窗口",
+                input_fn=input_fn,
+                default=visible_window,
+            )
 
     tailscale = inspect_tailscale()
     auth_provider = "local"
@@ -404,7 +417,6 @@ def run_setup(
         minimum_free_bytes = existing.minimum_free_bytes
         output_reserve_bytes = existing.output_reserve_bytes
         max_tracked_bytes = existing.max_tracked_bytes
-        visible_window = existing.comfyui_visible_window
         startup_timeout = existing.comfyui_startup_timeout
         shutdown_timeout = existing.comfyui_shutdown_timeout
     else:
@@ -415,7 +427,6 @@ def run_setup(
         minimum_free_bytes = 512 * 1024 * 1024
         output_reserve_bytes = 1024 * 1024 * 1024
         max_tracked_bytes = None
-        visible_window = False
         startup_timeout = 120.0
         shutdown_timeout = 30.0
 
