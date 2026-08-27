@@ -28,6 +28,15 @@ class PanelStatus:
     reason: str = ""
 
 
+def _background_python_executable() -> str:
+    executable = Path(sys.executable)
+    if os.name == "nt" and executable.name.lower() == "pythonw.exe":
+        python = executable.with_name("python.exe")
+        if python.is_file():
+            return str(python)
+    return str(executable)
+
+
 def _background_creationflags() -> int:
     if os.name != "nt":
         return 0
@@ -157,7 +166,7 @@ class PanelController:
             raise PanelControlError(f"port {self.config.port} is already used by another process")
 
         command = [
-            sys.executable,
+            _background_python_executable(),
             "-m",
             "comfyui_remote_panel",
             "--config",
