@@ -13,6 +13,25 @@ def test_task_access_denied_recognizes_windows_permission_errors():
     assert not autostart._task_access_denied(AutostartError("script not found"))
 
 
+def test_registry_autostart_uses_hidden_cli_start_launcher(tmp_path: Path, monkeypatch):
+    scripts = tmp_path / "Scripts"
+    scripts.mkdir()
+    python = scripts / "python.exe"
+    pythonw = scripts / "pythonw.exe"
+    python.write_bytes(b"")
+    pythonw.write_bytes(b"")
+    config = tmp_path / "config.toml"
+
+    monkeypatch.setattr(autostart.sys, "executable", str(python))
+    command = autostart._registry_command(config)
+
+    assert "pythonw.exe" in command
+    assert "comfyui_remote_panel" in command
+    assert " start " in f" {command} "
+    assert "--config" in command
+    assert str(config) in command
+
+
 def test_install_falls_back_to_current_user_startup_when_task_scheduler_denies_access(
     tmp_path: Path, monkeypatch
 ):
