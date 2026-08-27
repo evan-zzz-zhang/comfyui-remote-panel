@@ -87,11 +87,12 @@ def repository_files() -> list[Path]:
 
 
 def _strip_known_synthetic_windows_fixtures(relative: str, text: str) -> str:
-    """Remove only the deliberate redaction fixtures used by Doctor tests/history.
+    """Remove only deliberate Doctor redaction fixtures from privacy scanning.
 
-    These strings exercise arbitrary-drive redaction and therefore intentionally look
-    like machine paths. Build the prefixes from pieces so this scanner does not flag
-    its own source code as containing an absolute path.
+    The Doctor tests intentionally contain fake absolute paths to prove report
+    redaction. Old reachable blobs also contain an assertion for a bare fake
+    drive-root token. Those exact synthetic fixtures are ignored; other paths,
+    including other paths in the same files, are still scanned normally.
     """
     if relative not in SYNTHETIC_WINDOWS_FIXTURE_FILES:
         return text
@@ -108,6 +109,14 @@ def _strip_known_synthetic_windows_fixtures(relative: str, text: str) -> str:
     )
     for prefix in prefixes:
         text = text.replace(prefix, "<SYNTHETIC_PATH>")
+
+    # Historical test_doctor.py asserted that a fake G:\ drive prefix was absent
+    # from the redacted report. Match only the exact quoted source token so a real
+    # path elsewhere in this file would still be reported.
+    if relative == "tests/test_doctor.py":
+        historical_drive_assertion_token = '"' + "G:" + "\\\\" + '"'
+        text = text.replace(historical_drive_assertion_token, '"<SYNTHETIC_DRIVE>"')
+
     return text
 
 
