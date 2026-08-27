@@ -1,16 +1,19 @@
 name: Workflow compatibility
-description: Report an API Workflow that imports or runs incorrectly
+description: Report an API Workflow that imports, maps, preflights, or runs incorrectly
 title: "[Workflow] "
 labels: ["workflow-compatibility"]
 body:
   - type: markdown
     attributes:
       value: |
-        Export the workflow using ComfyUI API format. Attach only files you are allowed to share. Run `comfyui-remote-panel doctor --report` before submitting.
+        Export the workflow using ComfyUI **API Format**. Run `comfyui-remote-panel doctor --report` before submitting when possible.
+
+        Privacy: an API Workflow can still contain prompts, model names, custom-node values, filenames, or local paths. Do not attach the Workflow unless you have reviewed it and are allowed to share it. Never upload `config.toml`, databases, full logs, real identities, Tailscale hostnames, private media, API keys, tokens, cookies, passwords, or other secrets.
   - type: input
     id: remote-version
     attributes:
       label: Comfy Remote version
+      placeholder: 0.3.0
     validations:
       required: true
   - type: input
@@ -42,35 +45,38 @@ body:
   - type: input
     id: workflow-type
     attributes:
-      label: Workflow type
-      placeholder: image / video / audio / mixed
+      label: Workflow capability
+      placeholder: image / video / audio / mixed; img2img / txt2img / custom
     validations:
       required: true
   - type: textarea
     id: custom-nodes
     attributes:
-      label: Custom nodes
+      label: Relevant custom nodes
+      description: Names/versions only. Do not paste private paths or full environment dumps.
   - type: dropdown
     id: import
     attributes:
-      label: Import success
-      options: ["Yes", "No"]
+      label: Import result
+      options: ["Succeeded", "Rejected as invalid", "Crashed/errored"]
     validations:
       required: true
   - type: textarea
     id: semantics
     attributes:
-      label: Recognized semantics / mappings
-      description: What prompts, media, dimensions, batch, and outputs were recognized?
+      label: Recognized capabilities / mappings
+      description: What prompts, media inputs, editable parameters, dimensions/size strategy, batch behavior, and outputs were recognized? Not every workflow needs width/height/batch.
   - type: textarea
     id: preflight
     attributes:
-      label: Compatibility / preflight result
+      label: Preflight result
+      description: Include the PASS/WARN/FAIL summary or a sanitized description of the blocking item.
   - type: dropdown
     id: runtime
     attributes:
       label: Runtime result
       options:
+        - Not tested
         - Succeeded
         - Failed before queue
         - Failed in ComfyUI
@@ -81,6 +87,14 @@ body:
     id: doctor
     attributes:
       label: Doctor report
+      description: Paste `doctor --report` after reviewing the output.
       render: markdown
     validations:
       required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I reviewed all pasted/attached content and removed private paths, identities, prompts/media I cannot share, secrets, config/database contents, and full logs.
+          required: true
