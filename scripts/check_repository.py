@@ -110,9 +110,9 @@ def _strip_known_synthetic_windows_fixtures(relative: str, text: str) -> str:
     for prefix in prefixes:
         text = text.replace(prefix, "<SYNTHETIC_PATH>")
 
-    # Historical test_doctor.py asserted that a fake G:\ drive prefix was absent
-    # from the redacted report. Match only the exact quoted source token so a real
-    # path elsewhere in this file would still be reported.
+    # Historical test_doctor.py asserted that a fake drive prefix was absent
+    # from the redacted report. Match only that exact quoted source token so a
+    # real path elsewhere in the same file would still be reported.
     if relative == "tests/test_doctor.py":
         historical_drive_assertion_token = '"' + "G:" + "\\\\" + '"'
         text = text.replace(historical_drive_assertion_token, '"<SYNTHETIC_DRIVE>"')
