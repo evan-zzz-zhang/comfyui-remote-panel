@@ -150,13 +150,13 @@ Choose the installation you actually want to control remotely.
 If automatic discovery finds nothing, Setup asks for the ComfyUI root directory. For Windows Portable you can enter:
 
 ```text
-D:\your-folder\ComfyUI_windows_portable
+<drive>:\your-folder\ComfyUI_windows_portable
 ```
 
 or its nested directory:
 
 ```text
-D:\your-folder\ComfyUI_windows_portable\ComfyUI
+<drive>:\your-folder\ComfyUI_windows_portable\ComfyUI
 ```
 
 Setup normalizes either form to the Portable bundle root.
@@ -471,6 +471,21 @@ git pull
 ```
 
 Setup's check/update path tries to preserve valid settings and backs up `config.toml` to `config.toml.bak` before rewriting it.
+
+---
+
+## CLI language override
+
+CLI output follows the operating-system locale by default. You can override it per command:
+
+```powershell
+.\.venv\Scripts\comfyui-remote-panel.exe setup --lang en
+.\.venv\Scripts\comfyui-remote-panel.exe doctor --lang zh-CN
+```
+
+Or set `COMFY_REMOTE_LANG` to `en` or `zh-CN` for the current shell/environment.
+
+The Web Panel keeps its own browser-side language preference under **Settings → Language**.
 
 ---
 
