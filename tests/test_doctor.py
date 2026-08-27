@@ -38,15 +38,16 @@ def test_doctor_report_redacts_user_paths_email_tailscale_and_secret():
 
 
 def test_markdown_report_redacts_absolute_paths_on_non_system_drives():
+    drive = "G:" + "\\"
     report = format_markdown(
         [
-            DoctorCheck("Core", "config.toml", PASS, r"G:\AI-project\comfyui-remote-panel\config.toml"),
-            DoctorCheck("Core", "data directory", PASS, r"G:\AI-project\comfyui-remote-panel\data (writable)"),
-            DoctorCheck("ComfyUI", "input directory", PASS, r"G:\AI\ComfyUI_H3_Portable\ComfyUI\input (writable)"),
-            DoctorCheck("ComfyUI", "output directory", PASS, r"G:\AI\ComfyUI_H3_Portable\ComfyUI\output (readable)"),
+            DoctorCheck("Core", "config.toml", PASS, drive + r"AI-project\comfyui-remote-panel\config.toml"),
+            DoctorCheck("Core", "data directory", PASS, drive + r"AI-project\comfyui-remote-panel\data (writable)"),
+            DoctorCheck("ComfyUI", "input directory", PASS, drive + r"AI\ComfyUI_H3_Portable\ComfyUI\input (writable)"),
+            DoctorCheck("ComfyUI", "output directory", PASS, drive + r"AI\ComfyUI_H3_Portable\ComfyUI\output (readable)"),
         ]
     )
-    assert "G:\\" not in report
+    assert drive not in report
     assert "AI-project" not in report
     assert "ComfyUI_H3_Portable" not in report
     assert report.count("<PATH>") >= 4

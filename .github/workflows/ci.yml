@@ -37,3 +37,15 @@ jobs:
       - run: python -m pip install -c constraints/minimum.txt -e ".[test]"
       - run: python -m pytest
       - run: python -m build --no-isolation
+
+  repository-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python scripts/check_repository.py
+      - run: python scripts/check_history.py

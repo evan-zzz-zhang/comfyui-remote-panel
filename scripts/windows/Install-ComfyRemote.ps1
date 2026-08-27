@@ -12,17 +12,22 @@ Write-Host "Comfy Remote Windows bootstrap"
 Write-Host "Project: $root"
 
 try {
-    $version = & $PythonPath -c "import sys; print('.'.join(map(str, sys.version_info[:3]))); raise SystemExit(0 if sys.version_info >= (3, 11) else 1)"
+    $versionInfo = & $PythonPath -c "import sys; ok = sys.version_info >= (3, 11) and sys.version_info.releaselevel == 'final'; print(sys.version.split()[0]); raise SystemExit(0 if ok else 1)"
     if ($LASTEXITCODE -ne 0) {
-        throw "Python 3.11 or newer is required."
+        throw "A stable Python 3.11 or newer release is required. Pre-release alpha/beta/rc builds are not supported."
     }
 } catch {
-    throw "Python 3.11 or newer was not found. Install Python, reopen PowerShell, then run this script again."
+    throw "A stable Python 3.11 or newer release was not found. Install a stable Python release, make sure python.exe is on PATH, reopen PowerShell, then run this script again."
 }
-Write-Host "Python: $version"
+Write-Host "Python: $versionInfo"
 
 $venvPython = Join-Path $root ".venv\Scripts\python.exe"
-if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
+if (Test-Path -LiteralPath $venvPython -PathType Leaf) {
+    $venvOk = & $venvPython -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) and sys.version_info.releaselevel == 'final' else 1)"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Existing .venv uses an unsupported pre-release/old Python. Delete .venv and rerun this installer with a stable Python 3.11 or newer release."
+    }
+} else {
     Write-Host "Creating .venv..."
     & $PythonPath -m venv (Join-Path $root ".venv")
     if ($LASTEXITCODE -ne 0) { throw "Failed to create .venv." }

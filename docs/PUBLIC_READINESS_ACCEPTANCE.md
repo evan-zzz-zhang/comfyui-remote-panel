@@ -1,86 +1,99 @@
-# v0.3 Phase 1 Public Readiness Acceptance
+# v0.3 Public Readiness Acceptance — Completed Phase Record
 
-本清单是 v0.3 Phase 1 的 Release Gate。CI 不能替代最后的陌生 Windows 真机验收。
+> Status: **Public Readiness product acceptance completed.**
+>
+> This document records the v0.3 Phase 1 gate. The final `v0.3.0` Public Beta release candidate still requires the current release commit to pass automated checks and a short smoke test before tagging.
 
-## 自动化 Gate
+CI cannot replace real Windows / GPU / mobile acceptance, and old real-machine acceptance cannot replace validation of the final release commit. Both layers are required.
 
-- [ ] Python 3.11 / 3.13：Windows + Linux pytest 全绿。
-- [ ] `scripts/check_repository.py` 全绿。
-- [ ] wheel build 全绿。
-- [ ] CLI smoke tests 覆盖旧启动方式与新子命令解析。
-- [ ] setup config generation tests。
-- [ ] doctor / redaction tests。
-- [ ] panel PID/未知端口占用保护 tests。
-- [ ] 没有 H3 模型/节点时，Panel 仍可启动并使用普通 API Workflow。
+## Product acceptance completed during v0.3
 
-## 陌生 Windows 条件
+The following areas were implemented and exercised through automated tests and/or real Windows acceptance:
 
-测试电脑必须：
+- [x] Public CLI: setup, Panel lifecycle, Doctor, autostart.
+- [x] Setup-generated configuration without requiring users to hand-edit TOML.
+- [x] Windows Portable ComfyUI discovery and lifecycle control.
+- [x] Portable launch-script discovery preserving real startup flags.
+- [x] Panel background process identity / health / unknown-port safety boundaries.
+- [x] Tailscale identity and Serve configuration path.
+- [x] Doctor PASS/WARN/FAIL and privacy-safe report output.
+- [x] Generic ComfyUI API Workflow import / Configurator / Preflight / Runtime Test.
+- [x] Real non-H3 Workflow generation and result viewing during acceptance.
+- [x] H3 treated as optional Bundled / Verified examples rather than a core dependency.
+- [x] Windows autostart registration path.
+- [x] Real Windows setup on separate clean environments without existing Comfy Remote config/data.
 
-- 从未安装过 Comfy Remote。
-- 没有开发机的 `config.toml`。
-- 没有开发机的 data DB。
-- 不要求存在 H3 环境。
-- 本机 ComfyUI 原本能运行。
-- 至少有一个简单图片 API Workflow 可用于测试。
+A dedicated acceptance environment also exposed and fixed the case where H3 nodes/workflows existed but H3 model assets did not: missing optional H3 assets must not make a generic Comfy Remote installation `NOT READY`.
 
-开发者不得帮测试者手工改 TOML。
+## Final release-candidate automated gate
 
-## 必须完整走通
+For the exact commit that will become `v0.3.0`:
 
-- [ ] clone / download。
-- [ ] `Install-ComfyRemote.ps1`。
-- [ ] `setup`。
-- [ ] 自动或手动找到 ComfyUI。
-- [ ] `doctor`。
-- [ ] Tailscale Serve。
-- [ ] 手机访问。
-- [ ] 从 ComfyUI 导出 API Workflow。
-- [ ] 导入并检查映射/兼容性。
-- [ ] 真实测试。
-- [ ] 创作页生成。
-- [ ] 任务页查看结果。
-- [ ] 下载结果。
-- [ ] 启用 autostart。
-- [ ] Windows 注销并重新登录。
-- [ ] 手机再次访问。
+- [ ] Windows Python 3.11 pytest.
+- [ ] Windows Python 3.13 pytest.
+- [ ] Linux Python 3.11 pytest.
+- [ ] Linux Python 3.13 pytest.
+- [ ] minimum-dependencies pytest/build.
+- [ ] frontend JavaScript syntax checks.
+- [ ] `python scripts/check_repository.py`.
+- [ ] `python -m build`.
 
-若必须手工编辑 TOML 才能完成，Phase 1 验收失败。
+If GitHub Actions cannot acquire a runner and reports zero executed steps, that is an infrastructure failure, **not a passing gate**. The release record must not call CI green until jobs actually execute.
 
-## 完成标准 A–E
+## Final release-candidate smoke test
 
-### A — H3 可选
+The final public `main` candidate only needs one short end-to-end smoke, not another full Phase 1 matrix:
 
-没有 H3 模型、LoRA 或 custom node 仍能启动 Panel、打开 UI、导入自己的 Workflow 并生成。
+```text
+clean clone of final main
+→ Install-ComfyRemote.ps1
+→ setup
+→ doctor
+→ start/status
+→ phone access through Tailscale
+→ import one ordinary API Workflow
+→ real generation
+→ result visible on phone
+```
 
-### B — Happy path 不暴露内部概念
+This smoke confirms that the public `main` tree itself—not an old development branch—still follows the documented first-run path.
 
-普通用户不需要理解 Python module、TOML、PID、Task Scheduler、Tailscale LoginName 或 ComfyUI node id。
+## Acceptance principles retained
 
-### C — 可诊断
+### A — H3 is optional
 
-出现问题可以运行：
+A user who does not use MiniMax H3 must still be able to run the Panel and their own compatible ComfyUI API Workflow. H3 availability is not the generic installation success criterion.
+
+### B — Happy path hides internal implementation concepts
+
+A first-time user should not need to understand TOML, PID tracking, Task Scheduler internals, Tailscale LoginName, or ComfyUI node IDs to complete the normal setup path.
+
+### C — Diagnosable
+
+Problems should be reportable with:
 
 ```powershell
-comfyui-remote-panel doctor --report
+.\.venv\Scripts\comfyui-remote-panel.exe doctor --report
 ```
 
-并直接把脱敏结果提交 Issue。
+The output is automatically redacted, but users are still instructed to review it before posting publicly.
 
-### D — 普通 API Workflow
+### D — Ordinary API Workflow
 
-自己的 ComfyUI API Workflow 可以完成：
+The generic success path is:
 
 ```text
-导入 → 检查 → 测试 → 生成
+API Workflow export
+→ import
+→ Configurator analysis
+→ Preflight
+→ Runtime Test
+→ creation
+→ artifact
 ```
 
-### E — 登录恢复
+No fixed `width / height / batch_size` contract is required.
 
-Windows 注销/重登后：
+### E — Login recovery
 
-```text
-Panel 自动回来
-Tailscale Serve 可访问
-手机继续能用
-```
+Windows login autostart is part of the supported v0.3 deployment path. More advanced crash/watchdog recovery is explicitly deferred to v0.4 Reliability / Recovery.

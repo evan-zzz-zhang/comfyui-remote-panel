@@ -84,9 +84,9 @@ def redact_text(value: str) -> str:
     text = re.sub(r"(?i)\b[A-Z]:\\Users\\[^\\/\r\n]+", "<USER_PATH>", text)
     text = re.sub(r"(?i)\b/Users/[^/\r\n]+", "<USER_PATH>", text)
     text = re.sub(r"(?i)\b/home/[^/\r\n]+", "<USER_PATH>", text)
-    # Report diagnostics can point at arbitrary drives (for example G:\\AI\\ComfyUI),
-    # not only the current user's profile. Redact unquoted absolute path tokens as a
-    # second line of defence; structured path checks are replaced separately below.
+    # Report diagnostics can point at arbitrary drives, not only the current
+    # user's profile. Redact unquoted absolute path tokens as a second line of
+    # defence; structured path checks are replaced separately below.
     text = re.sub(r"(?i)\b[A-Z]:\\[^\s|]+", "<PATH>", text)
     text = re.sub(r"(?<![A-Za-z0-9_])/(?:[^\s|/]+/)+[^\s|]*", "<PATH>", text)
     text = re.sub(

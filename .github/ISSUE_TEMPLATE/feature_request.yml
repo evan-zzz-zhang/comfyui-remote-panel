@@ -3,6 +3,10 @@ description: Suggest a focused improvement
 title: "[Feature] "
 labels: ["enhancement"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe the user problem before proposing implementation details. Do not include real identities, local paths, prompts/media, database/config contents, full logs, Tailscale hostnames, API keys, tokens, cookies, passwords, or other secrets.
   - type: textarea
     id: problem
     attributes:
@@ -14,9 +18,15 @@ body:
     id: proposal
     attributes:
       label: Proposed behavior
+      description: What should Comfy Remote do from the user's point of view?
     validations:
       required: true
   - type: textarea
     id: alternatives
     attributes:
       label: Alternatives or workarounds
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope / safety considerations
+      description: If relevant, explain effects on remote access, lifecycle control, workflow safety, privacy, or compatibility.
