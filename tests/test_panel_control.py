@@ -71,3 +71,17 @@ def test_windows_background_flags_hide_console(monkeypatch):
     assert flags & panel_control.subprocess.CREATE_NO_WINDOW
     assert flags & panel_control.subprocess.CREATE_NEW_PROCESS_GROUP
     assert not flags & panel_control.subprocess.DETACHED_PROCESS
+
+
+def test_windows_pythonw_launcher_spawns_hidden_python_child(tmp_path: Path, monkeypatch):
+    scripts = tmp_path / "Scripts"
+    scripts.mkdir()
+    python = scripts / "python.exe"
+    pythonw = scripts / "pythonw.exe"
+    python.write_bytes(b"")
+    pythonw.write_bytes(b"")
+
+    monkeypatch.setattr(panel_control.os, "name", "nt")
+    monkeypatch.setattr(panel_control.sys, "executable", str(pythonw))
+
+    assert panel_control._background_python_executable() == str(python)
