@@ -11,6 +11,7 @@ from urllib.request import urlopen
 
 from .autostart import AutostartError, install_autostart
 from .config import Config, ConfigError, load_config
+from .launch_discovery import discover_portable_start_options
 from .tailscale import TailscaleError, enable_serve, inspect_tailscale
 
 
@@ -298,6 +299,36 @@ def _choose_installation(
         output_fn("该目录不是可识别的 ComfyUI 根目录；需要 main.py 或 ComfyUI/main.py。")
 
 
+def _choose_discovered_start_command(
+    installation: ComfyInstallation,
+    *,
+    input_fn: Callable[[str], str],
+    output_fn: Callable[[str], None],
+) -> tuple[str, ...]:
+    if not installation.portable:
+        return installation.start_command
+    options = discover_portable_start_options(
+        installation.root,
+        installation.python_executable,
+    )
+    if not options:
+        return installation.start_command
+
+    output_fn("检测到 ComfyUI 启动脚本：")
+    for index, option in enumerate(options, start=1):
+        output_fn(f"  [{index}] {option.label}")
+        output_fn("      " + " ".join(option.command[1:]))
+    output_fn("  [0] 使用 Comfy Remote 默认启动命令")
+    choice = _ask("选择 Comfy Remote 启动 ComfyUI 的方式", input_fn=input_fn, default="1")
+    try:
+        selected = int(choice)
+    except ValueError:
+        selected = 0
+    if 1 <= selected <= len(options):
+        return options[selected - 1].command
+    return installation.start_command
+
+
 def run_setup(
     config_path: str | Path = "config.toml",
     *,
@@ -357,9 +388,14 @@ def run_setup(
         input_fn=input_fn,
         default=control_default,
     )
+    has_existing_command = bool(
+        existing
+        and existing.comfyui_control_enabled
+        and existing.comfyui_start_command
+    )
     control_command = (
         existing.comfyui_start_command
-        if existing and existing.comfyui_control_enabled and existing.comfyui_start_command
+        if has_existing_command
         else installation.start_command
     )
     control_working_dir = (
@@ -369,6 +405,12 @@ def run_setup(
     )
     visible_window = _default_control_visible_window(existing)
     if control_enabled:
+        if not has_existing_command:
+            control_command = _choose_discovered_start_command(
+                installation,
+                input_fn=input_fn,
+                output_fn=output_fn,
+            )
         output_fn("将使用以下启动命令：")
         output_fn("  " + " ".join(control_command))
         if not _confirm("确认这个命令", input_fn=input_fn, default=True):
