@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 from types import SimpleNamespace
 
 import pytest
@@ -14,7 +15,7 @@ from comfyui_remote_panel.doctor import (
     workflow_compatibility_detail,
 )
 from comfyui_remote_panel.doctor_workflows import load_doctor_presets
-from comfyui_remote_panel.preset import Preset
+from comfyui_remote_panel.preset import BUILTIN_WORKFLOW_DIR, Preset, load_presets
 from comfyui_remote_panel.workflow_config import build_definition
 from test_workflow_config import remote_config, save_image_workflow
 
@@ -94,6 +95,24 @@ def test_workflow_compatibility_detail_is_profile_only_and_never_dumps_workflow_
     assert "batch controlled by workflow" in detail
     assert "DO_NOT_PRINT" not in detail
     assert "secret_workflow_value" not in detail
+
+
+@pytest.mark.asyncio
+async def test_doctor_keeps_packaged_preset_when_checkout_contains_duplicate_id(tmp_path):
+    packaged = load_presets()
+    builtin = next(iter(packaged.values()))
+    configured_root = tmp_path / "workflows"
+    shutil.copytree(builtin.directory, configured_root / builtin.id)
+
+    config = SimpleNamespace(
+        workflow_dir=configured_root,
+        database_path=tmp_path / "missing.db",
+    )
+    presets = await load_doctor_presets(config)
+
+    resolved = presets[builtin.id].directory.resolve()
+    assert resolved == builtin.directory.resolve()
+    assert resolved.is_relative_to(BUILTIN_WORKFLOW_DIR.resolve())
 
 
 @pytest.mark.asyncio
