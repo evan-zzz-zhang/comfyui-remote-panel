@@ -11,12 +11,12 @@ from check_repository import _privacy_findings  # noqa: E402
 
 
 def test_doctor_redaction_fixture_paths_are_not_repository_privacy_failures():
-    synthetic = "G:" + r"\AI\ComfyUI_H3_Portable\ComfyUI\input"
+    synthetic = "G:" + "\\AI\\ComfyUI_H3_Portable\\ComfyUI\\input"
     assert _privacy_findings("tests/test_doctor.py", synthetic) == []
 
 
 def test_real_machine_path_is_still_rejected_in_other_source_file():
-    machine_path = "D:" + r"\Private\ComfyUI\config.toml"
+    machine_path = "D:" + "\\Private\\ComfyUI\\config.toml"
     findings = _privacy_findings("README.md", machine_path)
     assert "Windows absolute path: README.md" in findings
 
