@@ -1,40 +1,43 @@
 # Comfy Remote
 
+**English** | [简体中文](README.zh-CN.md)
+
 **Run your local ComfyUI workflows from your phone.**
 
 > **Current status: v0.3.0 Public Beta.**
 >
-> 核心远程生成、通用 ComfyUI API Workflow、Windows Setup、Tailscale 远程访问、Doctor 诊断和 Windows 登录自启动已经可用。高级故障恢复、多主机、Wake-on-LAN 等能力尚未实现。
+> Core remote generation, generic ComfyUI API Workflow support, Windows Setup, Tailscale remote access, Doctor diagnostics, and Windows login autostart are available. Advanced crash recovery, multi-host support, and Wake-on-LAN are not implemented yet.
 
-Comfy Remote 是一个手机优先的 ComfyUI 远程创作面板。它运行在 ComfyUI 所在的 Windows 电脑上，把已经在本机验证过的 **ComfyUI API Workflow** 转成适合手机使用的创作界面：选择工作流、添加素材、填写提示词、提交任务、查看结果。
+Comfy Remote is a mobile-first remote creation panel for ComfyUI. It runs on the Windows computer that hosts ComfyUI and turns locally verified **ComfyUI API Workflows** into a phone-friendly interface for selecting workflows, adding media, editing prompts, submitting jobs, and reviewing results.
 
-v0.3 的重点是 **Public Readiness + Configurator 2.0**：第一次安装不需要手工编写 TOML，也不要求 MiniMax H3 环境；陌生 API Workflow 会通过 schema、图连接关系和保守的 heuristic fallback 分析能力与可编辑参数，再经过 Preflight 和真实 Runtime Test 验证。
+The focus of v0.3 is **Public Readiness + Configurator 2.0**. First-time installation does not require hand-writing TOML and does not require a MiniMax H3 environment. Unknown API Workflows are analyzed using schema information, graph connections, and a conservative heuristic fallback, then validated through Preflight and a real Runtime Test.
 
 ## What it does
 
-- 导入普通 ComfyUI **API Workflow**，分析工作流能力、媒体输入、提示词、可配置参数和主要输出。
-- 使用 **Schema + Graph + heuristic fallback**，而不是要求所有工作流都必须存在 `width`、`height`、`batch_size` 等固定字段。
-- Configurator 2.0 对不确定映射提供显式确认和高级手动映射，不会为了适配 UI 静默改写工作流图。
-- 支持图片 / 视频 / 音频 / 文件 artifact 与任务历史。
-- 支持提交、排队、实时进度、取消、再次生成、结果查看与下载。
-- 提供 `setup`、`start / stop / restart / status`、`doctor` 和 Windows 登录自启动命令。
-- Windows Portable ComfyUI 可识别已有启动脚本并保留实际启动参数，例如 `--enable-manager`、`--use-sage-attention`。
-- 默认推荐使用 Tailscale Serve 从手机访问；Panel 与 ComfyUI 仍只监听本机。
-- 内置六个 MiniMax H3 工作流作为 **Bundled / Verified examples**；没有 H3 节点或模型不会阻止 Panel 使用自己的 Workflow。
+- Imports ordinary ComfyUI **API Workflows** and analyzes workflow capabilities, media inputs, prompts, editable parameters, and primary outputs.
+- Uses **Schema + Graph + heuristic fallback** instead of assuming every workflow must contain fixed fields such as `width`, `height`, or `batch_size`.
+- Configurator 2.0 presents explicit confirmation and advanced manual mapping for uncertain cases; it does not silently rewrite the workflow graph to fit the UI.
+- Supports image / video / audio / file artifacts and job history.
+- Supports submit, queue, live progress, cancel, retry, result preview, and download.
+- Provides `setup`, `start / stop / restart / status`, `doctor`, and Windows login autostart commands.
+- Detects existing Windows Portable ComfyUI launch scripts and preserves their real static arguments, including options such as `--enable-manager` and `--use-sage-attention`.
+- Recommends Tailscale Serve for phone access while keeping both the Panel and ComfyUI bound to localhost.
+- The Web Panel supports **English / 简体中文** switching and remembers the browser preference.
+- Includes six MiniMax H3 workflows as **Bundled / Verified examples**. Missing H3 nodes or models do not block you from using your own workflows.
 
 ## Quick Start — Windows
 
-### 前提
+### Requirements
 
-- Windows 10/11。
-- **稳定版** Python 3.11 或更高版本；不建议/不支持 alpha、beta、RC 预发行 Python 作为公开安装路径。
-- Git for Windows。
-- 一套已经能在本机正常生成的 ComfyUI。
-- 如果要手机远程访问：电脑和手机安装 Tailscale，并登录同一个 tailnet。
+- Windows 10/11.
+- A **stable** Python 3.11 or newer. Alpha, beta, and RC Python builds are not supported as the public installation path.
+- Git for Windows.
+- A ComfyUI installation that can already generate successfully on the same computer.
+- For remote phone access: Tailscale installed on both the computer and phone, signed in to the same tailnet.
 
-第一次使用者建议直接看完整的 [Windows 从零开始教程](docs/GETTING_STARTED_WINDOWS.md)。其中包含 Git/Python/Tailscale 准备、Setup 每一步怎么选、API Workflow 怎么导出，以及第一次手机生成成功的完整流程。
+First-time users should follow the complete [Windows first-run guide](docs/GETTING_STARTED_WINDOWS.md). It covers Git/Python/Tailscale preparation, every Setup choice, exporting an API Workflow, and the full path to a successful first generation from a phone.
 
-### 安装
+### Install
 
 ```powershell
 git clone https://github.com/evan-zzz-zhang/comfyui-remote-panel.git
@@ -42,9 +45,9 @@ cd comfyui-remote-panel
 .\scripts\windows\Install-ComfyRemote.ps1
 ```
 
-安装脚本会检查 Python、创建 `.venv`、安装 Comfy Remote，然后进入 Setup 向导。
+The installer checks Python, creates `.venv`, installs Comfy Remote, and then enters the Setup wizard.
 
-Setup 完成后：
+After Setup:
 
 ```powershell
 .\.venv\Scripts\comfyui-remote-panel.exe doctor
@@ -52,72 +55,72 @@ Setup 完成后：
 .\.venv\Scripts\comfyui-remote-panel.exe status
 ```
 
-如果 Setup 已配置 Tailscale Serve，手机打开向导显示的 `https://…ts.net` 地址。
+If Setup configured Tailscale Serve, open the displayed `https://…ts.net` address on your phone.
 
 ## Workflow compatibility
 
-在 ComfyUI 中先确认目标工作流能够正常运行，然后导出 **API Workflow JSON**。普通的 UI Workflow JSON 不是同一种格式。
+First confirm that the target workflow runs correctly in ComfyUI, then export it as an **API Workflow JSON**. A normal UI Workflow JSON is a different format.
 
-Configurator 2.0 的兼容性分析不是“找几个固定节点”，而是组合以下信息：
+Configurator 2.0 does not simply search for a few fixed nodes. Its compatibility analysis combines:
 
-1. **JSON / Structure** — 是否为可解析的 API Workflow 节点结构。
-2. **Schema** — 使用当前 ComfyUI `/object_info` 判断节点输入类型、枚举、数值范围和 custom node 能力。
-3. **Graph** — 根据节点连接关系判断 prompt、媒体输入、尺寸来源、sampler 路径和输出语义。
-4. **Heuristic fallback** — schema/graph 仍不足时进行保守推断，并标记置信度，而不是静默猜测。
-5. **Preflight** — 汇总 JSON / Node / Input / Parameter / Output / Runtime 的 `PASS / WARN / FAIL`。
-6. **Runtime Test** — 最后真实提交一次 ComfyUI 任务；模型文件、显存和第三方节点运行时行为仍以真实结果为准。
+1. **JSON / Structure** — whether the file is a valid API Workflow node structure.
+2. **Schema** — current ComfyUI `/object_info` data for node input types, enums, numeric ranges, and custom-node capabilities.
+3. **Graph** — node connections used to infer prompts, media inputs, size sources, sampler paths, and output semantics.
+4. **Heuristic fallback** — conservative inference when schema/graph evidence is still insufficient, with confidence surfaced instead of silent guessing.
+5. **Preflight** — aggregated `PASS / WARN / FAIL` checks across JSON / Node / Input / Parameter / Output / Runtime layers.
+6. **Runtime Test** — a real ComfyUI submission. Model files, VRAM limits, and third-party node behavior are ultimately validated by actual execution.
 
-因此一个合法的 img2img 工作流可以没有 `EmptyLatentImage`，一个工作流也可以完全没有远程可调的 `width / height / batch_size`。Comfy Remote 会暴露它实际具有、且能够安全识别或由用户明确映射的创作输入。
+A valid img2img workflow therefore does not need an `EmptyLatentImage`, and a workflow may have no remotely editable `width / height / batch_size` at all. Comfy Remote exposes the creation inputs the workflow actually has and that can be safely identified or explicitly mapped by the user.
 
-详见 [Workflow 说明](docs/WORKFLOWS.md)。
+See [Workflow / Configurator 2.0 guide](docs/WORKFLOWS.md).
 
 ## Doctor / Feedback
 
-遇到问题先运行：
+When something goes wrong, start with:
 
 ```powershell
 .\.venv\Scripts\comfyui-remote-panel.exe doctor
 ```
 
-提交 GitHub Issue 时优先附：
+For a GitHub Issue, prefer attaching:
 
 ```powershell
 .\.venv\Scripts\comfyui-remote-panel.exe doctor --report
 ```
 
-报告使用 `PASS / WARN / FAIL`，并自动脱敏用户目录、邮箱、Tailscale 主机名和明显 secret 值。仍建议公开提交前人工检查一次报告。
+The report uses `PASS / WARN / FAIL` and redacts user directories, email addresses, Tailscale hostnames, and obvious secret values. You should still review it manually before posting it publicly.
 
-**如果你不用 MiniMax H3，内置 H3 工作流显示不可用或 Doctor 出现 H3 `WARN` 可以忽略。** 这不代表 Comfy Remote 安装失败。
+**If you do not use MiniMax H3, unavailable bundled H3 workflows or H3 `WARN` results in Doctor can be ignored.** They do not mean the Comfy Remote installation failed.
 
-常见问题见 [Troubleshooting](docs/TROUBLESHOOTING.md)。
+See [Troubleshooting](docs/TROUBLESHOOTING.md) for common issues.
 
 ## Tailscale security model
 
-推荐链路：
+Recommended path:
 
 ```text
 Phone → Tailscale HTTPS Serve → 127.0.0.1:8190 Comfy Remote → 127.0.0.1:8188 ComfyUI
 ```
 
-- Panel 强制监听 `127.0.0.1:8190`。
-- ComfyUI 保持本机 `8188`。
-- Tailscale auth 模式依据 Serve 注入的登录身份头授权。
-- 不要使用 Funnel，也不要把 8190 或 8188 直接暴露到公网。
-- 第三方 ComfyUI Custom Node 仍是本机代码执行边界，Comfy Remote 不对它们做沙箱隔离。
+- The Panel is forced to listen on `127.0.0.1:8190`.
+- ComfyUI stays local on `8188`.
+- Tailscale auth mode authorizes requests using the login identity header injected by Serve.
+- Do not use Funnel and do not expose ports 8190 or 8188 directly to the public internet.
+- Third-party ComfyUI Custom Nodes remain a local code-execution boundary; Comfy Remote does not sandbox them.
 
-安全细节见 [SECURITY.md](SECURITY.md)。
+See [SECURITY.md](SECURITY.md) for details.
 
 ## Known limitations — v0.3 Public Beta
 
-- **Windows 10/11 是当前主要验证平台。** Linux 参与 CI，但公开安装和真机使用路径目前以 Windows 为主。
-- **Tailscale 是当前主要远程传输方式。** 核心架构不要求永远绑定 Tailscale，但其他远程 transport 尚未形成同等级公开安装路径。
-- **ComfyUI 严重崩溃后的自动恢复仍有限。** Panel 可以启动、停止、重启其管理的 ComfyUI，但 GPU OOM、驱动异常、进程树异常等场景还没有完整 watchdog / recovery 策略。
-- **没有 Wake-on-LAN。** 电脑睡眠、关机后的机外唤醒不属于 v0.3。
-- **没有多主机。** 当前一个 Panel 对应本机一套 ComfyUI。
-- **第三方 Custom Node 兼容性取决于 schema 和真实运行。** Configurator 2.0 会尽量分析，但不能保证所有第三方节点都能被自动理解。
-- **Seed Policy 尚未独立设计。** v0.3 保持“留空 = 随机；显式数字（包括 0）= 固定”的简单规则。
+- **Windows 10/11 is the primary validated platform.** Linux participates in CI, but the public install and real-device path is currently Windows-first.
+- **Tailscale is the primary remote transport today.** The core architecture is not intended to be permanently tied to Tailscale, but other transports do not yet have an equivalent public installation path.
+- **Recovery from severe ComfyUI crashes is still limited.** The Panel can start, stop, and restart the ComfyUI process it manages, but GPU OOM, driver faults, and abnormal process trees do not yet have a complete watchdog/recovery policy.
+- **No Wake-on-LAN.** Waking a sleeping or powered-off computer from outside the machine is not part of v0.3.
+- **No multi-host support.** One Panel currently maps to one local ComfyUI installation.
+- **Third-party Custom Node compatibility depends on schema and real runtime behavior.** Configurator 2.0 analyzes what it can, but cannot guarantee automatic understanding of every custom node.
+- **Seed Policy has not been designed as a separate feature yet.** v0.3 keeps the simple rule: blank = random; an explicit number, including `0`, = fixed.
 
-后续执行基线见 [TODO / Roadmap](docs/TODO.md)。
+See [TODO / Roadmap](docs/TODO.md) for the next development baseline.
 
 ## CLI
 
@@ -137,7 +140,7 @@ comfyui-remote-panel autostart status
 comfyui-remote-panel autostart remove
 ```
 
-兼容旧前台启动方式：
+The legacy foreground launch form is still supported:
 
 ```powershell
 comfyui-remote-panel --config config.toml
@@ -151,15 +154,15 @@ python scripts/check_repository.py
 python -m build
 ```
 
-CI 配置覆盖 Windows / Linux、Python 3.11 / 3.13 和 minimum-dependencies。真实 GPU、陌生 Windows、手机访问和第三方节点不能完全由 CI 代替。
+CI covers Windows / Linux, Python 3.11 / 3.13, and minimum-dependencies. Real GPUs, unfamiliar Windows machines, phone access, and third-party nodes cannot be fully replaced by CI.
 
-贡献前请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before contributing.
 
 ## Documentation
 
-- [Windows 从零开始 / Quick Start](docs/GETTING_STARTED_WINDOWS.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [Workflow / Configurator 2.0 说明](docs/WORKFLOWS.md)
+- [Windows first-run guide](docs/GETTING_STARTED_WINDOWS.md) · [简体中文](docs/GETTING_STARTED_WINDOWS.zh-CN.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md) · [简体中文](docs/TROUBLESHOOTING.zh-CN.md)
+- [Workflow / Configurator 2.0 guide](docs/WORKFLOWS.md) · [简体中文](docs/WORKFLOWS.zh-CN.md)
 - [Public Readiness Acceptance](docs/PUBLIC_READINESS_ACCEPTANCE.md)
 - [TODO / Roadmap](docs/TODO.md)
 - [Security](SECURITY.md)
