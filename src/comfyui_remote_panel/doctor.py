@@ -21,6 +21,7 @@ from .tailscale import TailscaleError, inspect_tailscale, serve_active
 PASS = "PASS"
 WARN = "WARN"
 FAIL = "FAIL"
+_PATH_CHECK_NAMES = {"config.toml", "data directory", "input directory", "output directory"}
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,11 @@ def redact_text(value: str) -> str:
     text = re.sub(r"(?i)\b[A-Z]:\\Users\\[^\\/\r\n]+", "<USER_PATH>", text)
     text = re.sub(r"(?i)\b/Users/[^/\r\n]+", "<USER_PATH>", text)
     text = re.sub(r"(?i)\b/home/[^/\r\n]+", "<USER_PATH>", text)
+    # Report diagnostics can point at arbitrary drives (for example G:\\AI\\ComfyUI),
+    # not only the current user's profile. Redact unquoted absolute path tokens as a
+    # second line of defence; structured path checks are replaced separately below.
+    text = re.sub(r"(?i)\b[A-Z]:\\[^\s|]+", "<PATH>", text)
+    text = re.sub(r"(?<![A-Za-z0-9_])/(?:[^\s|/]+/)+[^\s|]*", "<PATH>", text)
     text = re.sub(
         r"\b([A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})\b",
         _redact_email,
@@ -99,6 +105,14 @@ def redact_text(value: str) -> str:
         text,
     )
     return text
+
+
+def _report_detail(item: DoctorCheck) -> str:
+    detail = item.detail
+    if item.name in _PATH_CHECK_NAMES:
+        suffix = re.search(r"\s+\([^\r\n]*\)$", detail)
+        detail = "<PATH>" + (suffix.group(0) if suffix else "")
+    return detail
 
 
 def _fallback_output_type(preset: Preset) -> str:
@@ -351,7 +365,7 @@ def format_markdown(checks: list[DoctorCheck]) -> str:
         "| --- | --- | --- | --- |",
     ]
     for item in checks:
-        detail = item.detail.replace("|", "\\|").replace("\n", " ")
+        detail = _report_detail(item).replace("|", "\\|").replace("\n", " ")
         lines.append(f"| {item.section} | {item.name} | **{item.status}** | {detail} |")
     lines.extend(
         [
