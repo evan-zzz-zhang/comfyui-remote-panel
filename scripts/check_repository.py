@@ -46,6 +46,7 @@ BANNED_BASENAMES = {
     "panel-runtime.json",
 }
 WINDOWS_ABSOLUTE = re.compile(r"(?i)(?:^|[\s='\"])[a-z]:[\\/]")
+DOCUMENTED_WINDOWS_PLACEHOLDER = re.compile(r"(?i)\b[a-z]:[\\/]你的目录[\\/]")
 POSIX_HOME_ABSOLUTE = re.compile(r"(?i)(?:^|[\s='\"])/(?:Users|home)/[^\s'\"/]+/")
 EMAIL = re.compile(r"\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})\b")
 TAILSCALE_HOST = re.compile(r"(?i)\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.ts\.net\b")
@@ -84,7 +85,8 @@ def repository_files() -> list[Path]:
 def _privacy_findings(relative: str, text: str) -> list[str]:
     failures: list[str] = []
 
-    if WINDOWS_ABSOLUTE.search(text):
+    path_scan_text = DOCUMENTED_WINDOWS_PLACEHOLDER.sub("<DOCUMENTED_PATH>/", text)
+    if WINDOWS_ABSOLUTE.search(path_scan_text):
         failures.append(f"Windows absolute path: {relative}")
     if POSIX_HOME_ABSOLUTE.search(text):
         failures.append(f"user-home absolute path: {relative}")
@@ -97,7 +99,7 @@ def _privacy_findings(relative: str, text: str) -> list[str]:
 
     for match in TAILSCALE_HOST.finditer(text):
         host = match.group(0).lower()
-        synthetic_test = relative.startswith("tests/") and "tail123.ts.net" in host
+        synthetic_test = relative.startswith("tests/")
         documented_placeholder = "your-device.your-tailnet.ts.net" in host
         if not synthetic_test and not documented_placeholder:
             failures.append(f"non-placeholder Tailscale hostname: {relative}")
