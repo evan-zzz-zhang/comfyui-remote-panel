@@ -1,56 +1,128 @@
-# Windows ComfyUI Portable 部署 / Deployment
+# Windows ComfyUI Portable — Advanced Notes
 
-## 中文
+普通用户优先使用 [Windows 从零开始教程](GETTING_STARTED_WINDOWS.md) 和 `Install-ComfyRemote.ps1`。本文只补充 Windows Portable 的高级/手动部署边界。
 
-1. 安装 Python 3.11 或更高版本，在仓库根目录执行：
-
-   ```powershell
-   python -m venv .venv
-   .\.venv\Scripts\python.exe -m pip install -e .
-   Copy-Item config.example.toml config.toml
-   ```
-
-2. 编辑不受 Git 跟踪的 `config.toml`。Portable 默认输入和输出通常位于发行目录内的 `ComfyUI\input` 与 `ComfyUI\output`；使用相对配置时，路径以 `config.toml` 所在目录为准。`allowed_logins` 必须填写 `tailscale status --json` 中当前用户的 `LoginName`，`public_origin` 必须是 Serve 显示的完整 HTTPS Origin。
-
-   若要使用设备页的启动、关闭和重启按钮，配置 `[comfyui.control]`：将 `enabled` 设为 `true`，`working_dir` 指向 Portable 根目录，`start_command` 使用参数数组。面板不通过 shell 执行这条命令；关闭时只会停止监听 ComfyUI 端口、且可核验为相同可执行文件与参数的进程。Windows 下将 `visible_window` 设为 `true` 会为新启动的 ComfyUI 打开可见控制台并在其中显示输出；设为 `false` 时输出写入 `data/comfyui-control.log`。
-
-3. 确认 Manifest 中的五个模型依赖已安装。模型名称和目录必须与 `workflows/h3-fl2va-v4step600/manifest.json` 完全一致。仓库不分发模型或 LoRA。
-
-4. 启动面板并检查健康状态：
-
-   ```powershell
-   .\.venv\Scripts\python.exe -m comfyui_remote_panel --config config.toml
-   Invoke-RestMethod http://127.0.0.1:8190/healthz
-   ```
-
-5. 安装 Tailscale，在电脑和手机上登录同一 tailnet。只配置 Serve，不启用 Funnel：
-
-   ```powershell
-   tailscale serve --bg 8190
-   tailscale serve status
-   ```
-
-6. 浏览器经 Serve HTTPS 地址访问。直接访问 `http://127.0.0.1:8190/` 返回 403 是预期行为；`8188` 与 `8190` 都不得做路由器端口映射。
-
-仓库的 `scripts/windows/Start-RemotePanel.ps1` 是独立示例，只启动面板并等待健康检查。若集成进自定义 ComfyUI 启动器，应只识别专用虚拟环境与 `-m comfyui_remote_panel` 命令行，记录本次新建的 PID，并在 ComfyUI 退出时只停止该 PID。启动器不应管理 Tailscale Serve。
-
-长期运行建议注册当前用户的 Windows 计划任务：
+## 推荐：让 Setup 管理配置
 
 ```powershell
-.\scripts\windows\Register-RemotePanelTask.ps1 -ProjectRoot (Get-Location)
-.\scripts\windows\Get-RemotePanelTaskStatus.ps1
+.\scripts\windows\Install-ComfyRemote.ps1
 ```
 
-该任务在用户登录时直接运行 Panel 主进程，并由 Task Scheduler 在异常退出后每分钟重试。Panel 日志写入配置的 `storage.data_dir/panel.log`，最多保留三个 5 MB 备份。卸载时运行 `.\scripts\windows\Unregister-RemotePanelTask.ps1`。此方案不负责 Windows 自动登录、睡眠唤醒或 WoL。
+或已有 `.venv` 时：
 
-## English
+```powershell
+.\.venv\Scripts\comfyui-remote-panel.exe setup
+```
 
-Create a Python 3.11+ virtual environment, install the project, and copy `config.example.toml` to the ignored `config.toml`. Point the input/output settings at the same-host ComfyUI folders. Set `allowed_logins` to the signed-in Tailscale user's exact `LoginName` and set `public_origin` to the HTTPS origin printed by Tailscale Serve.
+Setup 可以接受 Portable bundle 根目录，也可以接受里面的 `ComfyUI` 子目录，并自动规范化：
 
-For unattended operation after sign-in, register the current-user scheduled task with `scripts/windows/Register-RemotePanelTask.ps1`. Inspect it with `Get-RemotePanelTaskStatus.ps1` and remove it with `Unregister-RemotePanelTask.ps1`. Task Scheduler restarts unexpected exits; rotating logs are stored under `storage.data_dir`.
+```text
+ComfyUI_windows_portable\
+  python_embeded\python.exe
+  ComfyUI\
+    main.py
+    input\
+    output\
+```
 
-Install every model named in the preset manifest, start the panel, verify `/healthz`, then run `tailscale serve --bg 8190`. Install Tailscale on the phone and join the same tailnet. Never enable Funnel, router port forwarding, or external listening for either port 8188 or 8190.
+## Portable 启动脚本
 
-The sample PowerShell script starts only the panel. A local launcher integration must reuse matching processes and terminate only processes it created during that launch.
+如果允许 Comfy Remote 启动/关闭/重启 ComfyUI，Setup 会扫描 Portable 根目录中的 `.bat` 启动脚本。
 
-To enable the device-page controls, configure `[comfyui.control]` as shown in `config.example.toml`. The configured command is executed directly without a shell. Stop and restart only target the process listening on the configured ComfyUI port after its executable and command arguments have been verified. On Windows, `visible_window = true` opens a console for newly started ComfyUI processes; in hidden mode, output is written to `data/comfyui-control.log`.
+对于静态、可安全解析的启动行，例如：
+
+```text
+python_embeded\python.exe -s ComfyUI\main.py --windows-standalone-build --enable-manager
+```
+
+或：
+
+```text
+python_embeded\python.exe -s ComfyUI\main.py --windows-standalone-build --enable-manager --use-sage-attention
+```
+
+Setup 会让用户在多个有效启动方式之间显式选择，并把真实 Python 参数写入 `[comfyui.control].start_command`。
+
+Comfy Remote **不会因为检测到 SageAttention 已安装就自动决定使用它**；安装了某个优化库不代表用户希望每次启动都启用对应参数。
+
+为避免 `cmd.exe → .bat → python.exe` 带来的 PID/进程树歧义，能够安全解析时会直接启动 Portable 的 `python.exe`，同时保留脚本中的静态参数。
+
+复杂、依赖动态环境变量/额外 shell 逻辑的 `.bat` 不会被强行猜测。
+
+## ComfyUI 控制台与 Panel 控制台
+
+Windows 上默认行为：
+
+- Comfy Remote Panel 自身后台运行，不留下额外黑色控制台窗口；
+- 由 Panel 启动的 ComfyUI 默认保留自己的可见控制台窗口，便于观察加载与节点报错。
+
+这是两个不同进程的显示策略。
+
+## 手动配置 `config.toml`
+
+Setup 是公开 happy path；手动 TOML 只用于高级排障或特殊部署。
+
+可以从 `config.example.toml` 开始：
+
+```powershell
+Copy-Item config.example.toml config.toml
+```
+
+重点字段：
+
+```toml
+[comfyui]
+base_url = "http://127.0.0.1:8188"
+input_dir = "../ComfyUI/input"
+output_dir = "../ComfyUI/output"
+
+[comfyui.control]
+enabled = true
+working_dir = "../ComfyUI_windows_portable"
+start_command = ["../ComfyUI_windows_portable/python_embeded/python.exe", "-s", "ComfyUI/main.py", "--windows-standalone-build", "--enable-manager"]
+visible_window = true
+```
+
+根据你的真实目录和启动参数调整。不要把机器专用 `config.toml` 提交到 Git。
+
+## 生命周期安全边界
+
+Comfy Remote 的 stop/restart 不应按“看起来像 Python”或“碰巧占用端口”去杀进程。
+
+Panel 会记录它启动的 ComfyUI 进程信息，并在停止前核验目标。身份无法可靠确认时，允许停止失败，也不应误杀其他 Python/浏览器/用户进程。
+
+复杂故障和更强的 crash recovery 属于 v0.4 Reliability / Recovery 范围。
+
+## Tailscale
+
+公开支持路径仍是：
+
+```text
+Phone
+→ Tailscale Serve HTTPS
+→ 127.0.0.1:8190 Comfy Remote
+→ 127.0.0.1:8188 ComfyUI
+```
+
+让 Setup 配置 Serve 最简单。手动检查：
+
+```powershell
+tailscale status
+tailscale serve status
+```
+
+不要启用 Funnel，也不要把 8188/8190 直接做公网端口映射。
+
+## Windows 登录自启动
+
+优先使用 CLI：
+
+```powershell
+.\.venv\Scripts\comfyui-remote-panel.exe autostart install
+.\.venv\Scripts\comfyui-remote-panel.exe autostart status
+.\.venv\Scripts\comfyui-remote-panel.exe autostart remove
+```
+
+当前实现会让 Windows 登录入口使用与手工 `comfyui-remote-panel start` 一致的后台启动语义；如果 Scheduled Task 注册因当前用户权限被拒绝，会尝试用户级 fallback。
+
+旧 PowerShell task helper 仍保留给内部/高级调用，但普通用户不需要直接操作它们。
