@@ -18,21 +18,28 @@
     "参考素材": "Reference media",
     "首帧预览": "First-frame preview",
     "尾帧预览": "Last-frame preview",
+    "图片预览": "Image preview",
+    "参考图预览": "Reference image preview",
     "首帧": "First frame",
     "尾帧": "Last frame",
     "可选": "Optional",
+    "必需": "Required",
     "添加参考": "Add reference",
     "图片 / 视频 / 音频": "Image / Video / Audio",
     "图片": "Image",
     "视频": "Video",
     "音频": "Audio",
+    "文件": "File",
+    "未知": "Unknown",
     "提示词中可使用 ": "You can use ",
     " 指代对应素材。": " to refer to the matching media in the prompt.",
     "提示词": "Prompt",
     "正面提示词": "Positive prompt",
     "负面提示词": "Negative prompt",
+    "负面提示词 · 已使用默认值": "Negative prompt · default value used",
     "描述画面、动作、镜头与声音": "Describe the scene, action, camera, and sound",
     "输入提示词……": "Enter a prompt…",
+    "输入负面提示词……": "Enter a negative prompt…",
     "生成设置": "Generation settings",
     "调整": "Adjust",
     "时长": "Duration",
@@ -149,6 +156,8 @@
     "启用": "Enable",
     "测试": "Test",
     "复制": "Copy",
+    "已复制": "Copied",
+    "复制失败": "Copy failed",
     "导出": "Export",
     "选择手机端可修改参数": "Choose parameters editable on mobile",
     "没有可安全暴露的字面输入。": "No literal inputs can be safely exposed.",
@@ -163,6 +172,7 @@
     "替换": "Replace",
     "已保留素材": "Retained media",
     "已保留": "Retained",
+    "沿用上次": "Keep previous",
     "请先选择参考视频 1": "Select reference video 1 first",
     "按参考视频 1 时长取整并限制在 5–15 秒": "Round to reference video 1 duration and clamp to 5–15 seconds",
     "无法读取参考视频时长，请手动选择 5–15 秒": "Could not read reference video duration. Choose 5–15 seconds manually.",
@@ -211,7 +221,56 @@
     "结果文件仍在写入": "Result file is still being written",
     "点击查看结果": "Click to view results",
     "生成结果": "Generation results",
-    "正在读取结果…": "Loading results…"
+    "正在读取结果…": "Loading results…",
+    "高": "High",
+    "中": "Medium",
+    "低": "Low",
+    "通用": "Generic",
+    "待确认": "Needs confirmation",
+    "可配置": "Configurable",
+    "跟随输入素材": "Inherit from input",
+    "由工作流决定": "Defined by workflow",
+    "基础能力": "Capabilities",
+    "置信度": "Confidence",
+    "输出": "Output",
+    "生成模式": "Generation mode",
+    "必需素材": "Required media",
+    "无": "None",
+    "没有需要暴露的基础参数。": "No basic parameters need to be exposed.",
+    "没有自动识别的高级参数。": "No advanced parameters were detected automatically.",
+    "基础参数": "Basic parameters",
+    "有才显示": "Shown only when available",
+    "高级参数": "Advanced parameters",
+    "Schema 可编辑项": "Schema-editable inputs",
+    "素材输入": "Media inputs",
+    "该工作流没有远程素材输入。": "This workflow has no remote media inputs.",
+    "中置信度项请确认用途": "Confirm the purpose of medium-confidence items",
+    "工作流运行所必需": "Required for the workflow to run",
+    "图片输出": "Image output",
+    "视频输出": "Video output",
+    "音频输出": "Audio output",
+    "文件输出": "File output",
+    "主要输出": "Primary output",
+    "检测到多个候选": "Multiple candidates detected",
+    "未检查": "Not checked",
+    "请填写显示名称": "Enter a display name",
+    "请确认主要输出": "Confirm the primary output",
+    "自定义画幅": "Custom aspect ratio",
+    "跟随源图": "Follow source image",
+    "尺寸跟随输入图": "Dimensions follow input image",
+    "尺寸由工作流决定": "Dimensions defined by workflow",
+    "数量由工作流决定": "Count defined by workflow",
+    "生成前必须上传": "Required before generation",
+    "添加参考素材": "Add reference media",
+    "正在读取尺寸…": "Reading dimensions…",
+    "无法读取图片尺寸": "Could not read image dimensions",
+    "含必需输入": "Contains required inputs",
+    "请先启用该工作流，再运行需要素材的测试。": "Enable this workflow before running a test that requires media.",
+    "从创作页隐藏": "Hide from Create",
+    "在创作页显示": "Show on Create",
+    "显示在创作页": "Show on Create",
+    "未选择工作流": "No workflow selected",
+    "输入参数": "Input parameters"
   };
 
   const textSources = new WeakMap();
@@ -238,6 +297,10 @@
     return currentLanguage === "zh-CN" ? source : (EN[source] || null);
   }
 
+  function confidenceEnglish(value) {
+    return ({ 高: "High", 中: "Medium", 低: "Low" })[value] || value;
+  }
+
   function translatePattern(source) {
     if (currentLanguage === "zh-CN") return source;
     let match;
@@ -253,7 +316,21 @@
     if ((match = source.match(/^最多选择 (\d+) 个视频$/))) return `Select up to ${match[1]} videos`;
     if ((match = source.match(/^最多选择 (\d+) 个音频$/))) return `Select up to ${match[1]} audio files`;
     if ((match = source.match(/^参考图片 (\d+)$/))) return `Reference image ${match[1]}`;
+    if ((match = source.match(/^(\d+) × (图片|视频|音频|文件)$/))) return `${match[1]} × ${translate(match[2])}`;
+    if ((match = source.match(/^(高|中|低)置信度$/))) return `${confidenceEnglish(match[1])} confidence`;
+    if ((match = source.match(/^(Graph|Schema|Heuristic) · (高|中|低)置信度$/))) return `${match[1]} · ${confidenceEnglish(match[2])} confidence`;
+    if ((match = source.match(/^(Graph|Schema|Heuristic) · (高|中|低)置信度 · (.+)$/))) return `${match[1]} · ${confidenceEnglish(match[2])} confidence · ${match[3]}`;
+    if ((match = source.match(/^高级手动映射 · (\d+) 个低置信度候选$/))) return `Advanced manual mapping · ${match[1]} low-confidence candidates`;
+    if ((match = source.match(/^正在导入 (.+)；正在分析…$/))) return `Importing ${match[1]}; analyzing…`;
     if ((match = source.match(/^已读取 (\d+) 个节点，请选择参数和输出。$/))) return `Read ${match[1]} nodes. Choose parameters and output.`;
+    if ((match = source.match(/^已读取 (.+) · (\d+) 个节点；请确认分析结果后保存。$/))) return `Read ${match[1]} · ${match[2]} nodes. Review the analysis before saving.`;
+    if ((match = source.match(/^工作流 ID (.+) 已存在；新导入不会覆盖现有工作流。请重新选择文件或修改显示名称后再导入。$/))) return `Workflow ID ${match[1]} already exists. A new import will not overwrite it; choose another file or change the display name.`;
+    if ((match = source.match(/^(.+) · 正在读取尺寸…$/))) return `${match[1]} · reading dimensions…`;
+    if ((match = source.match(/^(.+) · 无法读取图片尺寸$/))) return `${match[1]} · could not read image dimensions`;
+    if ((match = source.match(/^需要上传：(.+)$/))) return `Required upload: ${match[1]}`;
+    if ((match = source.match(/^运行兼容性测试：请上传(.+)后生成。完成结果会写入 Runtime Preflight。$/))) return `Compatibility test: upload ${match[1]} and generate. The result will be written to Runtime Preflight.`;
+    if ((match = source.match(/^显示设置保存失败：(.+)$/))) return `Failed to save visibility setting: ${match[1]}`;
+    if ((match = source.match(/^(从创作页隐藏|在创作页显示) (.+)$/))) return `${match[1] === "从创作页隐藏" ? "Hide from Create" : "Show on Create"} ${match[2]}`;
     if ((match = source.match(/^(.+) 已保存为草稿 r(\d+)$/))) return `${match[1]} saved as draft r${match[2]}`;
     if ((match = source.match(/^(.+) 已导入为草稿$/))) return `${match[1]} imported as a draft`;
     if ((match = source.match(/^正在编辑 (.+)；保存会创建新 revision，旧任务仍使用原快照。$/))) return `Editing ${match[1]}; saving creates a new revision while old jobs keep their original snapshot.`;
@@ -266,6 +343,11 @@
     if ((match = source.match(/^提交失败：(.+)$/))) return `Submission failed: ${match[1]}`;
     if ((match = source.match(/^已载入原参数，并沿用 (.+)$/))) return `Original settings loaded; keeping ${match[1]}`;
     if ((match = source.match(/^确认(关闭|重启) ComfyUI？(.*)$/))) return `${match[1] === "关闭" ? "Stop" : "Restart"} ComfyUI?${match[2] ? " Unfinished jobs will be interrupted." : ""}`;
+    if (source.includes("、")) {
+      const parts = source.split("、");
+      const translated = parts.map(part => translate(part));
+      if (translated.some((part, index) => part !== parts[index])) return translated.join(", ");
+    }
     return source;
   }
 
