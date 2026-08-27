@@ -1,0 +1,86 @@
+name: Workflow compatibility
+description: Report an API Workflow that imports or runs incorrectly
+title: "[Workflow] "
+labels: ["workflow-compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Export the workflow using ComfyUI API format. Attach only files you are allowed to share. Run `comfyui-remote-panel doctor --report` before submitting.
+  - type: input
+    id: remote-version
+    attributes:
+      label: Comfy Remote version
+    validations:
+      required: true
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows version
+    validations:
+      required: true
+  - type: input
+    id: comfy-version
+    attributes:
+      label: ComfyUI version
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU
+  - type: dropdown
+    id: install-type
+    attributes:
+      label: ComfyUI install type
+      options:
+        - Windows Portable
+        - Python / venv
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: workflow-type
+    attributes:
+      label: Workflow type
+      placeholder: image / video / audio / mixed
+    validations:
+      required: true
+  - type: textarea
+    id: custom-nodes
+    attributes:
+      label: Custom nodes
+  - type: dropdown
+    id: import
+    attributes:
+      label: Import success
+      options: ["Yes", "No"]
+    validations:
+      required: true
+  - type: textarea
+    id: semantics
+    attributes:
+      label: Recognized semantics / mappings
+      description: What prompts, media, dimensions, batch, and outputs were recognized?
+  - type: textarea
+    id: preflight
+    attributes:
+      label: Compatibility / preflight result
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime result
+      options:
+        - Succeeded
+        - Failed before queue
+        - Failed in ComfyUI
+        - Output missing
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Doctor report
+      render: markdown
+    validations:
+      required: true

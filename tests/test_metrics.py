@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+import comfyui_remote_panel.metrics as metrics_module
 from comfyui_remote_panel.comfy import ComfyClient
 from comfyui_remote_panel.metrics import MetricsService
 from comfyui_remote_panel.preset import load_presets
@@ -77,3 +78,52 @@ async def test_metrics_collect_is_single_flight(tmp_path):
 
     assert await asyncio.gather(first, second) == [{"ok": True}, {"ok": True}]
     service._collect_once.assert_awaited_once_with()
+
+
+class _FakeNvidiaProcess:
+    returncode = 0
+
+    async def communicate(self):
+        return b"0, Test GPU, 12, 1024, 8192, 55, 123.4\n", b""
+
+    def kill(self):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_nvidia_smi_uses_create_no_window_on_windows(tmp_path, monkeypatch):
+    calls = []
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        calls.append((args, kwargs))
+        return _FakeNvidiaProcess()
+
+    monkeypatch.setattr(metrics_module.sys, "platform", "win32")
+    monkeypatch.setattr(metrics_module.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    service = MetricsService(Mock(), Mock(), {}, Mock(), tmp_path, 3, 1)
+
+    gpus = await service._nvidia_gpus()
+
+    assert len(gpus) == 1
+    assert calls[0][0][0] == "nvidia-smi"
+    assert calls[0][1]["creationflags"] == getattr(
+        metrics_module.subprocess, "CREATE_NO_WINDOW", 0x08000000
+    )
+
+
+@pytest.mark.asyncio
+async def test_nvidia_smi_does_not_pass_windows_creationflags_elsewhere(tmp_path, monkeypatch):
+    calls = []
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        calls.append((args, kwargs))
+        return _FakeNvidiaProcess()
+
+    monkeypatch.setattr(metrics_module.sys, "platform", "linux")
+    monkeypatch.setattr(metrics_module.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    service = MetricsService(Mock(), Mock(), {}, Mock(), tmp_path, 3, 1)
+
+    gpus = await service._nvidia_gpus()
+
+    assert len(gpus) == 1
+    assert "creationflags" not in calls[0][1]

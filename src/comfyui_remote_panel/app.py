@@ -176,7 +176,15 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
             fields["megapixels"] = float(fields.get("megapixels", "0.4"))
             if "steps" in fields:
                 fields["steps"] = int(fields["steps"])
-            seed_text = fields.get("seed", "").strip()
+            seed_value = fields.get("seed")
+            if seed_value is None:
+                seed_text = ""
+            elif isinstance(seed_value, str):
+                seed_text = seed_value.strip()
+            elif isinstance(seed_value, int) and not isinstance(seed_value, bool):
+                seed_text = str(seed_value)
+            else:
+                raise PresetError("种子必须是整数")
             fields["seed"] = seed_text or None
             job = await app["jobs"].create(fields, uploaded, job_id)
             return web.json_response(app["jobs"].public_job(job), status=201)
@@ -301,7 +309,7 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
     async def video(request: web.Request) -> web.StreamResponse:
         job = await app["db"].get_job(request.match_info["job_id"])
         if job is None:
-            return json_error("任务不存在", 404, "not_found")
+            return json_error("任务不存在", 404, "video_unavailable")
         output = next((file for file in job["files"] if file["role"] == "output"), None)
         if output is None:
             return json_error("视频尚不可用", 404, "video_unavailable")
@@ -368,7 +376,25 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
     async def save_workflow(request: web.Request) -> web.Response:
         try:
             payload = await request.json()
-            definition = build_definition(payload.get("workflow"), payload.get("config"))
+            config_payload = payload.get("config")
+            workflow_id = config_payload.get("id") if isinstance(config_payload, dict) else None
+            existing = await app["db"].get_workflow(workflow_id) if isinstance(workflow_id, str) else None
+            expected_revision = payload.get("expected_revision")
+            if existing is not None:
+                if expected_revision is None:
+                    return json_error(
+                        "该工作流 ID 已存在；新导入不会覆盖现有工作流，请改名或从现有工作流进入高级映射编辑",
+                        409, "workflow_exists",
+                    )
+                try:
+                    expected_revision = int(expected_revision)
+                except (TypeError, ValueError):
+                    return json_error("编辑 revision 无效", 409, "workflow_revision_conflict")
+                if int(existing["revision"]) != expected_revision:
+                    return json_error("工作流已被更新，请重新打开后再编辑", 409, "workflow_revision_conflict")
+            elif expected_revision is not None:
+                return json_error("要编辑的工作流不存在", 409, "workflow_revision_conflict")
+            definition = build_definition(payload.get("workflow"), config_payload)
             item = await app["db"].save_workflow(definition, status="draft")
             return web.json_response(item, status=201)
         except (json.JSONDecodeError, TypeError, AttributeError, PresetError) as exc:
@@ -423,6 +449,12 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
             return json_error("工作流包不能超过 8MB", 413, "too_large")
         try:
             definition = import_package(await request.read())
+            workflow_id = str(definition["manifest"]["id"])
+            if await app["db"].get_workflow(workflow_id) is not None:
+                return json_error(
+                    "该工作流 ID 已存在；导入 Package 不会覆盖现有工作流",
+                    409, "workflow_exists",
+                )
             item = await app["db"].save_workflow(definition, status="draft")
             return web.json_response(item, status=201)
         except PresetError as exc:
