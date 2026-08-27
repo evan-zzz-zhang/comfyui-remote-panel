@@ -24,6 +24,15 @@ def test_historical_doctor_bare_drive_assertion_is_allowed_without_hiding_real_p
     assert "Windows absolute path: tests/test_doctor.py" in findings
 
 
+def test_historical_scanner_self_comment_is_allowed_without_hiding_real_path():
+    historical_source = "fake " + "G:" + "\\" + " drive prefix"
+    assert _privacy_findings("scripts/check_repository.py", historical_source) == []
+
+    real_machine_path = "G:" + "\\Private\\ComfyUI\\config.toml"
+    findings = _privacy_findings("scripts/check_repository.py", real_machine_path)
+    assert "Windows absolute path: scripts/check_repository.py" in findings
+
+
 def test_real_machine_path_is_still_rejected_in_other_source_file():
     machine_path = "D:" + "\\Private\\ComfyUI\\config.toml"
     findings = _privacy_findings("README.md", machine_path)
