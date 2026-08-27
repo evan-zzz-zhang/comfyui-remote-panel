@@ -149,5 +149,10 @@ def translated_output(output_fn: Callable[[str], None], language: str) -> Callab
 
 def translated_input(input_fn: Callable[[str], str], language: str) -> Callable[[str], str]:
     def ask(prompt: str) -> str:
-        return input_fn(translate_cli(prompt, language))
+        value = str(prompt)
+        match = re.match(r"^(.*?)(\s+\[[^\]]+\])?(:\s*)$", value)
+        if match:
+            translated = translate_cli(match.group(1), language)
+            return input_fn(f"{translated}{match.group(2) or ''}{match.group(3)}")
+        return input_fn(translate_cli(value, language))
     return ask
