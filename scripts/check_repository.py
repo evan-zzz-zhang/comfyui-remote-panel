@@ -87,35 +87,31 @@ def repository_files() -> list[Path]:
 
 
 def _strip_known_synthetic_windows_fixtures(relative: str, text: str) -> str:
-    """Remove only deliberate Doctor redaction fixtures from privacy scanning.
+    """Remove only deliberate synthetic path fixtures from privacy scanning."""
+    if relative in SYNTHETIC_WINDOWS_FIXTURE_FILES:
+        prefixes = (
+            "C:" + "\\Users\\Alice",
+            "C:" + "\\\\Users\\\\Alice",
+            "G:" + "\\AI-project",
+            "G:" + "\\\\AI-project",
+            "G:" + "\\AI\\ComfyUI_H3_Portable",
+            "G:" + "\\\\AI\\\\ComfyUI_H3_Portable",
+            "G:" + "\\AI\\ComfyUI",
+            "G:" + "\\\\AI\\\\ComfyUI",
+        )
+        for prefix in prefixes:
+            text = text.replace(prefix, "<SYNTHETIC_PATH>")
 
-    The Doctor tests intentionally contain fake absolute paths to prove report
-    redaction. Old reachable blobs also contain an assertion for a bare fake
-    drive-root token. Those exact synthetic fixtures are ignored; other paths,
-    including other paths in the same files, are still scanned normally.
-    """
-    if relative not in SYNTHETIC_WINDOWS_FIXTURE_FILES:
-        return text
+        if relative == "tests/test_doctor.py":
+            historical_drive_assertion_token = '"' + "G:" + "\\\\" + '"'
+            text = text.replace(historical_drive_assertion_token, '"<SYNTHETIC_DRIVE>"')
 
-    prefixes = (
-        "C:" + "\\Users\\Alice",
-        "C:" + "\\\\Users\\\\Alice",
-        "G:" + "\\AI-project",
-        "G:" + "\\\\AI-project",
-        "G:" + "\\AI\\ComfyUI_H3_Portable",
-        "G:" + "\\\\AI\\\\ComfyUI_H3_Portable",
-        "G:" + "\\AI\\ComfyUI",
-        "G:" + "\\\\AI\\\\ComfyUI",
-    )
-    for prefix in prefixes:
-        text = text.replace(prefix, "<SYNTHETIC_PATH>")
-
-    # Historical test_doctor.py asserted that a fake drive prefix was absent
-    # from the redacted report. Match only that exact quoted source token so a
-    # real path elsewhere in the same file would still be reported.
-    if relative == "tests/test_doctor.py":
-        historical_drive_assertion_token = '"' + "G:" + "\\\\" + '"'
-        text = text.replace(historical_drive_assertion_token, '"<SYNTHETIC_DRIVE>"')
+    if relative == "scripts/check_repository.py":
+        # One earlier scanner revision described the Doctor fixture using a
+        # literal fake drive-prefix in a comment. Strip only that exact phrase;
+        # any other absolute path in scanner history must still fail.
+        historical_self_comment = "fake " + "G:" + "\\" + " drive prefix"
+        text = text.replace(historical_self_comment, "fake <SYNTHETIC_DRIVE> prefix")
 
     return text
 
