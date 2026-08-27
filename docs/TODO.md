@@ -1,134 +1,114 @@
-# Comfy Remote TODO
+# Comfy Remote Roadmap / TODO
 
-本文档是 Comfy Remote 的执行型 TODO。当前开发基线为 **v0.3 Phase 1 — Public Readiness / 陌生 ComfyUI 部署**。
+当前开发基线：**v0.4 Reliability / Recovery**。
 
-本阶段只解决公开使用门槛和陌生环境适配；生成现场恢复、视频缩略图、高清图片压缩、Windows 电源控制、WoL 与多主机明确不混入 Phase 1。
+`v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；v0.3.0 以 **Public Beta** 作为第一个面向公开用户的发布基线。
 
-## v0.3 Phase 1 — Public Readiness
+---
 
-### 核心与 H3 解耦
+## v0.3 Public Readiness — Completed
 
-- [x] 确认 Panel 启动不依赖 H3 模型、LoRA 或 custom node。
-- [x] 内置 H3 继续作为 Bundled / Verified examples；缺依赖只影响对应工作流 availability。
-- [x] 普通 ComfyUI API Workflow 继续作为一等能力。
-- [ ] 陌生 Windows 实机确认“完全没有 H3 仍能导入并真实生成”。
+### 完成范围
 
-### Public CLI
+- [x] H3 与核心架构解耦；H3 作为 Bundled / Verified examples，不再是安装前提。
+- [x] 普通 ComfyUI API Workflow 作为一等能力。
+- [x] Public CLI：`setup`、`start / stop / restart / status`、`doctor`、`autostart`。
+- [x] Windows Setup Wizard：自动/手动发现 ComfyUI、配置生成、旧配置备份与更新。
+- [x] Windows Portable 启动脚本发现，保留真实启动参数，包括 `--enable-manager` 和可选 `--use-sage-attention`。
+- [x] Panel 后台进程控制、health/status、未知端口占用保护。
+- [x] Windows 登录自启动；Task Scheduler 权限不足时提供用户级 fallback。
+- [x] Tailscale 检测、身份授权、Serve 配置与 Doctor 检查。
+- [x] Doctor `PASS / WARN / FAIL` 与 `doctor --report` 隐私脱敏。
+- [x] Configurator 2.0：统一 Workflow 分析模型、`/object_info` schema、图连接分析、heuristic fallback、置信度与 Preflight。
+- [x] 不要求工作流固定包含 `width / height / batch_size`。
+- [x] required media、通用 image/video/audio/file artifact、Runtime Test 与 revision 绑定。
+- [x] WAI txt2img / img2img 与 H3 回归覆盖。
+- [x] Windows 首次安装路径、Panel 黑窗、ComfyUI 可见控制台、Doctor H3 optional severity、Autostart 启动语义等真机问题完成修复。
+- [x] README / Windows Getting Started / Troubleshooting / Workflow / Security / Contributing 公共文档体系。
 
-- [x] 新增 `setup`。
-- [x] 新增 `start / stop / restart / status`。
-- [x] 新增 `doctor / doctor --report`。
-- [x] 新增 `autostart install / status / remove`。
-- [x] 保留 `comfyui-remote-panel --config config.toml` 旧前台启动方式。
-- [x] CLI 只负责编排，继续复用现有 app / database / workflow / lifecycle。
+### 真机验收记录
 
-### Setup Wizard
+v0.3 在独立 Windows 环境完成了以下真实链路验证：
 
-- [x] 检查 Python、当前目录和已有配置。
-- [x] 已有配置提供检查更新 / 新建 / 退出，写入前备份旧配置。
-- [x] 优先探测运行中的 `127.0.0.1:8188`。
-- [x] 限定常见位置发现 ComfyUI，不做全盘暴力扫描。
-- [x] 支持手动输入标准安装或 Windows Portable 根目录。
-- [x] 自动生成 base URL、input、output 与 storage 配置。
-- [x] ComfyUI 启停控制单独询问并默认关闭。
-- [x] 无 Tailscale 时允许先以 local auth 完成本机配置。
+```text
+干净安装
+→ setup
+→ Panel start / stop / status
+→ ComfyUI lifecycle start / stop / restart
+→ 普通 API Workflow 导入 / Preflight / 真实生成
+→ 任务结果查看
+→ Tailscale 配置路径
+→ Windows autostart 注册
+```
 
-### Tailscale
+还使用了“存在 H3 nodes/workflows、但没有复制 H3 models”的环境验证：H3 缺可选模型应只影响对应内置工作流，不再把通用 Comfy Remote 安装错误判定为 `NOT READY`。
 
-- [x] 检测 Tailscale 可执行文件、版本、BackendState、LoginName、DNSName。
-- [x] 使用当前登录身份生成 `allowed_logins`。
-- [x] Setup 可确认运行 `tailscale serve --bg 8190`。
-- [x] `doctor` 检查 Tailscale、身份匹配和 Serve 状态。
-- [ ] 陌生 Windows + 手机真实确认 Serve 地址访问。
+v0.3 最终发布定位为 **Public Beta**：核心路径可用，但不把高级恢复、多主机、WoL 等后续能力包装成已完成能力。
 
-### Panel 进程控制
+### v0.3 明确延后
 
-- [x] 后台启动并保存 runtime state / PID。
-- [x] `status` 检查监听端口、进程命令特征和 healthz。
-- [x] 发现 8190 被未知进程占用时拒绝误杀。
-- [x] `stop / restart` 只操作已验证为 Comfy Remote 的进程。
-- [x] 不在网页端增加“关闭 Panel”按钮。
+以下内容没有为了 Public Readiness 临时塞入 v0.3：
 
-### Windows Autostart
+- 高级生成现场恢复 / watchdog；
+- Windows 睡眠、休眠、系统重启、关机；
+- Wake-on-LAN；
+- 多主机 Host Registry / routing / selector；
+- 高清参考图自动压缩；
+- 视频缩略图专项；
+- 独立 Seed Policy（`randomize / fixed / increment`，可扩展 decrement）。
 
-- [x] CLI 复用现有 Task Scheduler PowerShell 脚本，不重写任务逻辑。
-- [x] Setup 在 Windows 上默认询问安装登录自启动。
-- [ ] 真实执行“注销 → 登录 → 手机重新访问”验收。
+---
 
-### Doctor
+## v0.4 Reliability / Recovery — Current baseline
 
-- [x] 统一 `PASS / WARN / FAIL`。
-- [x] 检查 Python、配置、data、Panel、ComfyUI API、input/output。
-- [x] Tailscale 未配置或内置 H3 缺依赖按 `WARN`。
-- [x] ComfyUI API 不通、关键目录不可用按 `FAIL`。
-- [x] `doctor --report` 输出 GitHub Issue 可粘贴 Markdown。
-- [x] 自动脱敏用户目录、邮箱、Tailscale hostname 和明显 token/secret/cookie/API key 字段。
+v0.4 的目标不是继续堆更多 Workflow 类型，而是让“已经能远程用”变成“长时间无人看守也更可靠”。
 
-### Workflow compatibility / Preflight
+### 1. ComfyUI 故障恢复
 
-- [x] JSON 层：API Workflow JSON 与节点结构检查。
-- [x] Node 层基础能力：通过当前 ComfyUI `object_info` 检查 class_type / input compatibility。
-- [x] Input / Output 层基础能力：自动识别 prompt / negative / reference image / width / height / batch / output，并保留高级映射。
-- [x] Runtime 层：工作流“测试”会真实提交一次 ComfyUI 任务。
-- [x] 把四层结果收敛成明确的 preflight 状态对象和用户可读 PASS/WARN/FAIL 摘要。
+- [ ] 明确定义 ComfyUI 状态：online / starting / stopping / crashed / unhealthy / unknown。
+- [ ] 区分“API 暂时无响应”“ComfyUI 进程退出”“GPU/driver 级异常”。
+- [ ] 任务执行期间 ComfyUI 异常时保留可解释的失败原因，而不是只显示连接断开。
+- [ ] 增加受控的强制停止 / 进程树清理策略，避免误杀用户其他 Python 进程。
+- [ ] 根据配置决定是否自动拉起 ComfyUI，并提供退避/最大重试，避免 crash loop。
+- [ ] Panel 重启后恢复可恢复的 lifecycle / task 状态。
 
-### Windows 安装与文档
+### 2. 任务可靠性
 
-- [x] 新增 `scripts/windows/Install-ComfyRemote.ps1`。
-- [x] PowerShell 只负责 Python / venv / pip / 进入 Python setup，不承载核心配置逻辑。
-- [x] README 改为 setup-first Quick Start，不再把手写 TOML 当 happy path。
-- [x] 新增 `docs/GETTING_STARTED_WINDOWS.md`。
-- [x] 新增 `docs/TROUBLESHOOTING.md`。
-- [x] 新增 `docs/PUBLIC_READINESS_ACCEPTANCE.md`。
-- [x] 新增 bug / workflow compatibility / feature request Issue Forms。
+- [ ] 明确 submitted / queued / running / completed / failed / interrupted 的恢复语义。
+- [ ] ComfyUI 断开后重新查询 history/queue，尽可能确认任务真实最终状态。
+- [ ] 避免因 WebSocket/浏览器断线把仍在生成的任务误判失败。
+- [ ] 提供更清楚的 OOM / missing model / custom node runtime / output missing 分类。
+- [ ] 为恢复逻辑补充真实故障 fixture 与集成测试。
 
-### Tests / CI
+### 3. 设备页 Recovery UX
 
-- [x] CLI parsing / legacy compatibility tests。
-- [x] setup config generation / Portable discovery tests。
-- [x] doctor / report redaction tests。
-- [x] panel stale PID / unknown port occupant safety tests。
-- [x] explicit preflight tests。
-- [ ] explicit minimal ComfyUI / no-H3 public-readiness test。
-- [ ] 当前 PR 所有 Windows/Linux 3.11/3.13 + minimum-dependencies + repository check + build 全绿。
+- [ ] 把“Panel 在线”和“ComfyUI 在线”明确分开。
+- [ ] 显示最近一次 ComfyUI 崩溃/重启原因与时间。
+- [ ] 对安全可恢复状态提供“重启 ComfyUI”；对危险/未知状态给出明确提示。
+- [ ] 保持手机端操作简单，不把 PID、进程树、driver 错误等内部细节直接暴露给普通用户。
 
-### Release Gate — 陌生 Windows
+### 4. Transport 继续解耦
 
-必须在一台没有 Comfy Remote 配置、data DB 和 H3 环境的 Windows 上，仅按公开教程走通：
+- [ ] 保持 Tailscale 为一种 transport，而不是核心身份/运行时模型的一部分。
+- [ ] 抽象 remote transport / auth capability，为后续受限公司网络或其他接入方式留出实现边界。
+- [ ] 新 transport 必须维持“Panel/ComfyUI 默认不直接暴露公网”的安全原则。
 
-- [ ] clone / download。
-- [ ] `Install-ComfyRemote.ps1`。
-- [ ] setup 自动或手动找到 ComfyUI。
-- [ ] doctor。
-- [ ] Tailscale Serve + 手机访问。
-- [ ] 导出自己的 API Workflow。
-- [ ] 导入 → preflight → 测试。
-- [ ] 创作页真实生成。
-- [ ] 任务页查看并下载结果。
-- [ ] 安装 autostart。
-- [ ] Windows 注销 / 重登。
-- [ ] 手机再次访问。
+### 5. Release quality
 
-若必须由开发者帮忙手工编辑 TOML 才能完成，Phase 1 验收失败。
+- [ ] 将真实崩溃/恢复场景加入 v0.4 release gate。
+- [ ] 保持 Windows 为主要真机验证平台，同时继续 Windows/Linux CI。
+- [ ] 任何恢复功能必须优先保证“不误杀、不误重启、不伪造任务成功”。
 
-## Phase 1 完成标准
+---
 
-- [ ] **A** 没有 H3 也能完整使用。
-- [ ] **B** 普通用户 happy path 不需要理解 module / TOML / PID / Task Scheduler / LoginName / node id。
-- [x] **C** 可运行 `doctor --report` 并直接提交脱敏结果。
-- [ ] **D** 陌生环境普通 API Workflow 真实完成“导入 → 检查 → 生成”。
-- [ ] **E** Windows 重登后 Panel 自动恢复、Serve 可访问、手机继续使用。
+## Later / separate design tracks
 
-A / B / D / E 最终需要真机验收，不能由单元测试代替。
+这些方向可以继续研究，但不自动并入 v0.4：
 
-## Phase 1 明确不做
+- Multi-host：家里 / 公司 / 其他主机的 Host Registry、selector、routing。
+- Wake-on-LAN / external watchdog：依赖局域网或机外常驻设备的电源恢复。
+- Seed Policy：把数字 seed 与 `randomize / fixed / increment` 等运行策略分离。
+- Media optimization：高清参考图自动压缩、视频缩略图、远程预览带宽优化。
+- Additional transports：在不降低安全边界的前提下补充 Tailscale 之外的连接方式。
 
-- 生成现场恢复增强。
-- 视频缩略图专项。
-- 高清参考图自动压缩。
-- Windows 睡眠 / 休眠 / 系统重启 / 关机。
-- Wake-on-LAN 或机外 watchdog。
-- 多主机 Host Registry / routing / selector。
-- Seed Policy：把种子数值与运行策略分离，支持 `randomize / fixed / increment`（可扩展 `decrement`），并允许每个工作流配置默认策略、创作页临时覆盖。API Workflow 中的数字 seed（包括 `0`）本身不作为“随机”哨兵；当前 v0.3 保持“留空随机、显式数值固定”的简单语义。
-
-这些项目继续保留为后续版本候选，不作为 v0.3 Phase 1 阻塞项。
+路线图原则：**先把远程生成做稳，再扩机器数量、连接方式和电源控制。**
