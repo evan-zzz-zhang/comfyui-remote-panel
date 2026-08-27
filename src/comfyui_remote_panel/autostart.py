@@ -102,7 +102,14 @@ def _registry_command(config: Path) -> str:
     pythonw = python.with_name("pythonw.exe")
     executable = pythonw if pythonw.is_file() else python
     return subprocess.list2cmdline(
-        [str(executable), "-m", "comfyui_remote_panel", "--config", str(config)]
+        [
+            str(executable),
+            "-m",
+            "comfyui_remote_panel",
+            "start",
+            "--config",
+            str(config),
+        ]
     )
 
 
