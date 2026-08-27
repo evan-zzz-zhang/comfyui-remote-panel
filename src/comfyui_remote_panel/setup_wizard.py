@@ -9,8 +9,9 @@ import sys
 from typing import Any, Callable
 from urllib.request import urlopen
 
-from .autostart import AutostartError, install_autostart
+from .autostart import AutostartError, install_autostart, status_autostart
 from .config import Config, ConfigError, load_config
+from .launch_discovery import discover_portable_start_options
 from .tailscale import TailscaleError, enable_serve, inspect_tailscale
 
 
@@ -173,6 +174,28 @@ def _confirm(
     return value in {"y", "yes", "1", "true", "是"}
 
 
+def _default_control_visible_window(existing: Config | None) -> bool:
+    if existing is not None:
+        return existing.comfyui_visible_window
+    return os.name == "nt"
+
+
+def _choose_existing_config_action(
+    *,
+    input_fn: Callable[[str], str],
+    output_fn: Callable[[str], None],
+) -> str:
+    output_fn("检测到现有配置。")
+    output_fn("  [1] 检查并更新")
+    output_fn("  [2] 创建新配置（自动备份旧文件）")
+    output_fn("  [3] 退出")
+    while True:
+        choice = _ask("选择操作", input_fn=input_fn)
+        if choice in {"1", "2", "3"}:
+            return choice
+        output_fn("请输入 1、2 或 3。")
+
+
 def _toml_string(value: str | Path) -> str:
     return json.dumps(str(value), ensure_ascii=False)
 
@@ -266,23 +289,30 @@ def _choose_installation(
     preferred: ComfyInstallation | None = None,
 ) -> ComfyInstallation:
     if preferred is not None:
-        output_fn(f"检测到当前配置的 ComfyUI：{preferred.root}")
-        if _confirm("继续使用这个 ComfyUI", input_fn=input_fn, default=True):
-            return preferred
+        output_fn(f"使用当前配置的 ComfyUI：{preferred.root}")
+        return preferred
+
+    if len(candidates) == 1:
+        output_fn(f"检测到 ComfyUI：{candidates[0].root}")
+        return candidates[0]
 
     if candidates:
-        output_fn("发现可能的 ComfyUI：")
+        output_fn("发现多个可能的 ComfyUI：")
         for index, candidate in enumerate(candidates, start=1):
             kind = "Portable" if candidate.portable else "标准安装"
             output_fn(f"  [{index}] {candidate.root} ({kind})")
         output_fn("  [0] 手动输入")
-        choice = _ask("选择 ComfyUI", input_fn=input_fn, default="1")
-        try:
-            selected = int(choice)
-        except ValueError:
-            selected = 0
-        if 1 <= selected <= len(candidates):
-            return candidates[selected - 1]
+        while True:
+            choice = _ask("选择 ComfyUI", input_fn=input_fn)
+            try:
+                selected = int(choice)
+            except ValueError:
+                selected = -1
+            if selected == 0:
+                break
+            if 1 <= selected <= len(candidates):
+                return candidates[selected - 1]
+            output_fn(f"请输入 0 到 {len(candidates)}。")
 
     while True:
         value = _ask("请输入 ComfyUI 根目录", input_fn=input_fn)
@@ -290,6 +320,51 @@ def _choose_installation(
         if installation is not None:
             return installation
         output_fn("该目录不是可识别的 ComfyUI 根目录；需要 main.py 或 ComfyUI/main.py。")
+
+
+def _choose_discovered_start_command(
+    installation: ComfyInstallation,
+    *,
+    input_fn: Callable[[str], str],
+    output_fn: Callable[[str], None],
+) -> tuple[str, ...]:
+    if not installation.portable:
+        return installation.start_command
+    options = discover_portable_start_options(
+        installation.root,
+        installation.python_executable,
+    )
+    if not options:
+        return installation.start_command
+
+    if len(options) == 1:
+        option = options[0]
+        output_fn(f"使用检测到的 ComfyUI 启动脚本：{option.label}")
+        return option.command
+
+    output_fn("检测到多个 ComfyUI 启动脚本：")
+    for index, option in enumerate(options, start=1):
+        output_fn(f"  [{index}] {option.label}")
+        output_fn("      " + " ".join(option.command[1:]))
+    output_fn("  [0] 使用 Comfy Remote 默认启动命令")
+    while True:
+        choice = _ask("选择启动方式", input_fn=input_fn)
+        try:
+            selected = int(choice)
+        except ValueError:
+            selected = -1
+        if selected == 0:
+            return installation.start_command
+        if 1 <= selected <= len(options):
+            return options[selected - 1].command
+        output_fn(f"请输入 0 到 {len(options)}。")
+
+
+def _autostart_registered(config_path: Path) -> bool:
+    try:
+        return status_autostart(config_path).output.strip() != "not-registered"
+    except AutostartError:
+        return False
 
 
 def run_setup(
@@ -306,11 +381,7 @@ def run_setup(
 
     existing: Config | None = None
     if config_path.exists():
-        output_fn("检测到现有配置。")
-        output_fn("  [1] 检查并更新")
-        output_fn("  [2] 创建新配置（自动备份旧文件）")
-        output_fn("  [3] 退出")
-        choice = _ask("选择操作", input_fn=input_fn, default="1")
+        choice = _choose_existing_config_action(input_fn=input_fn, output_fn=output_fn)
         if choice == "3":
             return 0
         if choice == "1":
@@ -347,13 +418,18 @@ def run_setup(
     base_url = existing.comfyui_base_url if existing else "http://127.0.0.1:8188"
     control_default = existing.comfyui_control_enabled if existing else False
     control_enabled = _confirm(
-        "是否允许 Comfy Remote 启动、关闭和重启 ComfyUI",
+        "允许 Comfy Remote 启动、关闭和重启 ComfyUI",
         input_fn=input_fn,
         default=control_default,
     )
+    has_existing_command = bool(
+        existing
+        and existing.comfyui_control_enabled
+        and existing.comfyui_start_command
+    )
     control_command = (
         existing.comfyui_start_command
-        if existing and existing.comfyui_control_enabled and existing.comfyui_start_command
+        if has_existing_command
         else installation.start_command
     )
     control_working_dir = (
@@ -361,12 +437,16 @@ def run_setup(
         if existing and existing.comfyui_working_dir
         else installation.root
     )
+    visible_window = _default_control_visible_window(existing)
     if control_enabled:
-        output_fn("将使用以下启动命令：")
+        if not has_existing_command:
+            control_command = _choose_discovered_start_command(
+                installation,
+                input_fn=input_fn,
+                output_fn=output_fn,
+            )
+        output_fn("ComfyUI 启动命令：")
         output_fn("  " + " ".join(control_command))
-        if not _confirm("确认这个命令", input_fn=input_fn, default=True):
-            control_enabled = False
-            output_fn("已保持 ComfyUI 控制关闭；远程生成不受影响。")
 
     tailscale = inspect_tailscale()
     auth_provider = "local"
@@ -383,18 +463,17 @@ def run_setup(
         output_fn("Tailscale 已连接，但无法读取登录身份或 MagicDNS 主机名；暂时使用本地模式。")
     else:
         output_fn(f"当前 Tailscale 用户: {tailscale.login_name}")
-        if _confirm("使用这个身份访问 Comfy Remote", input_fn=input_fn, default=True):
+        if _confirm("启用 Tailscale 远程访问", input_fn=input_fn, default=True):
             auth_provider = "tailscale"
             allowed_logins = [tailscale.login_name]
             public_origin = tailscale.public_origin
-            output_fn("即将配置: tailscale serve --bg 8190")
-            if _confirm("配置 Tailscale Serve", input_fn=input_fn, default=True):
-                try:
-                    enable_serve(8190)
-                    output_fn(f"远程地址: {public_origin}")
-                except TailscaleError as exc:
-                    output_fn(f"Tailscale Serve 配置未完成: {exc}")
-                    output_fn("配置已保留；完成 Tailscale 授权后可重新运行 setup。")
+            output_fn("正在配置 Tailscale Serve...")
+            try:
+                enable_serve(8190)
+                output_fn(f"远程地址: {public_origin}")
+            except TailscaleError as exc:
+                output_fn(f"Tailscale Serve 配置未完成: {exc}")
+                output_fn("配置已保留；完成 Tailscale 授权后可重新运行 setup。")
 
     if existing is not None:
         data_dir = existing.data_dir
@@ -404,7 +483,6 @@ def run_setup(
         minimum_free_bytes = existing.minimum_free_bytes
         output_reserve_bytes = existing.output_reserve_bytes
         max_tracked_bytes = existing.max_tracked_bytes
-        visible_window = existing.comfyui_visible_window
         startup_timeout = existing.comfyui_startup_timeout
         shutdown_timeout = existing.comfyui_shutdown_timeout
     else:
@@ -415,7 +493,6 @@ def run_setup(
         minimum_free_bytes = 512 * 1024 * 1024
         output_reserve_bytes = 1024 * 1024 * 1024
         max_tracked_bytes = None
-        visible_window = False
         startup_timeout = 120.0
         shutdown_timeout = 30.0
 
@@ -443,17 +520,26 @@ def run_setup(
     load_config(config_path)
     output_fn(f"✓ 已写入 {config_path}")
 
-    if os.name == "nt" and _confirm(
-        "是否在 Windows 用户登录后自动启动 Comfy Remote",
-        input_fn=input_fn,
-        default=True,
-    ):
-        try:
-            result = install_autostart(config_path)
-            output_fn(result.output or "✓ 已安装 Windows 登录自启动")
-        except AutostartError as exc:
-            output_fn(f"自动启动未安装: {exc}")
-            output_fn("稍后可运行: comfyui-remote-panel autostart install")
+    if os.name == "nt":
+        keep_autostart = existing is not None and _autostart_registered(config_path)
+        if keep_autostart:
+            try:
+                result = install_autostart(config_path)
+                output_fn(result.output or "✓ 已保留 Windows 登录自启动")
+            except AutostartError as exc:
+                output_fn(f"自动启动更新失败: {exc}")
+                output_fn("稍后可运行: comfyui-remote-panel autostart install")
+        elif _confirm(
+            "Windows 登录后自动启动 Comfy Remote",
+            input_fn=input_fn,
+            default=True,
+        ):
+            try:
+                result = install_autostart(config_path)
+                output_fn(result.output or "✓ 已安装 Windows 登录自启动")
+            except AutostartError as exc:
+                output_fn(f"自动启动未安装: {exc}")
+                output_fn("稍后可运行: comfyui-remote-panel autostart install")
 
     output_fn("下一步：")
     output_fn("  comfyui-remote-panel doctor")

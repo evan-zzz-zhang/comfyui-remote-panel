@@ -28,6 +28,28 @@ class PanelStatus:
     reason: str = ""
 
 
+def _background_python_executable() -> str:
+    executable = Path(sys.executable)
+    if os.name == "nt" and executable.name.lower() == "pythonw.exe":
+        python = executable.with_name("python.exe")
+        if python.is_file():
+            return str(python)
+    return str(executable)
+
+
+def _background_creationflags() -> int:
+    if os.name != "nt":
+        return 0
+    # CREATE_NO_WINDOW is the important part here. DETACHED_PROCESS looks like a
+    # natural fit for a background service, but Windows ignores CREATE_NO_WINDOW
+    # when DETACHED_PROCESS is used, which can leave a persistent console window
+    # behind on some systems. A new process group still keeps Ctrl+C from the
+    # launching shell from being delivered to the panel process.
+    return getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(
+        subprocess, "CREATE_NO_WINDOW", 0
+    )
+
+
 class PanelController:
     def __init__(self, config_path: str | Path = "config.toml"):
         self.config_path = Path(config_path).expanduser().resolve()
@@ -144,19 +166,15 @@ class PanelController:
             raise PanelControlError(f"port {self.config.port} is already used by another process")
 
         command = [
-            sys.executable,
+            _background_python_executable(),
             "-m",
             "comfyui_remote_panel",
             "--config",
             str(self.config_path),
         ]
-        creationflags = 0
+        creationflags = _background_creationflags()
         kwargs: dict = {}
-        if os.name == "nt":
-            creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(
-                subprocess, "DETACHED_PROCESS", 0
-            )
-        else:
+        if os.name != "nt":
             kwargs["start_new_session"] = True
         kwargs["close_fds"] = os.name != "nt"
 

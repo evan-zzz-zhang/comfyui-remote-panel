@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from comfyui_remote_panel import panel_control
 from comfyui_remote_panel.panel_control import PanelController
 
 
@@ -57,3 +58,30 @@ def test_unknown_listener_is_never_adopted_or_stopped(tmp_path: Path, monkeypatc
     status = controller.status()
     assert status.running is False
     assert status.reason == "port-occupied"
+
+
+def test_windows_background_flags_hide_console(monkeypatch):
+    monkeypatch.setattr(panel_control.os, "name", "nt")
+    monkeypatch.setattr(panel_control.subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200, raising=False)
+    monkeypatch.setattr(panel_control.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    monkeypatch.setattr(panel_control.subprocess, "DETACHED_PROCESS", 0x00000008, raising=False)
+
+    flags = panel_control._background_creationflags()
+
+    assert flags & panel_control.subprocess.CREATE_NO_WINDOW
+    assert flags & panel_control.subprocess.CREATE_NEW_PROCESS_GROUP
+    assert not flags & panel_control.subprocess.DETACHED_PROCESS
+
+
+def test_windows_pythonw_launcher_spawns_hidden_python_child(tmp_path: Path, monkeypatch):
+    scripts = tmp_path / "Scripts"
+    scripts.mkdir()
+    python = scripts / "python.exe"
+    pythonw = scripts / "pythonw.exe"
+    python.write_bytes(b"")
+    pythonw.write_bytes(b"")
+
+    monkeypatch.setattr(panel_control.os, "name", "nt")
+    monkeypatch.setattr(panel_control.sys, "executable", str(pythonw))
+
+    assert panel_control._background_python_executable() == str(python)

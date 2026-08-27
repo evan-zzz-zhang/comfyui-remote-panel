@@ -8,6 +8,7 @@
   <title>Comfy Remote</title>
   <link rel="stylesheet" href="/static/app.css?v=0.6.0">
   <link rel="stylesheet" href="/static/ux_refinements.css?v=0.1.0">
+  <link rel="stylesheet" href="/static/configurator_v2.css?v=0.3.0">
 </head>
 <body>
   <header class="topbar">
@@ -147,12 +148,12 @@
 
     <section id="view-workflows" class="view settings-view" aria-label="设置">
       <div id="settings-home">
-        <div class="page-heading"><h2>设置</h2><button id="settings-close" class="icon-button" type="button" aria-label="关闭设置"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+        <div class="page-heading"><h2>设置</h2><button id="settings-close" class="icon-button" type="button" aria-label="关闭设置"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
         <div class="settings-list">
           <button id="open-workflow-manager" class="settings-row" type="button"><span><strong>工作流</strong><small>管理生成工作流、导入和显示名称</small></span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
           <div class="settings-row static"><span><strong>连接</strong><small>Tailscale / 本地访问</small></span><span class="row-value">当前配置</span></div>
           <div class="settings-row static"><span><strong>日志与诊断</strong><small>运行日志与故障信息</small></span><span class="row-value">设备页</span></div>
-          <div class="settings-row static"><span><strong>关于</strong><small>Comfy Remote v0.2</small></span></div>
+          <div class="settings-row static"><span><strong>关于</strong><small>Comfy Remote v0.3.0.dev0</small></span></div>
         </div>
       </div>
 
@@ -163,7 +164,7 @@
         <button id="open-workflow-importer" class="primary-button compact-primary" type="button"><span>导入工作流</span><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
 
         <div id="workflow-importer" class="workflow-importer hidden">
-          <div class="subpage-heading"><div><strong>导入 API Workflow</strong><small>自动识别基础输入；高级节点映射默认收起</small></div><button id="close-workflow-importer" class="icon-button small" type="button" aria-label="关闭导入"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+          <div class="subpage-heading"><div><strong>导入 API Workflow</strong><small>Schema + Graph 分析；不确定项再由你确认</small></div><button id="close-workflow-importer" class="icon-button small" type="button" aria-label="关闭导入"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
           <label class="field"><span>显示名称</span><input id="workflow-name" placeholder="例如：WAI 出图"></label>
           <label class="field hidden"><span>工作流 ID</span><input id="workflow-id" placeholder="自动生成"></label>
           <label class="file-drop"><input id="workflow-json" type="file" accept="application/json,.json"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 20h14"/></svg><span><strong>选择 API Workflow JSON</strong><small>请使用 ComfyUI 的“导出（API）”</small></span></label>
@@ -195,7 +196,7 @@
 
   <div id="sheet-backdrop" class="sheet-backdrop hidden">
     <section id="bottom-sheet" class="bottom-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
-      <header class="sheet-header"><strong id="sheet-title">设置</strong><button id="sheet-close" class="icon-button small" type="button" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
+      <header class="sheet-header"><strong id="sheet-title">设置</strong><button id="sheet-close" class="icon-button small" type="button" aria-label="关闭设置"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
       <div id="sheet-body" class="sheet-body"></div>
     </section>
   </div>
@@ -207,5 +208,7 @@
   <script src="/static/app.js?v=0.4.0" defer></script>
   <script src="/static/workflow_ux.js?v=0.6.0" defer></script>
   <script src="/static/ux_refinements.js?v=0.1.0" defer></script>
+  <script src="/static/configurator_v2.js?v=0.3.0" defer></script>
+  <script src="/static/configurator_v2_runtime.js?v=0.1.0" defer></script>
 </body>
 </html>

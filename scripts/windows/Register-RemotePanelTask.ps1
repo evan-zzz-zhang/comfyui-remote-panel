@@ -13,16 +13,17 @@ $python = (Resolve-Path -LiteralPath (Join-Path $root $PythonPath)).Path
 $config = (Resolve-Path -LiteralPath (Join-Path $root $ConfigPath)).Path
 $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
+$pythonw = Join-Path (Split-Path -Parent $python) 'pythonw.exe'
+$launcher = if (Test-Path -LiteralPath $pythonw) { $pythonw } else { $python }
+
 $action = New-ScheduledTaskAction `
-    -Execute $python `
-    -Argument ('-m comfyui_remote_panel --config "{0}"' -f $config) `
+    -Execute $launcher `
+    -Argument ('-m comfyui_remote_panel start --config "{0}"' -f $config) `
     -WorkingDirectory $root
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
 $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
     -MultipleInstances IgnoreNew `
-    -RestartCount 999 `
-    -RestartInterval (New-TimeSpan -Minutes 1) `
     -ExecutionTimeLimit ([TimeSpan]::Zero)
 $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
 
@@ -32,7 +33,8 @@ Register-ScheduledTask `
     -Trigger $trigger `
     -Settings $settings `
     -Principal $principal `
-    -Description 'Starts ComfyUI Remote Panel at sign-in and restarts it after unexpected exits.' `
+    -Description 'Starts ComfyUI Remote Panel at sign-in using the same background launcher as the CLI.' `
     -Force | Out-Null
 Start-ScheduledTask -TaskName $TaskName
+Start-Sleep -Milliseconds 500
 Get-ScheduledTask -TaskName $TaskName | Select-Object TaskName, State
