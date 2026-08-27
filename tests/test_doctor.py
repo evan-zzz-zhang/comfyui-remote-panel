@@ -47,7 +47,7 @@ def test_markdown_report_redacts_absolute_paths_on_non_system_drives():
             DoctorCheck("ComfyUI", "output directory", PASS, drive + r"AI\ComfyUI_H3_Portable\ComfyUI\output (readable)"),
         ]
     )
-    assert "G:\\" not in report
+    assert drive not in report
     assert "AI-project" not in report
     assert "ComfyUI_H3_Portable" not in report
     assert report.count("<PATH>") >= 4
