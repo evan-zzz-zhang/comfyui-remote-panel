@@ -33,6 +33,13 @@ def test_historical_scanner_self_comment_is_allowed_without_hiding_real_path():
     assert "Windows absolute path: scripts/check_repository.py" in findings
 
 
+def test_documented_bilingual_windows_path_placeholders_are_allowed():
+    chinese = "D:" + "\\你的目录\\ComfyUI_windows_portable"
+    english = "D:" + "\\your-folder\\ComfyUI_windows_portable"
+    assert _privacy_findings("docs/GETTING_STARTED_WINDOWS.zh-CN.md", chinese) == []
+    assert _privacy_findings("docs/GETTING_STARTED_WINDOWS.md", english) == []
+
+
 def test_real_machine_path_is_still_rejected_in_other_source_file():
     machine_path = "D:" + "\\Private\\ComfyUI\\config.toml"
     findings = _privacy_findings("README.md", machine_path)
