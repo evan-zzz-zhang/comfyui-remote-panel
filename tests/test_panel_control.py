@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 from comfyui_remote_panel import panel_control
 from comfyui_remote_panel.panel_control import PanelController
@@ -61,7 +62,9 @@ def test_unknown_listener_is_never_adopted_or_stopped(tmp_path: Path, monkeypatc
 
 
 def test_windows_background_flags_hide_console(monkeypatch):
-    monkeypatch.setattr(panel_control.os, "name", "nt")
+    # Replacing the module-local os reference avoids mutating global os.name on
+    # non-Windows runners, which would make pathlib try to construct WindowsPath.
+    monkeypatch.setattr(panel_control, "os", SimpleNamespace(name="nt"))
     monkeypatch.setattr(panel_control.subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200, raising=False)
     monkeypatch.setattr(panel_control.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
     monkeypatch.setattr(panel_control.subprocess, "DETACHED_PROCESS", 0x00000008, raising=False)
@@ -81,7 +84,7 @@ def test_windows_pythonw_launcher_spawns_hidden_python_child(tmp_path: Path, mon
     python.write_bytes(b"")
     pythonw.write_bytes(b"")
 
-    monkeypatch.setattr(panel_control.os, "name", "nt")
+    monkeypatch.setattr(panel_control, "os", SimpleNamespace(name="nt"))
     monkeypatch.setattr(panel_control.sys, "executable", str(pythonw))
 
     assert panel_control._background_python_executable() == str(python)
