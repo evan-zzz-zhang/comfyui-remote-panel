@@ -78,7 +78,7 @@ def test_v04_mobile_prompt_uses_stable_native_focus_without_custom_button():
     assert "active.blur()" in script
 
 
-def test_v04_generation_settings_have_one_persistent_empty_generic_guard():
+def test_v04_generation_settings_have_persistent_preset_owned_generic_guard():
     index = (STATIC / "index.html").read_text(encoding="utf-8")
     script = _script()
     assert "sheet-done" not in script
@@ -87,8 +87,14 @@ def test_v04_generation_settings_have_one_persistent_empty_generic_guard():
     assert "hasRealBinding(parameterSpec(preset, id, publicSpec))" in script
     assert 'form.dataset.v04GenerationSettings = hasEditableSetting ? "available" : "none"' in script
     assert '#job-form[data-v04-generation-settings="none"] #basic-settings' in script
-    assert 'form?.addEventListener("change", () => queueMicrotask(syncGenerationSettingsVisibility))' in script
+    assert '#basic-settings.v04-generic-settings-unavailable' in script
+    assert 'section.classList.toggle("v04-generic-settings-unavailable", !hasEditableSetting)' in script
     assert 'section.classList.toggle("hidden", !hasEditableSetting)' in script
+    assert 'button.disabled = !hasEditableSetting' in script
+    assert 'syncGenerationSettingsVisibility();\n    queueCreationUx(overrides);' in script
+    assert 'form?.addEventListener("change", () => {' in script
+    assert 'window.requestAnimationFrame(() => syncGenerationSettingsVisibility())' in script
+    assert "MutationObserver" not in script
     assert "生成设置" in index
 
 
