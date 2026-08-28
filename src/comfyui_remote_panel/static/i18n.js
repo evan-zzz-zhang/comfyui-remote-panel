@@ -301,6 +301,10 @@
     return ({ 高: "High", 中: "Medium", 低: "Low" })[value] || value;
   }
 
+  function translateList(value) {
+    return String(value).split("、").map(part => translate(part.trim())).join(", ");
+  }
+
   function translatePattern(source) {
     if (currentLanguage === "zh-CN") return source;
     let match;
@@ -309,6 +313,9 @@
     if ((match = source.match(/^(\d+)分(\d+)秒$/))) return `${match[1]}m ${match[2]}s`;
     if ((match = source.match(/^ · 第 (\d+) 位$/))) return ` · #${match[1]}`;
     if ((match = source.match(/^(\d+) 张$/))) return `${match[1]} images`;
+    if ((match = source.match(/^(\d+)图$/))) return `${match[1]} image${match[1] === "1" ? "" : "s"}`;
+    if ((match = source.match(/^(\d+)视频$/))) return `${match[1]} video${match[1] === "1" ? "" : "s"}`;
+    if ((match = source.match(/^(\d+)音频$/))) return `${match[1]} audio file${match[1] === "1" ? "" : "s"}`;
     if ((match = source.match(/^种子 (.+)$/))) return `Seed ${match[1]}`;
     if ((match = source.match(/^进度 (\d+)%$/))) return `Progress ${match[1]}%`;
     if ((match = source.match(/^(.+) 可用$/))) return `${match[1]} free`;
@@ -327,8 +334,8 @@
     if ((match = source.match(/^工作流 ID (.+) 已存在；新导入不会覆盖现有工作流。请重新选择文件或修改显示名称后再导入。$/))) return `Workflow ID ${match[1]} already exists. A new import will not overwrite it; choose another file or change the display name.`;
     if ((match = source.match(/^(.+) · 正在读取尺寸…$/))) return `${match[1]} · reading dimensions…`;
     if ((match = source.match(/^(.+) · 无法读取图片尺寸$/))) return `${match[1]} · could not read image dimensions`;
-    if ((match = source.match(/^需要上传：(.+)$/))) return `Required upload: ${match[1]}`;
-    if ((match = source.match(/^运行兼容性测试：请上传(.+)后生成。完成结果会写入 Runtime Preflight。$/))) return `Compatibility test: upload ${match[1]} and generate. The result will be written to Runtime Preflight.`;
+    if ((match = source.match(/^需要上传：(.+)$/))) return `Required upload: ${translateList(match[1])}`;
+    if ((match = source.match(/^运行兼容性测试：请上传(.+)后生成。完成结果会写入 Runtime Preflight。$/))) return `Compatibility test: upload ${translateList(match[1])} and generate. The result will be written to Runtime Preflight.`;
     if ((match = source.match(/^显示设置保存失败：(.+)$/))) return `Failed to save visibility setting: ${match[1]}`;
     if ((match = source.match(/^(从创作页隐藏|在创作页显示) (.+)$/))) return `${match[1] === "从创作页隐藏" ? "Hide from Create" : "Show on Create"} ${match[2]}`;
     if ((match = source.match(/^(.+) 已保存为草稿 r(\d+)$/))) return `${match[1]} saved as draft r${match[2]}`;
@@ -341,7 +348,7 @@
     if ((match = source.match(/^参数或素材校验失败：(.+)$/))) return `Parameter or media validation failed: ${match[1]}`;
     if ((match = source.match(/^ComfyUI 提交失败：(.+)$/))) return `ComfyUI submission failed: ${match[1]}`;
     if ((match = source.match(/^提交失败：(.+)$/))) return `Submission failed: ${match[1]}`;
-    if ((match = source.match(/^已载入原参数，并沿用 (.+)$/))) return `Original settings loaded; keeping ${match[1]}`;
+    if ((match = source.match(/^已载入原参数，并沿用 (.+)$/))) return `Original settings loaded; keeping ${translateList(match[1])}`;
     if ((match = source.match(/^确认(关闭|重启) ComfyUI？(.*)$/))) return `${match[1] === "关闭" ? "Stop" : "Restart"} ComfyUI?${match[2] ? " Unfinished jobs will be interrupted." : ""}`;
     if (source.includes("、")) {
       const parts = source.split("、");
