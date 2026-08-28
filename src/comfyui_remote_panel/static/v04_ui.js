@@ -170,7 +170,8 @@
       }
       #advanced-settings.v04-specialized-advanced > p,
       .generic-advanced.v04-generic-advanced > p { display: none; }
-      #job-form[data-v04-generation-settings="none"] #basic-settings { display: none !important; }
+      #job-form[data-v04-generation-settings="none"] #basic-settings,
+      #basic-settings.v04-generic-settings-unavailable { display: none !important; }
       #job-form .prompt-field textarea,
       #job-form .semantic-prompt textarea { min-height: 132px; }
       #job-form .prompt-field { cursor: default; }
@@ -205,14 +206,23 @@
     const preset = selectedPreset();
     const section = document.querySelector("#basic-settings");
     const form = document.querySelector("#job-form");
+    const button = document.querySelector("#open-generation-settings");
     if (!preset || !section || !form) return;
+
     if (workflowKind(preset) !== "generic") {
       form.dataset.v04GenerationSettings = "available";
+      section.classList.remove("v04-generic-settings-unavailable");
+      section.removeAttribute("aria-hidden");
+      if (button) button.disabled = false;
       return;
     }
+
     const hasEditableSetting = genericGenerationSettingIds(preset).length > 0;
     form.dataset.v04GenerationSettings = hasEditableSetting ? "available" : "none";
+    section.classList.toggle("v04-generic-settings-unavailable", !hasEditableSetting);
     section.classList.toggle("hidden", !hasEditableSetting);
+    section.setAttribute("aria-hidden", String(!hasEditableSetting));
+    if (button) button.disabled = !hasEditableSetting;
   }
 
   function promptAriaLabel(textarea) {
@@ -486,8 +496,10 @@
   applyPreset = function(presetId, overrides = {}) {
     const result = baseApplyPresetV04(presetId, overrides);
     ensureSeedMetadata(state.presets.get(presetId) || selectedPreset());
-    // configurator_v2_runtime queues its own controls first; this renderer runs
-    // immediately after and establishes the final, family-isolated UI before paint.
+    // Apply the generation-settings boundary synchronously after every base render.
+    // Older renderers may still touch the generic section's legacy `hidden` class;
+    // the dedicated v0.4 class is persistent and cannot be removed by those paths.
+    syncGenerationSettingsVisibility();
     queueCreationUx(overrides);
     return result;
   };
@@ -500,10 +512,15 @@
 
     const form = document.querySelector("#job-form");
     form?.addEventListener("input", () => {
-      queueMicrotask(cleanSettingsChips);
-      queueMicrotask(syncGenerationSettingsVisibility);
+      cleanSettingsChips();
+      syncGenerationSettingsVisibility();
     });
-    form?.addEventListener("change", () => queueMicrotask(syncGenerationSettingsVisibility));
+    form?.addEventListener("change", () => {
+      syncGenerationSettingsVisibility();
+      // File inputs can trigger preview/update work after the change handler.
+      // Reassert the preset-owned visibility once on the next paint without DOM observation.
+      window.requestAnimationFrame(() => syncGenerationSettingsVisibility());
+    });
     form?.addEventListener("focusin", event => {
       if (event.target?.matches?.("textarea")) clearLegacyPromptFocusMode();
     });
