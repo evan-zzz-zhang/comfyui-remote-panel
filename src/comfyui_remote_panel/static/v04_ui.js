@@ -16,6 +16,7 @@
     vae: "VAE",
   };
   const RESOLUTION_VALUES = ["0.5", "1.0", "1.5", "2.0", "original"];
+  const GENERATION_SETTING_IDS = ["width", "height", "batch_size"];
   let syncQueued = false;
 
   function workflowKind(preset) {
@@ -169,6 +170,16 @@
       }
       #advanced-settings.v04-specialized-advanced > p,
       .generic-advanced.v04-generic-advanced > p { display: none; }
+      #job-form[data-v04-generation-settings="none"] #basic-settings { display: none !important; }
+      #job-form .prompt-field textarea,
+      #job-form .semantic-prompt textarea { min-height: 132px; }
+      #job-form .prompt-field { cursor: default; }
+      #job-form .prompt-field textarea,
+      #job-form .semantic-prompt textarea { cursor: text; }
+      @media (max-width: 720px), (pointer: coarse) {
+        #job-form .prompt-field textarea,
+        #job-form .semantic-prompt textarea { resize: none; }
+      }
     `;
     document.head.append(style);
   }
@@ -183,14 +194,49 @@
     root.querySelectorAll(".v04-resolution small, .v04-media-resolution .field small, .v04-media-resolution > p").forEach(node => node.remove());
   }
 
+  function genericGenerationSettingIds(preset) {
+    return GENERATION_SETTING_IDS.filter(id => {
+      const publicSpec = preset?.parameters?.[id];
+      return Boolean(publicSpec && hasRealBinding(parameterSpec(preset, id, publicSpec)));
+    });
+  }
+
   function syncGenerationSettingsVisibility() {
     const preset = selectedPreset();
     const section = document.querySelector("#basic-settings");
-    if (!preset || !section || workflowKind(preset) !== "generic") return;
-    const hasEditableSetting = ["width", "height", "batch_size"].some(id =>
-      Boolean(preset.parameters?.[id] && document.querySelector(`#job-form [data-generic-binding="${CSS.escape(id)}"]`))
-    );
+    const form = document.querySelector("#job-form");
+    if (!preset || !section || !form) return;
+    if (workflowKind(preset) !== "generic") {
+      form.dataset.v04GenerationSettings = "available";
+      return;
+    }
+    const hasEditableSetting = genericGenerationSettingIds(preset).length > 0;
+    form.dataset.v04GenerationSettings = hasEditableSetting ? "available" : "none";
     section.classList.toggle("hidden", !hasEditableSetting);
+  }
+
+  function promptAriaLabel(textarea) {
+    if (textarea.dataset.genericBinding === "negative_prompt" || textarea.name === "generic_negative_prompt") return "负面提示词";
+    if (textarea.dataset.genericBinding === "positive_prompt") return "正面提示词";
+    return "提示词";
+  }
+
+  function neutralizePromptContainers(root = document) {
+    root.querySelectorAll("label.prompt-field, label.semantic-prompt").forEach(label => {
+      const textarea = label.querySelector("textarea");
+      if (!textarea) return;
+      if (!textarea.getAttribute("aria-label")) textarea.setAttribute("aria-label", promptAriaLabel(textarea));
+      const replacement = document.createElement(label.classList.contains("creation-section") ? "section" : "div");
+      for (const attribute of [...label.attributes]) {
+        if (attribute.name !== "for") replacement.setAttribute(attribute.name, attribute.value);
+      }
+      while (label.firstChild) replacement.append(label.firstChild);
+      label.replaceWith(replacement);
+    });
+  }
+
+  function clearLegacyPromptFocusMode() {
+    document.body.classList.remove("prompt-focused");
   }
 
   function genericValueSnapshot() {
@@ -409,6 +455,8 @@
   function syncCreationUx(overrides = {}) {
     installV04Styles();
     cleanSettingsChips();
+    clearLegacyPromptFocusMode();
+    neutralizePromptContainers();
     syncGenerationSettingsVisibility();
 
     const preset = selectedPreset();
@@ -446,14 +494,30 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     installV04Styles();
+    clearLegacyPromptFocusMode();
+    neutralizePromptContainers();
     queueCreationUx({});
 
-    document.querySelector("#job-form")?.addEventListener("input", () => queueMicrotask(cleanSettingsChips));
+    const form = document.querySelector("#job-form");
+    form?.addEventListener("input", () => {
+      queueMicrotask(cleanSettingsChips);
+      queueMicrotask(syncGenerationSettingsVisibility);
+    });
+    form?.addEventListener("change", () => queueMicrotask(syncGenerationSettingsVisibility));
+    form?.addEventListener("focusin", event => {
+      if (event.target?.matches?.("textarea")) clearLegacyPromptFocusMode();
+    });
+    form?.addEventListener("focusout", event => {
+      if (event.target?.matches?.("textarea")) clearLegacyPromptFocusMode();
+    });
 
-    // No custom keyboard button. Tapping outside the prompt returns focus to the page.
+    // No custom keyboard button. Tapping outside the textarea returns focus to the page.
     document.addEventListener("pointerdown", event => {
       const active = document.activeElement;
-      if (active?.tagName === "TEXTAREA" && event.target !== active) active.blur();
+      if (active?.tagName === "TEXTAREA" && event.target !== active) {
+        active.blur();
+        clearLegacyPromptFocusMode();
+      }
     }, true);
   });
 
