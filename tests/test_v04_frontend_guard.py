@@ -8,6 +8,10 @@ def _script() -> str:
     return (STATIC / "v04_ui.js").read_text(encoding="utf-8")
 
 
+def _configurator_script() -> str:
+    return (STATIC / "configurator_v2.js").read_text(encoding="utf-8")
+
+
 def test_v04_ui_does_not_install_global_dom_observers():
     script = _script()
     assert "MutationObserver" not in script
@@ -96,6 +100,17 @@ def test_v04_generation_settings_have_persistent_preset_owned_generic_guard():
     assert 'window.requestAnimationFrame(() => syncGenerationSettingsVisibility())' in script
     assert "MutationObserver" not in script
     assert "生成设置" in index
+
+
+def test_configurator_read_only_profile_cannot_reopen_generation_settings():
+    script = _configurator_script()
+    start = script.index("function updateGenericProfileSummary")
+    end = script.index("function bindGenericMediaDetails", start)
+    block = script[start:end]
+    assert "read-only" in block
+    assert "#basic-settings" not in block
+    assert "settings-chip" not in block
+    assert 'classList.remove("hidden")' not in block
 
 
 def test_v04_advanced_heading_uses_same_top_level_hierarchy_for_both_paths():
