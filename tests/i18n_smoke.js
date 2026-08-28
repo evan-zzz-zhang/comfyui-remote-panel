@@ -27,8 +27,10 @@ assert.equal(i18n.t("Graph · 高置信度 · 12.inputs"), "Graph · High confid
 assert.equal(i18n.t("1 × 图片"), "1 × Image");
 assert.equal(
   i18n.t("运行兼容性测试：请上传参考图后生成。完成结果会写入 Runtime Preflight。"),
-  "Compatibility test: upload 参考图 and generate. The result will be written to Runtime Preflight."
+  "Compatibility test: upload Reference image and generate. The result will be written to Runtime Preflight."
 );
+assert.equal(i18n.t("需要上传：参考图、参考视频"), "Required upload: Reference image, Reference video");
+assert.equal(i18n.t("已载入原参数，并沿用 1图、2视频"), "Original settings loaded; keeping 1 image, 2 videos");
 
 i18n.setLanguage("zh-CN");
 assert.equal(i18n.language, "zh-CN");
