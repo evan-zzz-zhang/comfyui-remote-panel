@@ -33,11 +33,15 @@ def test_v04_explicitly_splits_specialized_and_generic_rendering():
     assert "v04-hidden-for-generic" not in script
 
 
-def test_v04_generic_advanced_requires_real_workflow_bindings():
+def test_v04_generic_advanced_requires_and_recovers_real_workflow_bindings():
     script = _script()
+    assert "function parameterSpec" in script
+    assert "preset?.input_bindings?.values?.[id]" in script
+    assert "manifest?.parameters?.[id]" in script
+    assert "function parameterEntries" in script
     assert "function hasRealBinding" in script
     assert "spec?.node != null && Boolean(spec?.input)" in script
-    assert "Object.entries(preset.parameters || {}).filter" in script
+    assert "parameterEntries(preset).filter" in script
     assert 'data-workflow-node=' in script
     assert 'data-workflow-input=' in script
 
