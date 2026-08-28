@@ -23,3 +23,17 @@ def install() -> None:
         return original_media_resolution_for_role(preset, role, effective)
 
     v04._media_resolution_for_role = media_resolution_for_role
+
+    # v0.3 rows need a fallback seed value, but a v0.4 randomize job deliberately
+    # has no base seed: only actual_seed is meaningful for that run.
+    from .db import Database
+
+    original_job_from_row = Database._job_from_row
+
+    def job_from_row(self, row, files):
+        item = original_job_from_row(self, row, files)
+        if item.get("seed_policy") == "randomize":
+            item["seed_value"] = None
+        return item
+
+    Database._job_from_row = job_from_row
