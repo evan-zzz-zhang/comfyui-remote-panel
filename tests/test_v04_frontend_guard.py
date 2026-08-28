@@ -64,20 +64,30 @@ def test_v04_reference_resolution_is_inside_generic_advanced_settings():
     assert 'data-generic-binding="media_resolution"' in script
 
 
-def test_v04_mobile_prompt_has_no_custom_keyboard_button():
+def test_v04_mobile_prompt_uses_stable_native_focus_without_custom_button():
     script = _script()
     assert "收起键盘" not in script
     assert "v04-keyboard-dismiss" not in script
+    assert "function neutralizePromptContainers" in script
+    assert 'label.prompt-field, label.semantic-prompt' in script
+    assert 'document.body.classList.remove("prompt-focused")' in script
+    assert '.classList.add("prompt-focused")' not in script
+    assert "min-height: 132px" in script
+    assert "resize: none" in script
     assert 'active?.tagName === "TEXTAREA"' in script
     assert "active.blur()" in script
 
 
-def test_v04_keeps_generation_settings_done_action_and_hides_empty_generic_settings():
+def test_v04_generation_settings_have_one_persistent_empty_generic_guard():
     index = (STATIC / "index.html").read_text(encoding="utf-8")
     script = _script()
     assert "sheet-done" not in script
-    assert "syncGenerationSettingsVisibility" in script
-    assert '["width", "height", "batch_size"]' in script
+    assert 'const GENERATION_SETTING_IDS = ["width", "height", "batch_size"]' in script
+    assert "function genericGenerationSettingIds" in script
+    assert "hasRealBinding(parameterSpec(preset, id, publicSpec))" in script
+    assert 'form.dataset.v04GenerationSettings = hasEditableSetting ? "available" : "none"' in script
+    assert '#job-form[data-v04-generation-settings="none"] #basic-settings' in script
+    assert 'form?.addEventListener("change", () => queueMicrotask(syncGenerationSettingsVisibility))' in script
     assert 'section.classList.toggle("hidden", !hasEditableSetting)' in script
     assert "生成设置" in index
 
