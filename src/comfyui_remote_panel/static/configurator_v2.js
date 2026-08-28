@@ -287,28 +287,11 @@
   }
 
   function updateGenericProfileSummary(preset) {
-    const profile = profileForPreset(preset);
-    if (!profile) return;
-    const chips = $("#settings-chips");
-    if (!chips) return;
-    const values = [];
-    if (profile.size_strategy === "inherit_input") {
-      const imageInput = Object.entries(preset.input_bindings?.media?.slots || {})
-        .filter(([, slot]) => slot.kind === "image")
-        .map(([role]) => $(`input[name="${CSS.escape(role)}"]`))
-        .find(input => input?.files?.length);
-      const width = Number(imageInput?.dataset.v2SourceWidth || 0);
-      const height = Number(imageInput?.dataset.v2SourceHeight || 0);
-      if (width && height) values.push(`${sourceRatioLabel(width, height)} · ${width}×${height} · 跟随源图`);
-      else values.push("尺寸跟随输入图");
-    } else if (profile.size_strategy === "workflow_fixed") {
-      values.push("尺寸由工作流决定");
-    }
-    if (profile.batch_strategy === "workflow_fixed") values.push("数量由工作流决定");
-    if (values.length) {
-      chips.innerHTML = values.map(value => `<span class="settings-chip">${escapeHtml(value)}</span>`).join("");
-      $("#basic-settings")?.classList.remove("hidden");
-    }
+    // Capability-profile facts such as inherit_input/workflow_fixed are read-only
+    // workflow metadata. They must never create or reopen Creation's editable
+    // "生成设置" section. Editable generation settings are owned by the renderer
+    // and only exist for confirmed width/height/batch bindings.
+    if (!preset || preset.family !== "generic") return;
   }
 
   function bindGenericMediaDetails(input, preset, slot, required) {
