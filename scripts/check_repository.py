@@ -46,7 +46,7 @@ BANNED_BASENAMES = {
     "panel-runtime.json",
 }
 WINDOWS_ABSOLUTE = re.compile(r"(?i)(?:^|[\s='\"])[a-z]:[\\/]")
-DOCUMENTED_WINDOWS_PLACEHOLDER = re.compile(r"(?i)\b[a-z]:[\\/]你的目录[\\/]")
+DOCUMENTED_WINDOWS_PLACEHOLDER = re.compile(r"(?i)\b[a-z]:[\\/](?:你的目录|your-folder)[\\/]")
 POSIX_HOME_ABSOLUTE = re.compile(r"(?i)(?:^|[\s='\"])/(?:Users|home)/[^\s'\"/]+/")
 EMAIL = re.compile(r"\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})\b")
 TAILSCALE_HOST = re.compile(r"(?i)\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.ts\.net\b")

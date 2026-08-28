@@ -1,96 +1,98 @@
-# Windows 从零开始：第一次使用 Comfy Remote
+# Windows first run: using Comfy Remote for the first time
 
-本文档面向**第一次接触 Comfy Remote** 的 Windows 用户。假设你会正常使用 ComfyUI，但不要求你熟悉 Python 项目、TOML、Task Scheduler、节点 ID 或 Tailscale Serve。
+**English** | [简体中文](GETTING_STARTED_WINDOWS.zh-CN.md)
 
-目标不是“把程序装上”，而是完整走通：
+This guide is for Windows users who are **new to Comfy Remote**. It assumes you can already use ComfyUI, but does not require familiarity with Python projects, TOML, Task Scheduler, node IDs, or Tailscale Serve.
+
+The goal is not merely to install the program, but to complete the full path:
 
 ```text
-准备电脑
-→ 安装 Comfy Remote
+Prepare the computer
+→ Install Comfy Remote
 → Setup
 → Doctor
-→ 手机打开面板
-→ 导入自己的 API Workflow
+→ Open the Panel on your phone
+→ Import your own API Workflow
 → Preflight / Test
-→ 第一次真实生成
-→ 在手机查看结果
+→ First real generation
+→ View the result on your phone
 ```
 
-> **v0.3.0 是 Public Beta。** Windows 10/11 是当前主要验证平台，Tailscale 是当前主要远程访问方式。
+> **v0.3.0 is a Public Beta.** Windows 10/11 is the primary validated platform and Tailscale is the primary remote-access path today.
 
 ---
 
-## 1. 开始前确认 ComfyUI 本身正常
+## 1. Confirm ComfyUI itself works first
 
-先不要安装 Comfy Remote。
+Do not install Comfy Remote yet.
 
-在这台 Windows 电脑上启动你平时使用的 ComfyUI，并确认至少一个工作流能够在本机正常生成。
+Start the ComfyUI installation you normally use on this Windows computer and confirm that at least one workflow can generate successfully locally.
 
-Comfy Remote 不负责安装 ComfyUI、模型或第三方 Custom Node。它是在“本机 ComfyUI 已经可用”的基础上提供远程控制和手机创作界面。
+Comfy Remote does not install ComfyUI, models, or third-party Custom Nodes. It provides remote control and a mobile creation UI on top of an already working local ComfyUI environment.
 
-**不要求 MiniMax H3。** 内置六个 H3 工作流只是 Bundled / Verified examples。如果你不用 H3，之后看到它们不可用或 Doctor 出现 H3 `WARN` 可以直接忽略。
+**MiniMax H3 is not required.** The six bundled H3 workflows are only Bundled / Verified examples. If you do not use H3, unavailable H3 workflows or H3 `WARN` results in Doctor can be ignored.
 
 ---
 
-## 2. 准备 Git、Python 和 Tailscale
+## 2. Prepare Git, Python, and Tailscale
 
 ### Git for Windows
 
-如果电脑没有 Git，安装官方 Git for Windows：
+If Git is not installed, install the official Git for Windows:
 
 <https://git-scm.com/download/win>
 
-安装完成后重新打开 PowerShell，检查：
+Open a new PowerShell window after installation and check:
 
 ```powershell
 git --version
 ```
 
-能看到版本号即可。
+A version number is enough.
 
 ### Python
 
-安装 **稳定版 Python 3.11 或更高版本**：
+Install a **stable Python 3.11 or newer**:
 
 <https://www.python.org/downloads/windows/>
 
-不要使用 `alpha`、`beta`、`rc` 等预发行 Python 作为 Comfy Remote 的公开安装环境。安装 Python 时建议勾选将 Python 加入 PATH（安装器中的 wording 可能是 `Add python.exe to PATH`）。
+Do not use `alpha`, `beta`, or `rc` prerelease Python builds for the public Comfy Remote installation path. During installation, enable the option that adds Python to PATH if available (`Add python.exe to PATH` or similar wording).
 
-重新打开 PowerShell，检查：
+Open a new PowerShell window and check:
 
 ```powershell
 python --version
 ```
 
-例如：
+For example:
 
 ```text
 Python 3.13.x
 ```
 
-如果 `python` 打开 Microsoft Store、提示找不到命令，或者显示类似 `3.14.0a1` 的预发行版本，先修正 Python 安装再继续。
+If `python` opens the Microsoft Store, is not found, or reports a prerelease such as `3.14.0a1`, fix the Python installation before continuing.
 
-### Tailscale（只有手机远程使用才需要）
+### Tailscale (only needed for remote phone access)
 
-下载：
+Download:
 
 <https://tailscale.com/download>
 
-电脑和手机都安装 Tailscale，并登录**同一个 tailnet**。电脑端可以用：
+Install Tailscale on both the computer and phone and sign in to the **same tailnet**. On the computer, check:
 
 ```powershell
 tailscale status
 ```
 
-确认已连接。
+Confirm that it is connected.
 
-如果你暂时只想在电脑本机试用，可以不安装 Tailscale；Setup 会使用 local 模式完成配置。
+If you only want to test locally on the computer for now, Tailscale is optional; Setup can finish in local mode.
 
 ---
 
-## 3. 下载并安装 Comfy Remote
+## 3. Download and install Comfy Remote
 
-在 PowerShell 中进入你希望保存项目的目录，例如某个 AI 项目文件夹，然后运行：
+In PowerShell, go to the folder where you want to keep the project, then run:
 
 ```powershell
 git clone https://github.com/evan-zzz-zhang/comfyui-remote-panel.git
@@ -98,26 +100,26 @@ cd comfyui-remote-panel
 .\scripts\windows\Install-ComfyRemote.ps1
 ```
 
-安装器会：
+The installer will:
 
 ```text
-检查稳定版 Python
-→ 创建项目自己的 .venv
-→ 安装 Comfy Remote
-→ 自动进入 Setup 向导
+Check for a stable Python
+→ Create the project's .venv
+→ Install Comfy Remote
+→ Enter the Setup wizard automatically
 ```
 
-它不会修改 ComfyUI 核心代码。
+It does not modify ComfyUI core code.
 
-### PowerShell 阻止脚本怎么办
+### If PowerShell blocks the script
 
-如果出现 Execution Policy 相关错误，可以只对**当前 PowerShell 进程**临时放宽：
+If you get an Execution Policy error, you can relax policy only for the **current PowerShell process**:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 ```
 
-然后重新执行：
+Then run again:
 
 ```powershell
 .\scripts\windows\Install-ComfyRemote.ps1
@@ -125,131 +127,123 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 ---
 
-## 4. Setup：每个问题应该怎么选
+## 4. Setup: what each choice means
 
-首次安装时 Setup 会尽量自动判断，只有真正存在选择时才询问。
+On first install, Setup tries to detect what it can automatically and only asks when a real choice exists.
 
-### 4.1 ComfyUI 在哪里
+### 4.1 Where is ComfyUI?
 
-如果只找到一套 ComfyUI，会直接使用，不再确认。
+If only one ComfyUI installation is found, Setup uses it directly.
 
-如果找到多套，会出现类似：
+If multiple installations are found, you will see a list similar to:
 
 ```text
-发现多个可能的 ComfyUI：
+Multiple possible ComfyUI installations found:
   [1] ...
   [2] ...
-  [0] 手动输入
-选择 ComfyUI:
+  [0] Enter a path manually
+Choose ComfyUI:
 ```
 
-选择你实际要远程控制的那一套。
+Choose the installation you actually want to control remotely.
 
-如果自动找不到，会要求输入 ComfyUI 根目录。Windows Portable 可以输入：
+If automatic discovery finds nothing, Setup asks for the ComfyUI root directory. For Windows Portable you can enter:
 
 ```text
-D:\你的目录\ComfyUI_windows_portable
+<drive>:\your-folder\ComfyUI_windows_portable
 ```
 
-也可以输入里面的：
+or its nested directory:
 
 ```text
-D:\你的目录\ComfyUI_windows_portable\ComfyUI
+<drive>:\your-folder\ComfyUI_windows_portable\ComfyUI
 ```
 
-Setup 会自动规范化到 Portable 根目录。
+Setup normalizes either form to the Portable bundle root.
 
-### 4.2 是否允许 Comfy Remote 控制 ComfyUI
+### 4.2 Allow Comfy Remote to control ComfyUI?
 
-会看到：
+You will see a prompt equivalent to:
 
 ```text
-允许 Comfy Remote 启动、关闭和重启 ComfyUI [y/N]:
+Allow Comfy Remote to start, stop, and restart ComfyUI [y/N]:
 ```
 
-- 如果希望以后在手机“设备”页启动 / 关闭 / 重启 ComfyUI：输入 `y`。
-- 如果你始终自己在电脑上启动 ComfyUI：直接回车即可保持关闭。
+- Enter `y` if you want the phone's Device page to start / stop / restart ComfyUI later.
+- Press Enter to leave this disabled if you always start ComfyUI yourself on the computer.
 
-这是功能权限选择，不影响导入和远程提交工作流。
+This is a lifecycle-control permission. It does not affect importing or remotely submitting workflows.
 
-### 4.3 选择 ComfyUI 启动方式
+### 4.3 Choose the ComfyUI launch method
 
-只有你允许生命周期控制，并且 Portable 根目录检测到多个有效启动脚本时才会出现。
+This appears only when lifecycle control is enabled and multiple valid Portable launch scripts are detected.
 
-例如：
+For example:
 
 ```text
-检测到多个 ComfyUI 启动脚本：
-  [1] 启动ComfyUI.bat
+Multiple ComfyUI launch scripts detected:
+  [1] StartComfyUI.bat
       -s ComfyUI/main.py --windows-standalone-build --enable-manager
-  [2] 启动ComfyUI_SageAttention.bat
+  [2] StartComfyUI_SageAttention.bat
       -s ComfyUI/main.py --windows-standalone-build --enable-manager --use-sage-attention
-  [0] 使用 Comfy Remote 默认启动命令
-选择启动方式:
+  [0] Use the Comfy Remote default launch command
+Choose launch method:
 ```
 
-**选择你平时实际使用的启动方式。**
+**Choose the launch method you actually use day to day.**
 
-Comfy Remote 会提取脚本里的静态 Python 启动参数并直接启动 Python，不会为了方便自行删掉 `--enable-manager`、`--use-sage-attention` 等真实参数。
+Comfy Remote extracts the script's static Python launch arguments and starts Python directly. It does not silently remove real arguments such as `--enable-manager` or `--use-sage-attention` for UI convenience.
 
-Windows 上由 Comfy Remote 启动 ComfyUI 时，默认保留 ComfyUI 自己的控制台窗口，方便观察加载和报错；Panel 自身不会留下额外黑色控制台窗口。
+When Comfy Remote launches ComfyUI on Windows, the ComfyUI console window is visible by default so loading and errors can be observed. The Panel itself does not leave an extra black console window open.
 
 ### 4.4 Tailscale
 
-如果电脑已经登录 Tailscale，会显示当前身份，然后询问：
+If the computer is already signed in to Tailscale, Setup displays the current identity and asks whether to enable remote access.
+
+Choose yes if you want phone access.
+
+Setup configures Tailscale Serve and displays an address similar to:
 
 ```text
-启用 Tailscale 远程访问 [Y/n]:
+Remote URL: https://...ts.net
 ```
 
-想从手机访问就直接回车或输入 `y`。
+**Keep this address; you will open it on your phone later.**
 
-Setup 会自动配置 Tailscale Serve，并显示类似：
+Do not enable Tailscale Funnel and do not expose Panel port 8190 or ComfyUI port 8188 with public port forwarding.
+
+### 4.5 Windows login autostart
+
+On the first configuration, Setup asks whether Comfy Remote should start after Windows login.
+
+Keeping this enabled is recommended. The Panel will recover automatically after login instead of requiring a manual `start` each time.
+
+When you later run Setup in check/update mode, an existing valid autostart registration is preserved/refreshed automatically instead of asking the same question again.
+
+### If `config.toml` already exists
+
+Running Setup again presents three explicit choices:
 
 ```text
-远程地址: https://...ts.net
+  [1] Check and update
+  [2] Create a new configuration (back up the old file automatically)
+  [3] Exit
+Choose action:
 ```
 
-**把这个地址留着，稍后手机打开。**
-
-不要启用 Tailscale Funnel，也不要把 Panel 8190 或 ComfyUI 8188 做公网端口映射。
-
-### 4.5 Windows 登录自启动
-
-首次配置会询问：
-
-```text
-Windows 登录后自动启动 Comfy Remote [Y/n]:
-```
-
-推荐保持 `Y`。这样 Windows 登录后 Panel 会自动恢复，你不需要每次手工执行 `start`。
-
-以后重新运行“检查并更新”时，如果已经配置过自启动，Setup 会自动保留/刷新，不再重复问。
-
-### 已经有 config.toml 时
-
-重新运行 Setup 会看到：
-
-```text
-  [1] 检查并更新
-  [2] 创建新配置（自动备份旧文件）
-  [3] 退出
-选择操作:
-```
-
-这里没有隐藏默认选项，直接输入 `1`、`2` 或 `3`。
+There is no hidden default; enter `1`, `2`, or `3`.
 
 ---
 
-## 5. 先运行 Doctor
+## 5. Run Doctor first
 
-Setup 完成后：
+After Setup:
 
 ```powershell
 .\.venv\Scripts\comfyui-remote-panel.exe doctor
 ```
 
-重点看：
+Focus on:
 
 ```text
 Core
@@ -259,38 +253,38 @@ Workflow compatibility
 Overall
 ```
 
-核心依赖正常时应为 `PASS`。
+Core dependencies should report `PASS` when healthy.
 
-`WARN` 不一定代表安装失败。例如：
+A `WARN` does not always mean installation failed. Examples include:
 
-- 没装 / 没登录 Tailscale；
-- 你不用的内置 H3 工作流缺模型；
-- 某个可选工作流缺 Custom Node。
+- Tailscale is not installed or signed in;
+- bundled H3 workflows you do not use are missing models;
+- an optional workflow is missing a Custom Node.
 
-真正需要先处理的是关键 `FAIL`，例如 ComfyUI API 不通、input 不可写等。
+Fix blocking `FAIL` results first, such as an unreachable ComfyUI API or an unwritable input directory.
 
-需要反馈问题时：
+For a support report:
 
 ```powershell
 .\.venv\Scripts\comfyui-remote-panel.exe doctor --report
 ```
 
-它会输出适合 Issue 的脱敏 Markdown。**公开发送前仍请自己浏览一遍，不要上传配置、数据库、完整日志或真实素材。**
+This produces redacted Markdown intended for an Issue. **Still review it yourself before posting publicly; do not upload configuration files, databases, full logs, or real media assets.**
 
 ---
 
-## 6. 启动 Panel
+## 6. Start the Panel
 
-如果 Setup 的 Windows 自启动已经让 Panel 运行，`start` 会安全地识别已运行实例。
+If Windows autostart already started the Panel, `start` safely recognizes the existing instance.
 
-运行：
+Run:
 
 ```powershell
 .\.venv\Scripts\comfyui-remote-panel.exe start
 .\.venv\Scripts\comfyui-remote-panel.exe status
 ```
 
-正常状态类似：
+A healthy status looks similar to:
 
 ```text
 Panel      Running
@@ -299,7 +293,7 @@ Port       8190
 Health     OK
 ```
 
-停止 / 重启：
+Stop / restart:
 
 ```powershell
 .\.venv\Scripts\comfyui-remote-panel.exe stop
@@ -308,80 +302,80 @@ Health     OK
 
 ---
 
-## 7. 第一次打开 Comfy Remote
+## 7. Open Comfy Remote for the first time
 
-### 手机远程
+### Remote from your phone
 
-手机确认 Tailscale 已连接同一个 tailnet，然后在浏览器打开 Setup 给出的：
+Make sure Tailscale is connected on the phone and signed in to the same tailnet, then open the Setup URL:
 
 ```text
 https://...ts.net
 ```
 
-电脑端如果忘记地址，可以检查：
+If you forgot the URL, check on the computer:
 
 ```powershell
 tailscale serve status
 ```
 
-### 只在电脑本机测试
+### Local-only testing on the computer
 
-如果 Setup 使用 local auth，可以在电脑浏览器打开：
+If Setup uses local auth, open:
 
 ```text
 http://127.0.0.1:8190
 ```
 
-如果配置的是 Tailscale auth，直接访问 localhost 除健康检查外返回 403 属于预期行为，请使用 Tailscale Serve HTTPS 地址。
+If Tailscale auth is configured, a direct localhost request returning 403 outside the health endpoint is expected because it lacks the identity header injected by Tailscale Serve. Use the Tailscale Serve HTTPS address instead.
 
 ---
 
-## 8. 最关键的一步：导出正确的 ComfyUI API Workflow
+## 8. The most important step: export the correct ComfyUI API Workflow
 
-Comfy Remote 需要的是 **API Workflow JSON**，不是普通“保存工作流”得到的 UI Workflow JSON。
+Comfy Remote requires an **API Workflow JSON**, not the normal UI Workflow JSON produced by the usual save-workflow action.
 
-先回到 ComfyUI：
+Back in ComfyUI:
 
-1. 打开并运行你准备远程使用的工作流，确认它在本机成功生成。
-2. 如果界面里看不到 API 格式导出选项，进入 ComfyUI Settings，开启 **Dev Mode / Developer Mode Options**（不同前端版本 wording 可能略有不同）。
-3. 使用 **Save (API Format)**、**Export (API)** 或当前版本中等价的 API 格式导出入口。
-4. 保存得到的 `.json` 文件。
+1. Open and run the workflow you want to use remotely; confirm it succeeds locally.
+2. If the API-format export option is hidden, open ComfyUI Settings and enable **Dev Mode / Developer Mode Options** (wording varies by frontend version).
+3. Use **Save (API Format)**, **Export (API)**, or the equivalent API-format export action in your version.
+4. Save the resulting `.json` file.
 
-简单判断：API Workflow 通常以节点 ID 为 key，每个节点包含 `class_type` 和 `inputs`；它不是包含画布位置、颜色、widget UI 状态为主的普通 Workflow 文件。
+As a rough check, an API Workflow normally uses node IDs as top-level keys and each node contains `class_type` and `inputs`. It is not primarily a canvas/layout file full of positions, colors, and widget UI state.
 
-如果上传后 Comfy Remote 明确提示不是 API Workflow，不要手工改 JSON，回到 ComfyUI 重新使用 API 格式导出。
+If Comfy Remote explicitly says the uploaded file is not an API Workflow, do not hand-edit the JSON. Go back to ComfyUI and export the API format again.
 
 ---
 
-## 9. 在 Comfy Remote 导入自己的 Workflow
+## 9. Import your workflow into Comfy Remote
 
-进入：
+Open:
 
 ```text
-设置
-→ 工作流
-→ 导入工作流
+Settings
+→ Workflows
+→ Import workflow
 ```
 
-然后：
+Then:
 
-1. 选择刚导出的 API Workflow JSON。
-2. 查看 Configurator 2.0 自动分析结果。
-3. 检查识别出的提示词、媒体输入、参数和主要输出。
-4. 如果出现多个候选或低置信度项，按你的真实工作流含义选择。
-5. 必要时使用“高级 · 手动节点映射”补充自动分析无法可靠判断的字面输入。
-6. 保存并启用。
-7. 执行一次“测试”。
+1. Select the API Workflow JSON you just exported.
+2. Review the Configurator 2.0 analysis.
+3. Check the detected prompts, media inputs, parameters, and primary output.
+4. If there are multiple candidates or low-confidence items, choose according to the real meaning of your workflow.
+5. If needed, use **Advanced · Manual node mapping** to expose literal inputs that automatic analysis cannot identify reliably.
+6. Save and enable the workflow.
+7. Run one **Test**.
 
-测试会**真实提交 ComfyUI 任务并使用 GPU**，不是只做 JSON 校验。
+The test **submits a real ComfyUI job and uses the GPU**. It is not only JSON validation.
 
-### Configurator 2.0 不要求固定参数
+### Configurator 2.0 does not require fixed parameters
 
-不要因为导入页面没有 `width` / `height` / `batch_size` 就认为识别失败。
+Do not assume analysis failed just because the import page does not show `width`, `height`, or `batch_size`.
 
-不同工作流能力不同。例如 img2img 可能继承输入图片尺寸；某些视频工作流把尺寸封装在 custom node 中；有些工作流根本不允许远程修改 batch。
+Different workflows have different capabilities. For example, img2img may inherit the input image size; a video custom node may encapsulate dimensions internally; some workflows do not allow remote batch changes at all.
 
-Comfy Remote 使用：
+Comfy Remote uses:
 
 ```text
 Schema
@@ -390,72 +384,72 @@ Schema
 + explicit user mapping
 ```
 
-来决定应该暴露什么，而不是强迫所有工作流长成同一种结构。
+to decide what should be exposed instead of forcing every workflow into one fixed form.
 
 ---
 
-## 10. 第一次真实生成
+## 10. First real generation
 
-回到：
+Return to:
 
 ```text
-创作
+Create
 ```
 
-选择刚启用的工作流。
+Select the workflow you just enabled.
 
-根据它真实声明的能力：
+According to the capabilities it actually declares:
 
-- 填提示词；
-- 上传需要的图片 / 视频 / 音频；
-- 调整允许远程修改的参数；
-- 提交任务。
+- enter the prompt;
+- upload required images / videos / audio;
+- adjust parameters that are safe to edit remotely;
+- submit the job.
 
-随后进入任务页，正常链路是：
+Then open Jobs. The normal path is:
 
 ```text
-提交
-→ 排队
-→ 生成
-→ 完成
-→ 查看 / 下载结果
+Submit
+→ Queued
+→ Running
+→ Completed
+→ View / download result
 ```
 
-如果失败：
+If it fails:
 
-1. 先看任务错误摘要；
-2. 看 ComfyUI 自己的控制台；
-3. 运行 `doctor`；
-4. 再查 [Troubleshooting](TROUBLESHOOTING.md)。
-
----
-
-## 11. 什么叫“第一次安装成功”
-
-完成以下项目就算真正走通，而不仅仅是“服务启动了”：
-
-- [ ] `doctor` 没有阻塞使用的核心 `FAIL`。
-- [ ] 手机能通过 Tailscale HTTPS 打开 Comfy Remote（或本机 local 模式能打开）。
-- [ ] 成功导入一个**你自己的** API Workflow。
-- [ ] Preflight 没有未处理的阻塞 `FAIL`。
-- [ ] Runtime Test 成功，或明确知道失败来自工作流自己的模型/节点环境。
-- [ ] 创作页能正常填写该工作流需要的输入。
-- [ ] 一次真实任务完成。
-- [ ] 手机任务页能看到并打开生成结果。
-
-**如果你不用 H3，六个内置 H3 工作流是否可用不属于这个成功标准。**
+1. read the job error summary;
+2. inspect ComfyUI's own console;
+3. run `doctor`;
+4. check [Troubleshooting](TROUBLESHOOTING.md).
 
 ---
 
-## 12. Windows 登录自启动
+## 11. What counts as a successful first installation?
 
-查看状态：
+The setup is genuinely complete when these are true, not merely when the service starts:
+
+- [ ] `doctor` has no core blocking `FAIL`.
+- [ ] The phone can open Comfy Remote through Tailscale HTTPS (or local mode works on the computer).
+- [ ] You successfully imported **your own** API Workflow.
+- [ ] Preflight has no unresolved blocking `FAIL`.
+- [ ] Runtime Test succeeds, or you clearly know the failure belongs to the workflow's own model/node environment.
+- [ ] The Create page exposes the inputs the workflow actually needs.
+- [ ] One real job completes.
+- [ ] The result is visible and openable from the phone's Jobs page.
+
+**If you do not use H3, availability of the six bundled H3 workflows is not part of this success criterion.**
+
+---
+
+## 12. Windows login autostart
+
+Check status:
 
 ```powershell
 .\.venv\Scripts\comfyui-remote-panel.exe autostart status
 ```
 
-手动安装 / 移除：
+Install / remove manually:
 
 ```powershell
 .\.venv\Scripts\comfyui-remote-panel.exe autostart install
@@ -464,9 +458,9 @@ Schema
 
 ---
 
-## 13. 更新项目
+## 13. Update the project
 
-Public Beta 阶段更新较快。更新前建议没有正在运行的重要任务，然后：
+Public Beta releases may move quickly. Make sure no important job is running, then:
 
 ```powershell
 git pull
@@ -476,13 +470,28 @@ git pull
 .\.venv\Scripts\comfyui-remote-panel.exe restart
 ```
 
-Setup 的“检查并更新”会尽量保留有效配置，并在改写前备份 `config.toml.bak`。
+Setup's check/update path tries to preserve valid settings and backs up `config.toml` to `config.toml.bak` before rewriting it.
 
 ---
 
-## 下一步
+## CLI language override
 
-- 工作流识别与 Configurator 2.0：[WORKFLOWS.md](WORKFLOWS.md)
-- 常见问题：[TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-- 安全边界：[../SECURITY.md](../SECURITY.md)
-- 当前路线图：[TODO.md](TODO.md)
+CLI output follows the operating-system locale by default. You can override it per command:
+
+```powershell
+.\.venv\Scripts\comfyui-remote-panel.exe setup --lang en
+.\.venv\Scripts\comfyui-remote-panel.exe doctor --lang zh-CN
+```
+
+Or set `COMFY_REMOTE_LANG` to `en` or `zh-CN` for the current shell/environment.
+
+The Web Panel keeps its own browser-side language preference under **Settings → Language**.
+
+---
+
+## Next
+
+- Workflow recognition and Configurator 2.0: [WORKFLOWS.md](WORKFLOWS.md)
+- Common problems: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+- Security boundaries: [../SECURITY.md](../SECURITY.md)
+- Current roadmap: [TODO.md](TODO.md)

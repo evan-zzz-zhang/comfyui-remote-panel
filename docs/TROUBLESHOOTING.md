@@ -1,20 +1,22 @@
 # Troubleshooting
 
-排障第一步统一运行：
+**English** | [简体中文](TROUBLESHOOTING.zh-CN.md)
+
+Always start troubleshooting with:
 
 ```powershell
 .\.venv\Scripts\comfyui-remote-panel.exe doctor
 ```
 
-需要反馈时再运行：
+When you need to report a problem, also run:
 
 ```powershell
 .\.venv\Scripts\comfyui-remote-panel.exe doctor --report
 ```
 
-## setup 找不到 ComfyUI
+## Setup cannot find ComfyUI
 
-确认你输入的是以下两种根目录之一：
+Make sure the path you enter is one of these two root layouts:
 
 ```text
 ComfyUI_windows_portable\
@@ -23,48 +25,48 @@ ComfyUI_windows_portable\
     main.py
 ```
 
-或：
+or:
 
 ```text
 ComfyUI\
   main.py
 ```
 
-向导不会全盘扫描。可以直接手动输入根目录；也可以设置环境变量 `COMFYUI_ROOT` 后重新运行 setup。
+The wizard does not scan every drive. You can enter the root manually, or set the `COMFYUI_ROOT` environment variable and run Setup again.
 
-## 8188 连不上
+## Cannot connect to port 8188
 
-先在电脑浏览器打开 `http://127.0.0.1:8188`。如果打不开，先解决 ComfyUI 本身的启动问题。Comfy Remote 不负责替代 ComfyUI 的基础安装。
+Open `http://127.0.0.1:8188` in a browser on the computer first. If it does not open, fix ComfyUI itself before troubleshooting Comfy Remote. Comfy Remote does not replace the basic ComfyUI installation.
 
-## 8190 被占用
+## Port 8190 is already in use
 
-运行：
+Run:
 
 ```powershell
 .\.venv\Scripts\comfyui-remote-panel.exe status
 ```
 
-如果显示 `port-occupied`，Panel 不会强杀未知进程。先确认占用 8190 的程序并关闭它，再启动 Comfy Remote。
+If it reports `port-occupied`, the Panel will not force-kill an unknown process. Identify and close the program using port 8190, then start Comfy Remote again.
 
-## 浏览器返回 403
+## Browser returns 403
 
-Tailscale auth 模式下，直接访问 `http://127.0.0.1:8190` 除 `/healthz` 外返回 403 是预期行为，因为请求没有 Tailscale Serve 注入的身份头。
+In Tailscale auth mode, a direct request to `http://127.0.0.1:8190` is expected to return 403 outside `/healthz` because it does not contain the identity header injected by Tailscale Serve.
 
-请从 `tailscale serve status` 显示的 HTTPS 地址访问。若只需本机调试，可重新运行 setup 并使用 local auth。
+Use the HTTPS address shown by `tailscale serve status`. If you only need local debugging, run Setup again and choose local auth.
 
-## Tailscale 未登录
+## Tailscale is not signed in
 
-检查：
+Check:
 
 ```powershell
 tailscale status
 ```
 
-确保电脑与手机登录同一个 tailnet。完成登录后重新运行 setup。
+Make sure the computer and phone are signed in to the same tailnet. After signing in, run Setup again.
 
-## Serve 地址打不开
+## The Serve address does not open
 
-检查：
+Check:
 
 ```powershell
 tailscale serve status
@@ -72,57 +74,57 @@ tailscale status
 .\.venv\Scripts\comfyui-remote-panel.exe status
 ```
 
-三层必须同时成立：Panel 在 127.0.0.1:8190 健康运行、Tailscale backend 已连接、Serve 指向 8190。需要重新配置时运行 `tailscale serve --bg 8190`。
+All three layers must be healthy at the same time: the Panel must be healthy on `127.0.0.1:8190`, the Tailscale backend must be connected, and Serve must point to 8190. To configure Serve again, run `tailscale serve --bg 8190`.
 
-## 手机打不开但电脑能打开
+## The phone cannot open it but the computer can
 
-确认手机 Tailscale 已连接、与电脑在同一 tailnet、使用 `https://...ts.net` Serve 地址，而不是局域网 IP，并检查 `doctor` 中 `allowed login` 是否身份不匹配。
+Make sure Tailscale is connected on the phone, both devices are in the same tailnet, and you are using the `https://...ts.net` Serve address rather than a LAN IP. Also check whether `allowed login` in `doctor` reports an identity mismatch.
 
-## Workflow 缺节点
+## Workflow is missing nodes
 
-工作流导入/验证会根据当前 ComfyUI `object_info` 判断 `class_type` 是否存在。安装对应 custom node、重启 ComfyUI、重新运行 `doctor`，然后重新测试。
+Workflow import/validation uses the current ComfyUI `object_info` to verify that each `class_type` exists. Install the matching custom node, restart ComfyUI, run `doctor` again, and retest the workflow.
 
-不要因为一个内置 H3 工作流缺节点就判断 Panel 安装失败；内置 H3 是可选验证示例，缺依赖只应是 `WARN`。
+Do not treat one bundled H3 workflow missing nodes as a Panel installation failure. Bundled H3 workflows are optional verified examples, so missing optional dependencies should be a `WARN`.
 
-## Workflow 缺模型
+## Workflow is missing models
 
-节点存在但模型清单找不到时，工作流会显示不可用/缺依赖。把模型放到该节点实际读取的 ComfyUI 模型目录，确认 ComfyUI 自己能加载，再重新测试。
+If the node exists but the required model is absent from the node's model list, the workflow is shown as unavailable or missing dependencies. Put the model in the directory that node actually reads, confirm ComfyUI itself can load it, then test again.
 
-## 导入成功但测试失败
+## Import succeeds but Runtime Test fails
 
-“导入成功”只证明 JSON、节点结构和映射可解析；真实测试还会暴露模型缺失、路径错误、显存不足、自定义节点运行时异常或输出节点未写出预期 artifact。
+A successful import only proves that the JSON, node structure, and mappings can be parsed. A real Runtime Test can still expose missing models, incorrect paths, insufficient VRAM, custom-node runtime errors, or output nodes that do not produce the expected artifact.
 
-查看任务错误摘要与 ComfyUI 控制台，并附 `doctor --report` 提交兼容性 Issue。
+Read the job error summary and ComfyUI console, then include `doctor --report` when filing a compatibility Issue.
 
-## 图片上传失败
+## Image upload fails
 
-确认文件格式正确、ComfyUI `input` 目录可写、`doctor` 的 input directory 为 `PASS`，并保证磁盘有足够空间。
+Verify the file format, make sure the ComfyUI `input` directory is writable, confirm the Doctor input-directory check is `PASS`, and make sure the disk has enough free space.
 
-## 生成后结果找不到
+## The result cannot be found after generation
 
-确认 ComfyUI 任务本身完成、工作流已选择正确的 SaveImage/SaveVideo/输出节点、`output` 目录可读，且生成时没有手动移动/清理文件。自定义工作流若有多个输出候选，导入时要确认主要输出。
+Confirm the ComfyUI job itself completed, the workflow uses the correct SaveImage / SaveVideo / output node, the `output` directory is readable, and the output file was not moved or cleaned during generation. If a custom workflow has multiple output candidates, confirm the primary output during import.
 
-## Panel 重启后打不开
+## Panel does not open after restart
 
-运行 `status` 和 `doctor`。后台启动失败时查看：
+Run `status` and `doctor`. If background startup failed, inspect:
 
 ```text
 data\panel-launch.log
 data\panel.log
 ```
 
-不要手工删除陌生 Python 进程；`stop` 会在停止前核验进程身份。
+Do not manually kill unfamiliar Python processes. `stop` verifies process identity before terminating anything.
 
-## Windows 登录后没有自动启动
+## Comfy Remote does not start after Windows login
 
-检查：
+Check:
 
 ```powershell
 .\.venv\Scripts\comfyui-remote-panel.exe autostart status
 ```
 
-必要时重新执行 `autostart remove` 和 `autostart install`，然后真正做一次 Windows 注销/登录验收。
+If needed, run `autostart remove` and `autostart install` again, then perform an actual Windows sign-out/sign-in test.
 
-## H3 全部不可用
+## All H3 workflows are unavailable
 
-这不影响普通 ComfyUI API Workflow。H3 工作流依赖 MiniMax H3 对应 custom node、模型/VAE/文本编码器等环境。公开版本把它们视为 Bundled / Verified examples，而不是 Comfy Remote 核心安装前提。
+This does not affect ordinary ComfyUI API Workflows. H3 workflows depend on the corresponding MiniMax H3 custom nodes, models, VAE, text encoder, and related environment. The public project treats them as Bundled / Verified examples, not a core Comfy Remote installation requirement.

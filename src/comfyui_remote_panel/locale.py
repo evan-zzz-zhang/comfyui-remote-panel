@@ -1,0 +1,209 @@
+from __future__ import annotations
+
+import locale as system_locale
+import os
+import re
+from typing import Callable
+
+SUPPORTED_LANGUAGES = ("en", "zh-CN")
+
+_EN_EXACT = {
+    "Comfy Remote setup": "Comfy Remote setup",
+    "检测到现有配置。": "Existing configuration detected.",
+    "  [1] 检查并更新": "  [1] Check and update",
+    "  [2] 创建新配置（自动备份旧文件）": "  [2] Create a new configuration (back up the old file automatically)",
+    "  [3] 退出": "  [3] Exit",
+    "选择操作": "Choose action",
+    "请输入 1、2 或 3。": "Enter 1, 2, or 3.",
+    "发现多个可能的 ComfyUI：": "Multiple possible ComfyUI installations found:",
+    "标准安装": "standard install",
+    "  [0] 手动输入": "  [0] Enter a path manually",
+    "选择 ComfyUI": "Choose ComfyUI",
+    "请输入 ComfyUI 根目录": "Enter the ComfyUI root directory",
+    "该目录不是可识别的 ComfyUI 根目录；需要 main.py 或 ComfyUI/main.py。": "This is not a recognized ComfyUI root; main.py or ComfyUI/main.py is required.",
+    "检测到多个 ComfyUI 启动脚本：": "Multiple ComfyUI launch scripts detected:",
+    "  [0] 使用 Comfy Remote 默认启动命令": "  [0] Use the Comfy Remote default launch command",
+    "选择启动方式": "Choose launch method",
+    "允许 Comfy Remote 启动、关闭和重启 ComfyUI": "Allow Comfy Remote to start, stop, and restart ComfyUI",
+    "ComfyUI 启动命令：": "ComfyUI launch command:",
+    "未检测到 Tailscale。可先完成本地配置，之后重新运行 setup 开启远程访问。": "Tailscale was not detected. You can finish local setup now and run setup again later to enable remote access.",
+    "Tailscale 已连接，但无法读取登录身份或 MagicDNS 主机名；暂时使用本地模式。": "Tailscale is connected, but the login identity or MagicDNS hostname could not be read; using local mode for now.",
+    "启用 Tailscale 远程访问": "Enable Tailscale remote access",
+    "正在配置 Tailscale Serve...": "Configuring Tailscale Serve...",
+    "配置已保留；完成 Tailscale 授权后可重新运行 setup。": "The configuration was kept; run setup again after completing Tailscale authorization.",
+    "Windows 登录后自动启动 Comfy Remote": "Start Comfy Remote after Windows login",
+    "✓ 已保留 Windows 登录自启动": "✓ Windows login autostart preserved",
+    "✓ 已安装 Windows 登录自启动": "✓ Windows login autostart installed",
+    "稍后可运行: comfyui-remote-panel autostart install": "You can run later: comfyui-remote-panel autostart install",
+    "下一步：": "Next steps:",
+    "Comfy Remote 已运行": "Comfy Remote is already running",
+    "Comfy Remote 已启动": "Comfy Remote started",
+    "Comfy Remote 已停止": "Comfy Remote stopped",
+    "Comfy Remote 未运行": "Comfy Remote is not running",
+    "Comfy Remote 已重启": "Comfy Remote restarted",
+}
+
+_ZH_EXACT = {
+    "Core": "核心",
+    "ComfyUI": "ComfyUI",
+    "Remote access": "远程访问",
+    "Workflow compatibility": "工作流兼容性",
+    "System": "系统",
+    "Overall": "总体",
+    "Panel": "面板",
+    "API": "API",
+    "allowed login": "允许的登录身份",
+    "Remote auth": "远程认证",
+    "Serve": "Serve",
+    "data directory": "数据目录",
+    "input directory": "输入目录",
+    "output directory": "输出目录",
+    "running": "运行中",
+    "stopped": "已停止",
+    "writable": "可写",
+    "not writable": "不可写",
+    "readable": "可读",
+    "not readable": "不可读",
+    "available": "可用",
+    "unavailable": "不可用",
+    "not found": "未找到",
+    "not configured": "未配置",
+    "connected": "已连接",
+    "not connected": "未连接",
+    "unknown": "未知",
+    "READY": "就绪",
+    "NOT READY": "未就绪",
+}
+
+
+def normalize_language(value: str | None) -> str:
+    raw = (value or "").strip().lower().replace("_", "-")
+    if raw.startswith("zh"):
+        return "zh-CN"
+    return "en"
+
+
+def resolve_language(explicit: str | None = None) -> str:
+    if explicit and explicit != "auto":
+        return normalize_language(explicit)
+    env = os.environ.get("COMFY_REMOTE_LANG")
+    if env:
+        return normalize_language(env)
+    try:
+        detected = system_locale.getlocale()[0] or ""
+    except ValueError:
+        detected = ""
+    if not detected:
+        detected = os.environ.get("LANG", "")
+    return normalize_language(detected)
+
+
+def _translate_en(text: str) -> str:
+    if text in _EN_EXACT:
+        return _EN_EXACT[text]
+    patterns: list[tuple[str, Callable[[re.Match[str]], str]]] = [
+        (r"^当前目录: (.+)$", lambda m: f"Current directory: {m.group(1)}"),
+        (r"^配置文件: (.+)$", lambda m: f"Configuration file: {m.group(1)}"),
+        (r"^现有配置无法读取，将重新创建：(.+)$", lambda m: f"Existing configuration could not be read and will be recreated: {m.group(1)}"),
+        (r"^ComfyUI API: 已连接 \((.+)\)$", lambda m: f"ComfyUI API: connected ({m.group(1)})"),
+        (r"^ComfyUI API: 当前未检测到运行中的 127\.0\.0\.1:8188$", lambda m: "ComfyUI API: no running service detected at 127.0.0.1:8188"),
+        (r"^使用当前配置的 ComfyUI：(.+)$", lambda m: f"Using configured ComfyUI: {m.group(1)}"),
+        (r"^检测到 ComfyUI：(.+)$", lambda m: f"Detected ComfyUI: {m.group(1)}"),
+        (r"^(\s*\[\d+\]\s+.+) \(标准安装\)$", lambda m: f"{m.group(1)} (standard install)"),
+        (r"^请输入 0 到 (\d+)。$", lambda m: f"Enter a number from 0 to {m.group(1)}."),
+        (r"^使用检测到的 ComfyUI 启动脚本：(.+)$", lambda m: f"Using detected ComfyUI launch script: {m.group(1)}"),
+        (r"^ComfyUI 根目录: (.+)$", lambda m: f"ComfyUI root: {m.group(1)}"),
+        (r"^输入目录: (.+)$", lambda m: f"Input directory: {m.group(1)}"),
+        (r"^输出目录: (.+)$", lambda m: f"Output directory: {m.group(1)}"),
+        (r"^Tailscale 已安装但未连接（BackendState=(.+)）。$", lambda m: f"Tailscale is installed but not connected (BackendState={m.group(1)})."),
+        (r"^当前 Tailscale 用户: (.+)$", lambda m: f"Current Tailscale user: {m.group(1)}"),
+        (r"^远程地址: (.+)$", lambda m: f"Remote URL: {m.group(1)}"),
+        (r"^Tailscale Serve 配置未完成: (.+)$", lambda m: f"Tailscale Serve configuration did not complete: {m.group(1)}"),
+        (r"^✓ 已写入 (.+)$", lambda m: f"✓ Configuration written: {m.group(1)}"),
+        (r"^自动启动更新失败: (.+)$", lambda m: f"Failed to update autostart: {m.group(1)}"),
+        (r"^自动启动未安装: (.+)$", lambda m: f"Autostart was not installed: {m.group(1)}"),
+        (r"^\s*手机访问 (.+)$", lambda m: f"  Open on phone: {m.group(1)}"),
+        (r"^Tailscale: (.+)$", lambda m: f"Tailscale: {m.group(1)}"),
+        (r"^配置已写入: (.+)$", lambda m: f"Configuration written: {m.group(1)}"),
+        (r"^备份: (.+)$", lambda m: f"Backup: {m.group(1)}"),
+    ]
+    for pattern, formatter in patterns:
+        match = re.match(pattern, text)
+        if match:
+            return formatter(match)
+    return text
+
+
+def _translate_zh(text: str) -> str:
+    if text in _ZH_EXACT:
+        return _ZH_EXACT[text]
+    result = text
+    replacements = (
+        ("current Tailscale identity does not match configured allowed_logins", "当前 Tailscale 身份与配置的 allowed_logins 不匹配"),
+        ("current Tailscale identity matches config", "当前 Tailscale 身份与配置匹配"),
+        ("local auth mode; remote access is not configured", "本地认证模式；未配置远程访问"),
+        ("not installed; local mode remains available", "未安装；本地模式仍可用"),
+        ("Tailscale Serve not detected for port", "未检测到 Tailscale Serve，端口"),
+        ("Tailscale Serve active for port", "Tailscale Serve 已启用，端口"),
+        (" is occupied by another process", " 被其他进程占用"),
+        ("reachable; version", "可访问；版本"),
+        ("installed (", "已安装 ("),
+        (") but state is ", ")，但状态为 "),
+        ("connected as ", "已连接，身份 "),
+        ("required inputs=", "必需输入="),
+        ("missing nodes=", "缺失节点="),
+        ("warnings=", "警告="),
+        ("output=", "输出="),
+        ("data directory", "数据目录"),
+        ("input directory", "输入目录"),
+        ("output directory", "输出目录"),
+        ("allowed login", "允许的登录身份"),
+        ("Remote auth", "远程认证"),
+        ("not writable", "不可写"),
+        ("not readable", "不可读"),
+        ("not connected", "未连接"),
+        ("not configured", "未配置"),
+        ("not found", "未找到"),
+        ("unavailable", "不可用"),
+        ("available", "可用"),
+        ("writable", "可写"),
+        ("readable", "可读"),
+        ("connected", "已连接"),
+        ("running", "运行中"),
+        ("stopped", "已停止"),
+        ("unknown", "未知"),
+        ("none", "无"),
+    )
+    for source, target in replacements:
+        result = result.replace(source, target)
+    if result == "READY":
+        return "就绪"
+    if result == "NOT READY":
+        return "未就绪"
+    return result
+
+
+def translate_cli(text: str, language: str) -> str:
+    value = str(text)
+    return _translate_zh(value) if normalize_language(language) == "zh-CN" else _translate_en(value)
+
+
+def translate_multiline(text: str, language: str) -> str:
+    return "\n".join(translate_cli(line, language) for line in str(text).splitlines())
+
+
+def translated_output(output_fn: Callable[[str], None], language: str) -> Callable[[str], None]:
+    def emit(value: str) -> None:
+        output_fn(translate_cli(value, language))
+    return emit
+
+
+def translated_input(input_fn: Callable[[str], str], language: str) -> Callable[[str], str]:
+    def ask(prompt: str) -> str:
+        value = str(prompt)
+        match = re.match(r"^(.*?)(\s+\[[^\]]+\])?(:\s*)$", value)
+        if match:
+            translated = translate_cli(match.group(1), language)
+            return input_fn(f"{translated}{match.group(2) or ''}{match.group(3)}")
+        return input_fn(translate_cli(value, language))
+    return ask
