@@ -1,36 +1,216 @@
 (() => {
-  // i18n.js owns dynamic translation with a page-wide DOM watcher. Its
-  // language status controls used to be updated from inside that watcher,
-  // which made it trigger itself forever on mobile browsers.
-  // Detach those two controls from the legacy watcher-owned selectors before
-  // DOMContentLoaded, then manage them explicitly here.
-  const languageToggle = document.querySelector("#language-toggle");
-  const languageValue = document.querySelector("#language-value");
-  if (languageToggle) languageToggle.id = "language-toggle-v04";
-  if (languageValue) languageValue.id = "language-value-v04";
+  const SEED_POLICIES = ["randomize", "fixed", "increment"];
+
+  // v0.4 stability mode: keep the UI in Simplified Chinese and prevent the
+  // legacy page-wide i18n watcher from attaching. main already proved stable
+  // without that watcher on the same phone/browser path.
+  try { localStorage.setItem("comfy-remote-language", "zh-CN"); } catch (_) {}
+  window.ComfyI18n?.setLanguage?.("zh-CN");
+
+  const observerPrototype = window.MutationObserver?.prototype;
+  const nativeObserve = observerPrototype?.observe;
+  if (observerPrototype && nativeObserve) {
+    let skippedLegacyI18nObserver = false;
+    observerPrototype.observe = function(target, options) {
+      const legacyPageWideObserver = !skippedLegacyI18nObserver
+        && target === document.body
+        && options?.subtree === true
+        && options?.childList === true
+        && options?.characterData === true
+        && options?.attributes === true;
+      if (legacyPageWideObserver) {
+        skippedLegacyI18nObserver = true;
+        observerPrototype.observe = nativeObserve;
+        return;
+      }
+      return nativeObserve.call(this, target, options);
+    };
+  }
 
   function t(text) {
-    return window.ComfyI18n?.t?.(text) || text;
+    return text;
   }
 
-  function syncLanguageUi() {
-    const language = window.ComfyI18n?.language || "zh-CN";
-    const value = document.querySelector("#language-value-v04");
-    const toggle = document.querySelector("#language-toggle-v04");
-    const valueText = language === "zh-CN" ? "简体中文" : "English";
-    const labelText = language === "zh-CN" ? "切换到 English" : "Switch to 简体中文";
-    if (value && value.textContent !== valueText) value.textContent = valueText;
-    if (toggle && toggle.getAttribute("aria-label") !== labelText) toggle.setAttribute("aria-label", labelText);
+  function seedEntry(preset) {
+    return Object.entries(preset?.parameters || {}).find(([id, spec]) =>
+      id === "seed"
+      || spec?.ui?.semantic === "seed"
+      || /(?:^|_)seed$/i.test(id)
+    ) || null;
   }
+
+  function ensureSeedMetadata(preset) {
+    const entry = seedEntry(preset);
+    if (!entry) return;
+    const [, spec] = entry;
+    spec.ui = { ...(spec.ui || {}), semantic: "seed", label: spec.ui?.label || "Seed" };
+    preset.seed_policy = {
+      supported: true,
+      default: preset.seed_policy?.default || preset.default_seed_policy || "randomize",
+      values: preset.seed_policy?.values || SEED_POLICIES,
+    };
+  }
+
+  function seedBindingFromInspection() {
+    return (state.workflowInspection?.parameters || []).find(item =>
+      item?.semantic === "seed" || item?.id === "seed" || /(?:^|_)seed$/i.test(item?.input || "")
+    ) || null;
+  }
+
+  const baseApiActionV04 = apiAction;
+  apiAction = function(path, options = {}) {
+    if (path === "/api/workflows" && String(options.method || "GET").toUpperCase() === "POST" && typeof options.body === "string") {
+      try {
+        const payload = JSON.parse(options.body);
+        const parameters = payload?.config?.parameters;
+        const seed = seedBindingFromInspection();
+        const alreadySaved = Array.isArray(parameters) && parameters.some(item =>
+          item?.id === "seed" || item?.ui?.semantic === "seed" || /(?:^|_)seed$/i.test(item?.input || "")
+        );
+        if (seed && Array.isArray(parameters) && !alreadySaved) {
+          parameters.push({
+            id: "seed",
+            node: seed.node,
+            input: seed.input,
+            type: seed.type || "integer",
+            default: seed.default ?? 0,
+            ...(seed.minimum != null ? { minimum: seed.minimum } : {}),
+            ...(seed.maximum != null ? { maximum: seed.maximum } : {}),
+            ...(seed.step != null ? { step: seed.step } : {}),
+            ui: {
+              label: seed.label || "Seed",
+              control: seed.control || "number",
+              semantic: "seed",
+            },
+          });
+          payload.config.default_seed_policy = document.querySelector("#v04-config-seed-policy")?.value || payload.config.default_seed_policy || "randomize";
+          options = { ...options, body: JSON.stringify(payload) };
+        }
+      } catch (_) {}
+    }
+    return baseApiActionV04(path, options);
+  };
+
+  function cleanSettingsChips() {
+    document.querySelectorAll("#settings-chips .settings-chip").forEach(chip => {
+      const text = chip.textContent.trim();
+      if (/工作流决定|跟随源图|跟随输入图/.test(text)) chip.remove();
+    });
+  }
+
+  function cleanResolutionCopy() {
+    document.querySelectorAll(".v04-resolution small, .v04-media-resolution .field small, .v04-media-resolution > p").forEach(node => node.remove());
+  }
+
+  function syncGenerationSettingsVisibility() {
+    const preset = selectedPreset();
+    const section = document.querySelector("#basic-settings");
+    if (!preset || !section || preset.family !== "generic") return;
+    const hasEditableSetting = ["width", "height", "batch_size"].some(id =>
+      Boolean(preset.parameters?.[id] && document.querySelector(`#job-form [data-generic-binding="${CSS.escape(id)}"]`))
+    );
+    section.classList.toggle("hidden", !hasEditableSetting);
+  }
+
+  function syncSeedQuickControl() {
+    document.querySelector(".v04-seed-quick")?.remove();
+    const preset = selectedPreset();
+    if (!preset) return;
+
+    if (preset.family !== "generic") {
+      const summary = document.querySelector("#advanced-settings > summary > span");
+      if (summary && preset.seed_policy?.supported) summary.textContent = "高级设置 · Seed";
+      return;
+    }
+
+    const entry = seedEntry(preset);
+    const policy = document.querySelector("#job-form [data-v04-seed-policy]");
+    if (!entry || !policy) return;
+    const [seedId] = entry;
+    const seedInput = document.querySelector(`#job-form [data-generic-binding="${CSS.escape(seedId)}"]`);
+    const policyField = policy.closest("label.field");
+    const seedField = seedInput?.closest("label.field");
+    if (!policyField || !seedField) return;
+
+    const section = document.createElement("section");
+    section.className = "creation-section v04-seed-quick";
+    section.innerHTML = '<div class="section-heading"><span>Seed</span></div><div class="advanced-grid v04-seed-grid"></div>';
+    const grid = section.querySelector(".v04-seed-grid");
+    policyField.querySelector(":scope > span")?.replaceChildren("模式");
+    seedField.querySelector(":scope > span")?.replaceChildren("数值");
+    grid.append(policyField, seedField);
+    document.querySelector("#basic-settings")?.before(section);
+  }
+
+  function installPromptDismiss() {
+    if (!document.querySelector("#v04-mobile-ux-style")) {
+      const style = document.createElement("style");
+      style.id = "v04-mobile-ux-style";
+      style.textContent = `
+        .v04-keyboard-dismiss { display:none; margin-left:auto; border:0; background:transparent; color:var(--muted, #9a9f95); font:inherit; font-size:13px; padding:4px 0 4px 12px; }
+        .prompt-field:focus-within .v04-keyboard-dismiss,
+        .semantic-prompt:focus-within .v04-keyboard-dismiss { display:inline-flex; }
+        .v04-seed-quick .advanced-grid { margin-top:14px; }
+      `;
+      document.head.append(style);
+    }
+
+    document.querySelectorAll('#job-form textarea[name="prompt"], #job-form textarea[data-generic-binding="prompt"], #job-form textarea[data-generic-binding="positive_prompt"]').forEach(textarea => {
+      const field = textarea.closest("label");
+      const heading = field?.querySelector(".section-heading");
+      if (!heading || heading.querySelector(".v04-keyboard-dismiss")) return;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "v04-keyboard-dismiss";
+      button.textContent = "收起键盘";
+      button.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        textarea.blur();
+      });
+      heading.append(button);
+    });
+  }
+
+  function syncCreationUx() {
+    cleanResolutionCopy();
+    cleanSettingsChips();
+    syncGenerationSettingsVisibility();
+    syncSeedQuickControl();
+    installPromptDismiss();
+  }
+
+  const baseApplyPresetV04 = applyPreset;
+  applyPreset = function(presetId, overrides = {}) {
+    const preset = state.presets.get(presetId);
+    ensureSeedMetadata(preset);
+    const result = baseApplyPresetV04(presetId, overrides);
+    queueMicrotask(syncCreationUx);
+    return result;
+  };
 
   document.addEventListener("DOMContentLoaded", () => {
-    const toggle = document.querySelector("#language-toggle-v04");
-    syncLanguageUi();
-    toggle?.addEventListener("click", () => {
-      const current = window.ComfyI18n?.language || "zh-CN";
-      window.ComfyI18n?.setLanguage?.(current === "zh-CN" ? "en" : "zh-CN");
+    document.querySelector("#language-toggle")?.remove();
+    document.documentElement.lang = "zh-CN";
+    queueMicrotask(syncCreationUx);
+
+    document.querySelector("#open-generation-settings")?.addEventListener("click", () => {
+      const done = document.querySelector("#sheet-done span");
+      if (done) done.textContent = "关闭";
     });
-    window.addEventListener("comfy-language-changed", syncLanguageUi);
+
+    document.querySelector("#job-form")?.addEventListener("input", () => queueMicrotask(cleanSettingsChips));
+    document.querySelector("#job-form")?.addEventListener("change", () => queueMicrotask(() => {
+      cleanSettingsChips();
+      cleanResolutionCopy();
+    }));
+
+    document.addEventListener("pointerdown", event => {
+      const active = document.activeElement;
+      if (active?.tagName === "TEXTAREA" && event.target !== active && !event.target.closest?.(".v04-keyboard-dismiss")) {
+        active.blur();
+      }
+    }, true);
   });
 
   if (typeof renderMetrics === "function") {
