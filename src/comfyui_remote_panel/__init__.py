@@ -6,6 +6,8 @@ __version__ = "0.4.0"
 # policies stay isolated from the v0.3 compatibility core while the beta is
 # still supporting existing workflow packages and local databases.
 from .v04 import install as _install_v04
+from .v04_overrides import install as _install_v04_overrides
 
 _install_v04()
-del _install_v04
+_install_v04_overrides()
+del _install_v04, _install_v04_overrides
