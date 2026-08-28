@@ -48,7 +48,13 @@ _ZH_EXACT = {
     "ComfyUI": "ComfyUI",
     "Remote access": "远程访问",
     "Workflow compatibility": "工作流兼容性",
+    "System": "系统",
     "Overall": "总体",
+    "Panel": "面板",
+    "API": "API",
+    "allowed login": "允许的登录身份",
+    "Remote auth": "远程认证",
+    "Serve": "Serve",
     "data directory": "数据目录",
     "input directory": "输入目录",
     "output directory": "输出目录",
@@ -65,6 +71,8 @@ _ZH_EXACT = {
     "connected": "已连接",
     "not connected": "未连接",
     "unknown": "未知",
+    "READY": "就绪",
+    "NOT READY": "未就绪",
 }
 
 
@@ -131,21 +139,47 @@ def _translate_zh(text: str) -> str:
         return _ZH_EXACT[text]
     result = text
     replacements = (
-        ("not found", "未找到"),
+        ("current Tailscale identity does not match configured allowed_logins", "当前 Tailscale 身份与配置的 allowed_logins 不匹配"),
+        ("current Tailscale identity matches config", "当前 Tailscale 身份与配置匹配"),
+        ("local auth mode; remote access is not configured", "本地认证模式；未配置远程访问"),
+        ("not installed; local mode remains available", "未安装；本地模式仍可用"),
+        ("Tailscale Serve not detected for port", "未检测到 Tailscale Serve，端口"),
+        ("Tailscale Serve active for port", "Tailscale Serve 已启用，端口"),
+        (" is occupied by another process", " 被其他进程占用"),
+        ("reachable; version", "可访问；版本"),
+        ("installed (", "已安装 ("),
+        (") but state is ", ")，但状态为 "),
+        ("connected as ", "已连接，身份 "),
+        ("required inputs=", "必需输入="),
+        ("missing nodes=", "缺失节点="),
+        ("warnings=", "警告="),
+        ("output=", "输出="),
+        ("data directory", "数据目录"),
+        ("input directory", "输入目录"),
+        ("output directory", "输出目录"),
+        ("allowed login", "允许的登录身份"),
+        ("Remote auth", "远程认证"),
         ("not writable", "不可写"),
-        ("writable", "可写"),
         ("not readable", "不可读"),
-        ("readable", "可读"),
-        ("not configured", "未配置"),
         ("not connected", "未连接"),
-        ("connected", "已连接"),
-        ("available", "可用"),
+        ("not configured", "未配置"),
+        ("not found", "未找到"),
         ("unavailable", "不可用"),
+        ("available", "可用"),
+        ("writable", "可写"),
+        ("readable", "可读"),
+        ("connected", "已连接"),
         ("running", "运行中"),
         ("stopped", "已停止"),
+        ("unknown", "未知"),
+        ("none", "无"),
     )
     for source, target in replacements:
         result = result.replace(source, target)
+    if result == "READY":
+        return "就绪"
+    if result == "NOT READY":
+        return "未就绪"
     return result
 
 
