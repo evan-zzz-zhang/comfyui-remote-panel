@@ -25,14 +25,20 @@
     "该输入用途不明确或存在像素级关联，默认保持原图": "This input is unknown or pixel-linked, so the original is kept by default"
   };
 
+  const TARGET_SELECTOR = ".v04-control, .v04-configurator, .job-meta, #device-overview, #connection-pill";
   const textSources = new WeakMap();
 
   function language() {
     return window.ComfyI18n?.language || document.documentElement.lang || "zh-CN";
   }
 
+  function eligibleTextNode(node) {
+    if (!node || node.nodeType !== Node.TEXT_NODE) return false;
+    return Boolean(node.parentElement?.closest(TARGET_SELECTOR));
+  }
+
   function translateTextNode(node) {
-    if (!node || node.nodeType !== Node.TEXT_NODE) return;
+    if (!eligibleTextNode(node)) return;
     const current = node.nodeValue || "";
     let source = textSources.get(node);
     if (source == null) {
@@ -51,16 +57,32 @@
     node.nodeValue = `${prefix}${translated}${suffix}`;
   }
 
-  function translateV04(root = document.body) {
+  function translateTarget(root) {
     if (!root) return;
-    const eligible = node => {
-      const parent = node.parentElement;
-      return Boolean(parent?.closest(".v04-control, .v04-configurator, .job-meta, #device-overview, #connection-pill"));
-    };
-    if (root.nodeType === Node.TEXT_NODE && eligible(root)) translateTextNode(root);
+    if (root.nodeType === Node.TEXT_NODE) {
+      translateTextNode(root);
+      return;
+    }
+    if (root.nodeType !== Node.ELEMENT_NODE) return;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let node;
-    while ((node = walker.nextNode())) if (eligible(node)) translateTextNode(node);
+    while ((node = walker.nextNode())) translateTextNode(node);
+  }
+
+  function translateRelevant(root = document.body) {
+    if (!root) return;
+    if (root.nodeType === Node.TEXT_NODE) {
+      translateTextNode(root);
+      return;
+    }
+    if (root.nodeType !== Node.ELEMENT_NODE) return;
+
+    const targets = new Set();
+    if (root.matches?.(TARGET_SELECTOR)) targets.add(root);
+    const ancestor = root.closest?.(TARGET_SELECTOR);
+    if (ancestor) targets.add(ancestor);
+    root.querySelectorAll?.(TARGET_SELECTOR).forEach(node => targets.add(node));
+    targets.forEach(translateTarget);
   }
 
   if (typeof renderMetrics === "function") {
@@ -88,21 +110,31 @@
       if (overview) {
         overview.innerHTML = `<div class="device-chip ${panel.online ? "online" : ""}"><small>PANEL</small><strong>${panel.online ? "在线" : "离线"}</strong></div><div class="device-chip ${comfyState === "online" ? "online" : ""}"><small>COMFYUI</small><strong>${escapeHtml(comfyLabel)}${comfyState === "online" && comfy.version ? ` · ${escapeHtml(comfy.version)}` : ""}</strong></div><div class="device-chip"><small>队列任务</small><strong>${comfy.queue_count ?? "—"}</strong></div>`;
       }
-      translateV04(pill);
-      translateV04(overview);
+      translateRelevant(pill);
+      translateRelevant(overview);
     };
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    translateV04(document.body);
+    translateRelevant(document.body);
     const observer = new MutationObserver(records => {
+      const roots = new Set();
       for (const record of records) {
-        if (record.type === "characterData") translateV04(record.target);
-        for (const node of record.addedNodes || []) translateV04(node);
+        for (const node of record.addedNodes || []) {
+          if (node.nodeType === Node.TEXT_NODE) {
+            if (eligibleTextNode(node)) roots.add(node);
+          } else if (node.nodeType === Node.ELEMENT_NODE) {
+            const relevant = node.matches?.(TARGET_SELECTOR)
+              || node.closest?.(TARGET_SELECTOR)
+              || node.querySelector?.(TARGET_SELECTOR);
+            if (relevant) roots.add(node);
+          }
+        }
       }
+      roots.forEach(translateRelevant);
     });
-    observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+    observer.observe(document.body, { subtree: true, childList: true });
   });
 
-  window.addEventListener("comfy-language-changed", () => translateV04(document.body));
+  window.addEventListener("comfy-language-changed", () => translateRelevant(document.body));
 })();
