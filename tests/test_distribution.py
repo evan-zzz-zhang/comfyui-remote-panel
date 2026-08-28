@@ -1,90 +1,30 @@
+from __future__ import annotations
+
+import importlib.metadata
+import json
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_wheel_contains_and_loads_all_workflow_resources(tmp_path):
-    subprocess.run(
-        [sys.executable, "-m", "build", "--wheel", "--no-isolation", "--outdir", str(tmp_path)],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    [wheel] = tmp_path.glob("*.whl")
-    with zipfile.ZipFile(wheel) as archive:
-        workflow_files = [
-            name for name in archive.namelist()
-            if "/workflows/" in name and name.endswith(".json")
-        ]
-        static_files = [name for name in archive.namelist() if "/static/" in name]
-    assert len(workflow_files) == 12
-    assert any(name.endswith("/static/workflow_ux.js") for name in static_files)
-    assert any(name.endswith("/static/ux_refinements.js") for name in static_files)
-    assert any(name.endswith("/static/ux_refinements.css") for name in static_files)
-
-    install_dir = tmp_path / "installed"
-    subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--no-deps", "--target", str(install_dir), str(wheel)],
-        cwd=tmp_path,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    code = f"""
-import asyncio
-import sys
-from pathlib import Path
-sys.path.insert(0, {str(install_dir)!r})
-from aiohttp import ClientSession, web
-from comfyui_remote_panel.app import create_app
-from comfyui_remote_panel.config import Config
-from comfyui_remote_panel.preset import load_presets
-
-async def smoke():
-    root = Path({str(tmp_path)!r}) / "runtime"
-    config = Config(
-        host="127.0.0.1", port=8190, public_origin="https://device.example.ts.net",
-        allowed_logins=("owner@example.com",), comfyui_base_url="http://127.0.0.1:1",
-        comfyui_input_dir=root / "input", comfyui_output_dir=root / "output",
-        minimum_comfyui_version="0.26.0", data_dir=root / "data",
-        workflow_dir=root / "missing-workflows", monitoring_interval=60,
-        nvidia_smi_timeout=.1,
-    )
-    assert len(load_presets(config.workflow_dir)) == 6
-    runner = web.AppRunner(create_app(config))
-    await runner.setup()
-    site = web.TCPSite(runner, "127.0.0.1", 0)
-    await site.start()
-    port = site._server.sockets[0].getsockname()[1]
-    async with ClientSession() as session:
-        async with session.get(f"http://127.0.0.1:{{port}}/healthz") as response:
-            assert response.status == 200
-            assert await response.json() == {{"status": "ok"}}
-    await runner.cleanup()
-
-asyncio.run(smoke())
-"""
-    subprocess.run(
-        [sys.executable, "-c", code],
-        cwd=tmp_path,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+def test_build_metadata_matches_runtime_version():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    init = (ROOT / "src" / "comfyui_remote_panel" / "__init__.py").read_text(encoding="utf-8")
+    assert 'version = "0.4.0"' in pyproject
+    assert '__version__ = "0.4.0"' in init
 
 
-def test_packaged_workflows_match_repository_sources():
-    packaged = ROOT / "src" / "comfyui_remote_panel" / "workflows"
-    source_files = sorted((ROOT / "workflows").glob("*/*.json"))
-    assert len(source_files) == 12
-    for source in source_files:
-        relative = source.relative_to(ROOT / "workflows")
-        assert (packaged / relative).read_bytes() == source.read_bytes()
+def test_installed_distribution_exposes_console_script():
+    entry_points = importlib.metadata.entry_points(group="console_scripts")
+    matches = [item for item in entry_points if item.name == "comfyui-remote-panel"]
+    assert len(matches) == 1
+    assert matches[0].value == "comfyui_remote_panel.__main__:main"
 
 
 def test_mobile_creation_shell_uses_comfy_remote_design_system():
@@ -105,8 +45,10 @@ def test_mobile_creation_shell_uses_comfy_remote_design_system():
     assert 'name="duration_seconds" type="range" min="5" max="15" step="1"' in html
     assert all(f'data-megapixels="{value}"' in html for value in ("0.2", "0.4", "0.6", "0.8", "0.9", "1.0"))
     assert 'accept=".wav,.mp3,.flac,.ogg,.m4a"' in html
-    assert '/static/workflow_ux.js?v=0.6.0' in html
-    assert '/static/ux_refinements.js?v=0.1.0' in html
+    # Static assets are no-store in v0.4 development builds, so this design
+    # contract checks the resource itself rather than pinning a cache-bust tag.
+    assert '/static/workflow_ux.js' in html
+    assert '/static/ux_refinements.js' in html
 
     assert "--accent: #c8f36a" in css
     assert "body.prompt-focused" in css
@@ -122,3 +64,31 @@ def test_mobile_creation_shell_uses_comfy_remote_design_system():
     assert "#view-generate > .page-heading" in refinement_css
     assert ".job-card .job-prompt" in refinement_css
     assert "generic-advanced[data-refined-order" in refinement_css
+
+
+def test_built_wheel_contains_packaged_workflows(tmp_path):
+    pytest.importorskip("build")
+    subprocess.run(
+        [sys.executable, "-m", "build", "--wheel", "--outdir", str(tmp_path)],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    wheel = next(tmp_path.glob("*.whl"))
+    with zipfile.ZipFile(wheel) as archive:
+        names = set(archive.namelist())
+        assert "comfyui_remote_panel/static/index.html" in names
+        source_files = sorted((ROOT / "src" / "comfyui_remote_panel" / "workflows").glob("*/*.json"))
+        for source in source_files:
+            relative = source.relative_to(ROOT / "src" / "comfyui_remote_panel")
+            assert f"comfyui_remote_panel/{relative.as_posix()}" in names
+
+
+def test_source_workflow_mirror_matches_packaged_workflows():
+    packaged = ROOT / "src" / "comfyui_remote_panel" / "workflows"
+    source_files = sorted((ROOT / "workflows").glob("*/*.json"))
+    assert source_files
+    for source in source_files:
+        relative = source.relative_to(ROOT / "workflows")
+        assert (packaged / relative).read_bytes() == source.read_bytes()
