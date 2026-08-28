@@ -14,10 +14,11 @@
     const entry = seedEntry(preset);
     if (!entry) return;
     const [, spec] = entry;
+    const manifestDefault = state.workflowItems?.get?.(preset.id)?.manifest?.default_seed_policy;
     spec.ui = { ...(spec.ui || {}), semantic: "seed", label: spec.ui?.label || "Seed" };
     preset.seed_policy = {
       supported: true,
-      default: preset.seed_policy?.default || preset.default_seed_policy || "randomize",
+      default: preset.seed_policy?.default || preset.default_seed_policy || manifestDefault || "randomize",
       values: preset.seed_policy?.values || SEED_POLICIES,
     };
   }
