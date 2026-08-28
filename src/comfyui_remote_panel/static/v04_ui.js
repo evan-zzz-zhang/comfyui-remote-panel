@@ -37,12 +37,35 @@
     return semantic === "advanced" ? "advanced" : id;
   }
 
+  function parameterSpec(preset, id, publicSpec = {}) {
+    // /api/presets intentionally strips node/input from public parameter metadata.
+    // The authoritative Generic workflow bindings remain in input_bindings.values.
+    const bindingSpec = preset?.input_bindings?.values?.[id]
+      || state.workflowItems?.get?.(preset?.id)?.manifest?.parameters?.[id]
+      || {};
+    return {
+      ...bindingSpec,
+      ...publicSpec,
+      ui: {
+        ...(bindingSpec?.ui || {}),
+        ...(publicSpec?.ui || {}),
+      },
+    };
+  }
+
+  function parameterEntries(preset) {
+    return Object.entries(preset?.parameters || {}).map(([id, spec]) => [
+      id,
+      parameterSpec(preset, id, spec),
+    ]);
+  }
+
   function hasRealBinding(spec) {
     return spec?.node != null && Boolean(spec?.input);
   }
 
   function seedEntry(preset) {
-    return Object.entries(preset?.parameters || {}).find(([id, spec]) =>
+    return parameterEntries(preset).find(([id, spec]) =>
       parameterSemantic(id, spec) === "seed" && hasRealBinding(spec)
     ) || null;
   }
@@ -50,9 +73,15 @@
   function ensureSeedMetadata(preset) {
     const entry = seedEntry(preset);
     if (!entry) return;
-    const [, spec] = entry;
+    const [id, spec] = entry;
     const manifestDefault = state.workflowItems?.get?.(preset.id)?.manifest?.default_seed_policy;
-    spec.ui = { ...(spec.ui || {}), semantic: "seed", label: spec.ui?.label || "Seed" };
+    if (preset.parameters?.[id]) {
+      preset.parameters[id].ui = {
+        ...(preset.parameters[id].ui || {}),
+        semantic: "seed",
+        label: preset.parameters[id].ui?.label || spec.ui?.label || "Seed",
+      };
+    }
     preset.seed_policy = {
       supported: true,
       default: preset.seed_policy?.default || preset.default_seed_policy || manifestDefault || "randomize",
@@ -284,7 +313,7 @@
 
     const seed = seedEntry(preset);
     const seedId = seed?.[0] || null;
-    const entries = Object.entries(preset.parameters || {}).filter(([id, spec]) => {
+    const entries = parameterEntries(preset).filter(([id, spec]) => {
       if (!hasRealBinding(spec)) return false;
       const semantic = parameterSemantic(id, spec);
       return !BASIC_SEMANTICS.has(semantic) && id !== seedId;
