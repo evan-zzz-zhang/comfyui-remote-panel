@@ -3,6 +3,7 @@ from pathlib import Path
 from comfyui_remote_panel.locale import (
     normalize_language,
     translate_cli,
+    translate_multiline,
     translated_input,
 )
 
@@ -72,3 +73,28 @@ def test_cli_language_normalization_and_setup_prompt_translation() -> None:
     wrapped = translated_input(fake_input, "en")
     assert wrapped("允许 Comfy Remote 启动、关闭和重启 ComfyUI [y/N]: ") == "y"
     assert prompts == ["Allow Comfy Remote to start, stop, and restart ComfyUI [y/N]: "]
+
+
+def test_doctor_multiline_translation_is_readable_in_simplified_chinese() -> None:
+    source = "\n".join(
+        [
+            "Core",
+            "PASS data directory — <PATH> (writable)",
+            "ComfyUI",
+            "PASS API — reachable; version 0.3.50",
+            "Remote access",
+            "WARN Remote auth — local auth mode; remote access is not configured",
+            "Workflow compatibility",
+            "PASS demo — output=image; required inputs=none; missing nodes=none; warnings=none",
+            "Overall",
+            "READY",
+        ]
+    )
+    translated = translate_multiline(source, "zh-CN")
+    assert "核心" in translated
+    assert "数据目录" in translated
+    assert "可访问；版本 0.3.50" in translated
+    assert "远程认证 — 本地认证模式；未配置远程访问" in translated
+    assert "输出=image; 必需输入=无; 缺失节点=无; 警告=无" in translated
+    assert translated.endswith("就绪")
+    assert "un可用" not in translated
