@@ -1,8 +1,8 @@
 (() => {
-  // i18n.js owns dynamic translation with a page-wide MutationObserver. Its
-  // language status controls used to be updated from inside that observer,
-  // which made the observer trigger itself forever on mobile browsers.
-  // Detach those two controls from the legacy observer-owned selectors before
+  // i18n.js owns dynamic translation with a page-wide DOM watcher. Its
+  // language status controls used to be updated from inside that watcher,
+  // which made it trigger itself forever on mobile browsers.
+  // Detach those two controls from the legacy watcher-owned selectors before
   // DOMContentLoaded, then manage them explicitly here.
   const languageToggle = document.querySelector("#language-toggle");
   const languageValue = document.querySelector("#language-value");
