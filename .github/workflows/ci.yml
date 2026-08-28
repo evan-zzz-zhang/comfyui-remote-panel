@@ -25,6 +25,7 @@ jobs:
       - run: node --check src/comfyui_remote_panel/static/workflow_ux.js
       - run: node --check src/comfyui_remote_panel/static/configurator_v2.js
       - run: node --check src/comfyui_remote_panel/static/configurator_v2_runtime.js
+      - run: node --check src/comfyui_remote_panel/static/v04_ui.js
       - run: node --check src/comfyui_remote_panel/static/ux_refinements.js
       - run: python scripts/check_repository.py
       - run: python -m build
