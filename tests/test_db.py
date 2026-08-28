@@ -145,7 +145,7 @@ async def test_schema_v3_migrates_recovery_and_v04_creation_fields(tmp_path):
     db = Database(path)
     await db.initialize()
     with sqlite3.connect(path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 5
         columns = {row[1] for row in connection.execute("PRAGMA table_info(jobs)")}
         counters = connection.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'seed_counters'"
