@@ -113,7 +113,7 @@
   }
 
   function syncSeedQuickControl() {
-    document.querySelector(".v04-seed-quick")?.remove();
+    if (document.querySelector(".v04-seed-quick")) return;
     const preset = selectedPreset();
     if (!preset) return;
 
@@ -182,6 +182,7 @@
 
   const baseApplyPresetV04 = applyPreset;
   applyPreset = function(presetId, overrides = {}) {
+    if (selectedPreset()?.family === "generic") document.querySelector(".v04-seed-quick")?.remove();
     const preset = state.presets.get(presetId);
     ensureSeedMetadata(preset);
     const result = baseApplyPresetV04(presetId, overrides);
