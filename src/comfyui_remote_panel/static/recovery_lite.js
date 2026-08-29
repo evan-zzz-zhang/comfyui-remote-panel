@@ -70,8 +70,7 @@
         <div class="settings-row static"><span><strong>分支</strong><small>正在读取…</small></span></div>
         <div class="settings-row static"><span><strong>提交</strong><small>正在读取…</small></span></div>
         <div class="settings-row static"><span><strong>工作区</strong><small>正在读取…</small></span></div>
-      </div>
-      <p class="form-message">这里显示当前实际运行的构建信息，用于真机验收时确认版本与提交是否对齐。</p>`;
+      </div>`;
     view.append(page);
     $("#about-back", page)?.addEventListener("click", closeAboutPage);
     return page;
