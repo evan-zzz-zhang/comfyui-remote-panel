@@ -1,8 +1,8 @@
 # Comfy Remote Roadmap / TODO
 
-当前稳定开发基线：**v0.4.1 Media Continuity（Completed）**。
+当前稳定开发基线：**v0.4.3 Task Reconciliation Hardening（Completed）**。
 
-`v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；`v0.4 Creation Experience` 与 `v0.4 Recovery Lite` 已完成开发和真机验收；`v0.4.1 Media Continuity` 已完成 Retry 素材连续性、实际图片产物元数据与 Recovery Lite 无响应防抖收尾。
+`v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；`v0.4 Creation Experience`、`v0.4 Recovery Lite`、`v0.4.1 Media Continuity`、`v0.4.2 H3 FL2VA Unified Modes` 与 `v0.4.3 Task Reconciliation Hardening` 均已完成当前范围收尾。
 
 ---
 
@@ -164,10 +164,50 @@ H3 ↔ Generic
 
 ---
 
+## v0.4.2 H3 FL2VA Unified Modes — Completed
+
+本阶段把三个 H3 FL2VA 物理工作流收敛成一个用户侧能力入口，同时保留物理工作流本身与各自启用状态。
+
+### 完成范围
+
+- [x] 新增虚拟入口 `h3-fl2va-group`，映射 `original / lightx2v / v4_600step` 三种生成模式。
+- [x] 首次默认 `v4_600step`；浏览器只记忆 FL2VA 的模式偏好，Retry 恢复被重试任务实际使用的模式。
+- [x] 创作页只显示一个 `MiniMax H3 FL2VA` 产品入口；Workflow Manager 继续保留三个物理工作流。
+- [x] 高级设置暴露 H3 提示词标准化开关，默认开启；标准化器使用独立随机隐藏 seed。
+- [x] 标准化提示词从 ComfyUI `PreviewAny` 实际 history 输出捕获并持久化，不由 Panel 二次重算。
+- [x] 任务详情中原始提示词与标准化提示词相邻展示；外层任务卡只保留原始提示词。
+- [x] H3 reference aspect 改由工作流自身 `H3AspectRouter` 决策；参考图预处理继续 downscale-only、保持比例且不放大小图。
+- [x] 修复 generation mode 切换、Retry aspect 摘要、重复 `values_json`、标准化开关样式等回归。
+- [x] CI 与回归测试通过后合并到 main。
+
+---
+
+## v0.4.3 Task Reconciliation Hardening — Completed
+
+本阶段只处理一次真实暴露出的任务最终状态竞态：ComfyUI 实际执行成功，但 Panel 可能在重启或 history 落盘时序窗口中误判为失败。
+
+### 完成范围
+
+- [x] 不完整 / 暂态 history 不再因为“尚未明确 success”而直接进入 `failed`。
+- [x] WebSocket `execution_success` 本身作为明确成功证据，即使 `/history/<prompt_id>` 仍暂时为空也不会写入 generic failure。
+- [x] history 只有 `execution_success` message、但 `completed/status_str` 尚未同步时，先规范化为成功再进入旧 reconciliation 层。
+- [x] `execution_error` / `execution_interrupted` 继续保持明确终态优先级；延迟 success 不得覆盖具体失败。
+- [x] 对 v0.4.2 已落库的 exact generic false-failure，只在 ComfyUI history 仍有明确 success 时允许修正并重新捕获输出。
+- [x] 不通过残留 MP4 文件名反推成功；ComfyUI history 已清除的旧误判任务保持原状态，避免文件系统反向定义任务状态。
+- [x] 中英文 Troubleshooting、Changelog、版本号与路线图同步到 v0.4.3。
+
+### 验证边界
+
+- 自动化覆盖 empty/not-ready history、ambiguous history、message-only success、explicit error、旧 generic false-failure 的 history-backed repair，以及已有并发终态优先级回归。
+- 该竞态难以稳定在真实设备上人工复现；本次不要求为了验收主动制造概率性故障，自动化与 CI 作为主要收尾依据。
+
+---
+
 ## Later / separate design tracks
 
-这些方向可以继续研究，但不自动并入 Recovery Lite / v0.4.1：
+这些方向可以继续研究，但不自动并入 Recovery Lite / v0.4.3：
 
+- Ref2VA grouped workflow：沿用 v0.4.2 的产品级模式路由，把三个 H3 Ref2VA 物理工作流收敛成一个用户入口；建议作为后续独立 feature branch，不与本次 reconciliation hotfix 混合。
 - Full Reliability / Watchdog：自动拉起、重试退避、crash-loop、防断线误判、任务最终状态 reconciliation 等完整无人值守恢复能力。
 - Multi-host：家里 / 公司 / 其他主机的 Host Registry、selector、routing。
 - Wake-on-LAN / external watchdog：依赖局域网或机外常驻设备的电源恢复。
