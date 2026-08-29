@@ -115,7 +115,11 @@
   function syncPromptRequired() {
     const prompt = document.querySelector('textarea[name="prompt"]');
     const toggle = document.querySelector("[data-v042-prompt-standardization]");
-    if (prompt) prompt.required = Boolean(toggle?.checked);
+    const hasFrame = ["#first-frame", "#last-frame"].some(selector => {
+      const input = document.querySelector(selector);
+      return Boolean(input?.files?.length);
+    });
+    if (prompt) prompt.required = Boolean(toggle?.checked) || !hasFrame;
   }
 
   function removeControls() {
