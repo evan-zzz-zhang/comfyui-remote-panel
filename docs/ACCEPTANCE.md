@@ -156,3 +156,39 @@ CI release gates：minimum-dependencies、Windows/Linux、Python 3.11/3.13、tes
 - 用户最终确认 WAI img2img 空“生成设置”修复通过。
 
 **结论：v0.4 Creation Experience 真机验收通过，可以合并到 `main` 作为下一阶段 Reliability / Recovery 的稳定基线。**
+
+---
+
+## 2026-08-29 v0.4 Recovery Lite 最终验收
+
+本轮在 `feat/v0.4-recovery-lite` 完成轻量人工恢复能力，并按当前范围完成 Windows 真机验收。
+
+### 当前范围已通过
+
+- 设备页将 Remote Panel 与 ComfyUI 状态分开显示，用户可区分 Panel 在线与 ComfyUI 在线状态。
+- ComfyUI 正常在线时，启动 / 关闭 / 普通重启均可从移动端稳定控制。
+- Panel 启动后由其拉起的 ComfyUI 可见控制台恢复正常日志输出，不再只出现纯黑窗口。
+- 设置 → 关于可正常打开和返回，并显示当前版本、分支、提交与工作区状态，用于确认真机验收版本对齐。
+- Recovery Lite 的强制重启后端仅允许操作经过 PID / create time / executable / command line 核验的 ComfyUI 进程实例；进程树限制与拒绝误杀由自动化测试覆盖。
+- ComfyUI 正常在线时不开放强制重启，避免把危险恢复动作当作普通控制使用。
+- 任务错误提示已覆盖 `cuda_oom / missing_model / missing_node / output_missing / comfyui_disconnected` 等已存在分类。
+
+### 延后真实事故验证
+
+本轮**不主动制造真实 CUDA OOM、GPU 卡死或 ComfyUI 假死事故**。因此以下能力暂记为“实现并有自动化保护，但等待真实现场补充验收”：
+
+- 真实爆显存后“进程仍在、API 无响应”的状态识别；
+- 真正卡死后的“无响应 → 强制重启”现场恢复；
+- 极端情况下失效 process record 的真机拒绝强杀验证。
+
+用户确认：这些场景以后真实遇到时再验，不作为当前 Recovery Lite 合并 `main` 的阻塞项。
+
+### CI 与结论
+
+- minimum-dependencies：通过。
+- repository-safety：通过。
+- Windows Python 3.11 / 3.13：通过。
+- Ubuntu Python 3.11 / 3.13：通过。
+- pytest、JavaScript syntax check、repository scan、wheel/source build：通过。
+
+**结论：v0.4 Recovery Lite 当前范围真机验收通过。真实 OOM / 卡死恢复保留为后续现场验证项，不阻塞本阶段合并与收尾。**

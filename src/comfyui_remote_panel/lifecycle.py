@@ -42,7 +42,11 @@ class ComfyLifecycle:
         self._lock = asyncio.Lock()
 
     def snapshot(
-        self, online: bool, *, unresponsive: bool = False,
+        self,
+        online: bool,
+        *,
+        unresponsive: bool = False,
+        managed_process_alive: bool = False,
         last_success_at: float | None = None,
     ) -> dict:
         busy = self.operation is not None
@@ -52,10 +56,10 @@ class ComfyLifecycle:
             state, summary = "stopping", "正在关闭 ComfyUI 并等待端口释放"
         elif online:
             state, summary = "online", "ComfyUI 在线"
-        elif self.last_error and self.last_error_action in {"start", "restart"}:
+        elif self.last_error and self.last_error_action in {"start", "restart", "force_restart"}:
             state, summary = "start_failed", self.last_error
-        elif unresponsive:
-            state, summary = "unresponsive", "ComfyUI 端口或进程可能仍在，但健康检查连续超时"
+        elif unresponsive or managed_process_alive:
+            state, summary = "unresponsive", "ComfyUI 进程仍在运行，但 API 无法正常响应"
         else:
             state, summary = "offline", "ComfyUI 离线"
         return {
@@ -66,30 +70,42 @@ class ComfyLifecycle:
             "summary": summary,
             "last_success_at": last_success_at,
             "last_error": self.last_error,
-            "can_start": self.enabled and not online and not busy,
+            "managed_process_alive": managed_process_alive,
+            "can_start": self.enabled and not online and not managed_process_alive and not busy,
             "can_stop": self.enabled and online and not busy,
             "can_restart": self.enabled and online and not busy,
+            "can_force_restart": self.enabled and managed_process_alive and not busy,
         }
 
     async def trigger(self, action: str) -> dict:
         if not self.enabled:
             raise LifecycleError("ComfyUI 远程控制尚未配置")
-        if action not in {"start", "stop", "restart"}:
+        if action not in {"start", "stop", "restart", "force_restart"}:
             raise LifecycleError("不支持的控制操作")
         async with self._lock:
             if self._task and not self._task.done():
                 raise LifecycleError("已有 ComfyUI 控制操作正在执行")
             online = await self._is_online()
-            if action == "start" and online:
-                raise LifecycleError("ComfyUI 已经在线")
+            managed_process_alive = await asyncio.to_thread(self.managed_process_alive)
+            if action == "start":
+                if online:
+                    raise LifecycleError("ComfyUI 已经在线")
+                if managed_process_alive:
+                    raise LifecycleError("ComfyUI 进程仍在运行但无响应，请使用强制重启")
             if action in {"stop", "restart"} and not online:
                 raise LifecycleError("ComfyUI 当前不在线")
+            if action == "force_restart" and not managed_process_alive:
+                raise LifecycleError("无法通过进程记录安全确认 ComfyUI 主进程；未执行强制重启")
             self.operation = action
             self.phase = "starting" if action == "start" else "stopping"
             self.last_error = None
             self.last_error_action = None
             self._task = asyncio.create_task(self._run(action))
-        return self.snapshot(online)
+        return self.snapshot(
+            online,
+            unresponsive=not online and managed_process_alive,
+            managed_process_alive=managed_process_alive,
+        )
 
     async def _run(self, action: str) -> None:
         try:
@@ -97,8 +113,11 @@ class ComfyLifecycle:
                 await self._start()
             elif action == "stop":
                 await self._stop()
-            else:
+            elif action == "restart":
                 await self._stop()
+                await self._start()
+            else:
+                await self._force_stop()
                 await self._start()
         except asyncio.CancelledError:
             raise
@@ -191,6 +210,21 @@ class ComfyLifecycle:
             await asyncio.sleep(.5)
         raise LifecycleError("ComfyUI 进程已停止，但服务端口仍然在线")
 
+    async def _force_stop(self) -> None:
+        self.phase = "stopping"
+        process = await asyncio.to_thread(self._recorded_process)
+        if process is None:
+            raise LifecycleError("无法通过进程记录安全确认 ComfyUI 主进程；未执行强制关闭")
+
+        await asyncio.to_thread(self._force_stop_recorded_tree, process)
+        self._remove_record()
+        deadline = time.monotonic() + min(self.shutdown_timeout, 10)
+        while time.monotonic() < deadline:
+            if not await self._is_online():
+                return
+            await asyncio.sleep(.5)
+        raise LifecycleError("已结束确认过的 ComfyUI 进程树，但服务端口仍然在线；拒绝继续启动")
+
     def _stop_recorded_process(self, process: psutil.Process) -> list[int]:
         """Perform blocking psutil work off the aiohttp event-loop thread."""
         descendants = self._record_descendants(process)
@@ -206,11 +240,63 @@ class ComfyLifecycle:
             raise LifecycleError("没有权限关闭已确认的 ComfyUI 进程") from exc
         return self._surviving_descendant_pids(descendants)
 
+    def _force_stop_recorded_tree(self, process: psutil.Process) -> None:
+        """Terminate only the verified ComfyUI process and descendants captured from it."""
+        descendants = self._record_descendants(process)
+        try:
+            main_create_time = process.create_time()
+        except psutil.Error as exc:
+            raise LifecycleError("无法重新确认 ComfyUI 主进程身份；未执行强制关闭") from exc
+
+        records = descendants + [(process, main_create_time)]
+        expected = {item.pid: create_time for item, create_time in records}
+        targets = [item for item, create_time in records if self._same_process_instance(item, create_time)]
+        if process not in targets:
+            raise LifecycleError("ComfyUI 主进程身份已变化；未执行强制关闭")
+
+        log.warning(
+            "Force stopping verified ComfyUI process tree: main_pid=%s descendants=%s",
+            process.pid,
+            [item.pid for item in targets if item.pid != process.pid],
+        )
+        try:
+            for item in targets:
+                item.terminate()
+            _, alive = psutil.wait_procs(targets, timeout=min(self.shutdown_timeout, 5))
+            still_alive = [
+                item for item in alive
+                if self._same_process_instance(item, expected.get(item.pid))
+            ]
+            for item in still_alive:
+                item.kill()
+            if still_alive:
+                _, alive_after_kill = psutil.wait_procs(still_alive, timeout=5)
+                alive_after_kill = [
+                    item for item in alive_after_kill
+                    if self._same_process_instance(item, expected.get(item.pid))
+                ]
+                if alive_after_kill:
+                    raise LifecycleError("已确认的 ComfyUI 进程树仍有进程无法停止")
+        except psutil.AccessDenied as exc:
+            raise LifecycleError("没有权限强制关闭已确认的 ComfyUI 进程树") from exc
+        except psutil.Error as exc:
+            raise LifecycleError("强制关闭 ComfyUI 进程树失败") from exc
+        log.info("Forced ComfyUI process tree stopped successfully: main_pid=%s", process.pid)
+
     async def _is_online(self) -> bool:
         try:
             await self.comfy.system_stats()
             return True
         except ComfyError:
+            return False
+
+    def managed_process_alive(self) -> bool:
+        process = self._recorded_process()
+        if process is None:
+            return False
+        try:
+            return process.is_running()
+        except psutil.Error:
             return False
 
     def _configured_executable(self) -> Path:
@@ -269,6 +355,17 @@ class ComfyLifecycle:
         except psutil.Error as exc:
             log.warning("Could not inspect ComfyUI descendants before stopping the main process: %s", exc)
             return []
+
+    @staticmethod
+    def _same_process_instance(process: psutil.Process, create_time: float | None) -> bool:
+        if create_time is None:
+            return False
+        try:
+            return process.is_running() and process.create_time() == create_time
+        except psutil.NoSuchProcess:
+            return False
+        except psutil.Error as exc:
+            raise LifecycleError("无法重新确认 ComfyUI 进程树身份") from exc
 
     def _surviving_descendant_pids(
         self, descendants: list[tuple[psutil.Process, float]]

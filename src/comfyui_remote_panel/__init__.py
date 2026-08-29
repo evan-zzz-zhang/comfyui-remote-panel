@@ -9,9 +9,17 @@ from .v04 import install as _install_v04
 from .v04_overrides import install as _install_v04_overrides
 from .v04_compat import install as _install_v04_compat
 from .v04_cache import install as _install_v04_cache
+from .recovery_lite import install as _install_recovery_lite
 
 _install_v04()
 _install_v04_overrides()
 _install_v04_compat()
 _install_v04_cache()
-del _install_v04, _install_v04_overrides, _install_v04_compat, _install_v04_cache
+_install_recovery_lite()
+del (
+    _install_v04,
+    _install_v04_overrides,
+    _install_v04_compat,
+    _install_v04_cache,
+    _install_recovery_lite,
+)
