@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from comfyui_remote_panel import __version__
 from comfyui_remote_panel.app import create_app
 from comfyui_remote_panel.config import Config
 from comfyui_remote_panel.recovery_lite import _build_info, _launch_stdin
@@ -56,7 +57,7 @@ async def test_about_endpoint_exposes_acceptance_identity(tmp_path, aiohttp_clie
     response = await client.get("/api/about", headers=LOGIN)
     assert response.status == 200
     info = await response.json()
-    assert info["version"] == "0.4.0"
+    assert info["version"] == __version__
     assert set(info) == {"version", "branch", "commit", "tracked_dirty", "source"}
 
     source = (ROOT / "src" / "comfyui_remote_panel" / "static" / "recovery_lite.js").read_text(encoding="utf-8")

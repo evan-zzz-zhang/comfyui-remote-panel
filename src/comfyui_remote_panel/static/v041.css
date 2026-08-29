@@ -1,0 +1,21 @@
+.upload-card .v041-retained-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 4;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(14, 16, 13, 0.78);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.upload-card.has-image > .v041-retained-remove {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+}

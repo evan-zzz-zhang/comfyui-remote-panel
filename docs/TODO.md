@@ -1,8 +1,8 @@
 # Comfy Remote Roadmap / TODO
 
-当前稳定开发基线：**v0.4 Recovery Lite（Completed）**。
+当前稳定开发基线：**v0.4.1 Media Continuity（Completed）**。
 
-`v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；`v0.4 Creation Experience` 已完成开发、CI 与移动端真机验收；`v0.4 Recovery Lite` 已完成轻量人工恢复能力开发与当前范围真机验收。
+`v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；`v0.4 Creation Experience` 与 `v0.4 Recovery Lite` 已完成开发和真机验收；`v0.4.1 Media Continuity` 已完成 Retry 素材连续性、实际图片产物元数据与 Recovery Lite 无响应防抖收尾。
 
 ---
 
@@ -125,9 +125,48 @@ Recovery Lite 不加入以下复杂能力：
 
 ---
 
+## v0.4.1 Media Continuity — Completed
+
+本阶段不引入新的 Asset 架构，只补齐创作历史与实际产物信息的连续性和可靠性。
+
+### 完成范围
+
+- [x] Retry API 返回 retained media 的 artifact identity，不暴露本机路径。
+- [x] 历史参考图通过受认证的 Job input endpoint 恢复真实预览；不伪造浏览器 `File` / `Blob`。
+- [x] Retry 只改 Prompt 时可直接沿用历史素材，不要求手机重新选择或上传同一文件。
+- [x] retained 素材支持替换 / 删除；每个 Job 继续持有独立私有文件副本，历史 Job 不被新任务修改。
+- [x] 图片分辨率策略与 target MP 未变化时复用保存的处理元数据并跳过重复预处理；策略变化时只处理新 Job 的私有副本。
+- [x] 图片任务展示真实产物的宽×高、格式和文件大小；旧任务在访问历史时按需 lazy backfill。
+- [x] `job_artifacts.metadata_json` 采用 additive schema 扩展，不改变既有 SQLite rollback compatibility marker。
+- [x] 历史图片使用原生 `loading="lazy"` / `decoding="async"`，不增加新的 Observer 体系。
+- [x] Recovery Lite `无响应` 增加连续失败 3 次防抖：前两次不判无响应、不提供强制重启；第 3 次且已核验受管进程仍存活时才进入无响应；任意一次健康检查成功即清零失败计数。
+- [x] H3 / Generic、Seed Policy、Prompt 手机键盘、Settings、Recovery Lite 等 v0.4 基线未发现回归。
+
+### 验收记录
+
+2026-08-29 完成手机端真实验收，覆盖：
+
+```text
+H3 ↔ Generic
+→ Retry 后历史参考图真实预览
+→ 只改 Prompt 再生成
+→ A → B → C 连续 Retry
+→ retained 图片 Replace / Delete
+→ 1.0 MP → 1.0 MP
+→ 1.0 MP → 0.5 MP
+→ Never Upscale
+→ WAI txt2img / img2img 实际文件尺寸与 UI 对照
+→ Settings / Recovery Lite 回归
+→ 用户确认未发现问题
+```
+
+卡死场景不主动制造；连续 3 次失败防抖由自动化测试验证，包括“前两次不进入无响应”“第 3 次进入无响应”“成功一次后计数归零”。
+
+---
+
 ## Later / separate design tracks
 
-这些方向可以继续研究，但不自动并入 Recovery Lite：
+这些方向可以继续研究，但不自动并入 Recovery Lite / v0.4.1：
 
 - Full Reliability / Watchdog：自动拉起、重试退避、crash-loop、防断线误判、任务最终状态 reconciliation 等完整无人值守恢复能力。
 - Multi-host：家里 / 公司 / 其他主机的 Host Registry、selector、routing。
@@ -136,4 +175,4 @@ Recovery Lite 不加入以下复杂能力：
 - Media optimization：视频缩略图、远程预览带宽优化，以及参考图预处理策略的后续增强。
 - Additional transports：在不降低安全边界的前提下补充 Tailscale 之外的连接方式。
 
-路线图原则：**先解决真实远程恢复痛点，再决定是否值得引入完整无人值守恢复系统。**
+路线图原则：**先解决真实远程使用痛点，再决定是否值得引入更复杂的无人值守恢复、多主机或媒体资产系统。**
