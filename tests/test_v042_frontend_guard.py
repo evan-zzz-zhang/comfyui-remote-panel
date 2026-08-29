@@ -50,6 +50,11 @@ def test_generation_mode_defaults_to_v4_and_uses_local_storage():
     assert 'applyPreset(ENTRY_ID)' in JS
 
 
+def test_prompt_requirement_tracks_standardizer_and_frame_presence():
+    assert 'const hasFrame = ["#first-frame", "#last-frame"].some' in JS
+    assert 'prompt.required = Boolean(toggle?.checked) || !hasFrame' in JS
+
+
 def test_fl2va_extra_values_use_existing_values_json_transport():
     assert 'hidden.name = "values_json"' in JS
     assert 'generation_mode: mode' in JS
