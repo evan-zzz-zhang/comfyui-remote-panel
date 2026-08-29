@@ -104,6 +104,12 @@ tailscale status
 
 确认 ComfyUI 任务本身完成、工作流已选择正确的 SaveImage/SaveVideo/输出节点、`output` 目录可读，且生成时没有手动移动/清理文件。自定义工作流若有多个输出候选，导入时要确认主要输出。
 
+## 任务运行时重启了 Panel
+
+重启 Comfy Remote 不会主动取消已经被 ComfyUI 接受的 prompt。Panel 重启后会根据 ComfyUI 的 queue/history 重新确认未完成任务状态。v0.4.3 不再把尚未最终写完的 history 记录直接当成失败；即使最终 history payload 还没落盘，明确的 `execution_success` 也会被视为成功证据。
+
+如果某条任务已经被旧版本误判，并且 ComfyUI 后续又清掉了这条任务的 history，v0.4.3 不会仅凭残留 MP4 文件名反推任务成功。视频文件可能仍在受管输出目录，但任务状态仍以明确的 ComfyUI 证据为准。
+
 ## Panel 重启后打不开
 
 运行 `status` 和 `doctor`。后台启动失败时查看：
