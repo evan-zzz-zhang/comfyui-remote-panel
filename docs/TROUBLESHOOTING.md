@@ -104,6 +104,12 @@ Verify the file format, make sure the ComfyUI `input` directory is writable, con
 
 Confirm the ComfyUI job itself completed, the workflow uses the correct SaveImage / SaveVideo / output node, the `output` directory is readable, and the output file was not moved or cleaned during generation. If a custom workflow has multiple output candidates, confirm the primary output during import.
 
+## The Panel was restarted while a job was running
+
+Restarting Comfy Remote does not intentionally cancel a prompt that ComfyUI has already accepted. After restart, the Panel reconciles active jobs from ComfyUI queue/history state. v0.4.3 no longer treats an incomplete history row as a failure and accepts explicit `execution_success` evidence even if the final history payload is still being persisted.
+
+If a task was already misclassified by an older version and ComfyUI has since removed that task's history, v0.4.3 does not infer success from a leftover MP4 filename. The file may still exist in the managed output directory, but task state remains based on explicit ComfyUI evidence.
+
 ## Panel does not open after restart
 
 Run `status` and `doctor`. If background startup failed, inspect:

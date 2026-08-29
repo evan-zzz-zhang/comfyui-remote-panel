@@ -1,5 +1,42 @@
 # Changelog
 
+## v0.4.3 — Task Reconciliation Hardening
+
+Comfy Remote v0.4.3 hardens task final-state reconciliation around Remote Panel restarts and ComfyUI history timing races.
+
+### Highlights
+
+- Incomplete or transient ComfyUI history rows are no longer treated as execution failures merely because they are not yet explicitly successful.
+- `execution_success` WebSocket events are accepted as terminal success evidence even when `/history/<prompt_id>` has not finished persisting yet.
+- Message-only `execution_success` history is normalized before passing through the older reconciliation layer so it cannot be misclassified as a generic failure.
+- Explicit `execution_error` and `execution_interrupted` evidence remains authoritative; a delayed success observation cannot overwrite a specific terminal failure.
+- Recent v0.4.2 jobs with the exact generic false-failure signature may self-correct only when ComfyUI history still contains explicit success evidence.
+- Disk files do not redefine task state. If ComfyUI history has already been removed, v0.4.3 does not infer success from a leftover MP4 filename.
+
+### Verification
+
+- Regression tests cover empty/not-ready history on `execution_success`, ambiguous non-terminal history, message-only success history, explicit execution errors, and history-backed repair of the known v0.4.2 generic false-failure signature.
+- Existing concurrency coverage still requires explicit WebSocket terminal failures to win over delayed reconcile results.
+- Full CI covers minimum dependencies, repository/history safety, Windows and Ubuntu on Python 3.11 / 3.13, pytest, JavaScript syntax checks, i18n smoke, and package builds.
+
+### Known limitation
+
+- A task that was already misclassified by an older version and whose ComfyUI history has since been cleared is not automatically rewritten from filesystem evidence. The generated file may still exist on disk, but v0.4.3 keeps task state evidence-based rather than guessing from filenames.
+
+## v0.4.2 — H3 FL2VA Unified Modes
+
+Comfy Remote v0.4.2 introduces one product-level FL2VA creation entry that routes to three retained physical ComfyUI workflows.
+
+### Highlights
+
+- `MiniMax H3 FL2VA` now exposes `v4_600step`, `LightX2V`, and `original` as generation modes under one creation entry while keeping the physical workflows independently manageable.
+- `v4_600step` is the first-use default and the selected mode is remembered in the browser; Retry restores the actual mode used by the retried task.
+- Optional H3 prompt standardization is exposed as an Advanced Setting and defaults to enabled.
+- The standardizer receives its own randomized hidden seed, separate from the video seed.
+- Standardized prompt text is captured from the actual ComfyUI `PreviewAny` history output and shown next to the raw prompt in task details.
+- H3 reference-aspect routing uses the workflow's own `H3AspectRouter`, and reference-image preprocessing supports original plus 0.5 / 1.0 / 1.5 / 2.0 MP downscale-only policies.
+- Physical workflow disable/enable state remains authoritative for whether each generation mode is available.
+
 ## v0.4.1 — Media Continuity
 
 Comfy Remote v0.4.1 completes the v0.4 mobile creation/recovery baseline with reliable Retry media continuity and actual image output metadata.
