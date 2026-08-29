@@ -52,6 +52,29 @@ def _history_terminal_kind(entry: Any) -> str | None:
     return None
 
 
+def _normalized_success_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    """Adapt message-only success evidence for the older history handler."""
+
+    status_data = entry.get("status")
+    if not isinstance(status_data, dict):
+        return entry
+    status_text = str(status_data.get("status_str", "")).strip().lower()
+    if status_data.get("completed") is True or status_text in _SUCCESS_STATUSES:
+        return entry
+    messages = status_data.get("messages", [])
+    if not any(
+        isinstance(message, list) and message and str(message[0]) == "execution_success"
+        for message in messages
+    ):
+        return entry
+    normalized = dict(entry)
+    normalized_status = dict(status_data)
+    normalized_status["completed"] = True
+    normalized_status["status_str"] = "success"
+    normalized["status"] = normalized_status
+    return normalized
+
+
 def _is_legacy_false_failure_candidate(job: dict[str, Any]) -> bool:
     return (
         job.get("status") == "failed"
@@ -132,6 +155,8 @@ def install() -> None:
                 return await self.db.get_job(current["id"])
             return current
 
+        if terminal_kind == "succeeded":
+            entry = _normalized_success_entry(entry)
         return await original_apply_history(self, current, entry)
 
     async def handle_ws_event_v043(self, event: dict[str, Any]) -> None:
