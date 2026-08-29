@@ -1,5 +1,6 @@
 .venv/
 .bootstrap/
+.workbuddy/
 config.toml
 config.toml.bak
 .env
