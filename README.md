@@ -4,13 +4,13 @@
 
 **Run your local ComfyUI workflows from your phone.**
 
-> **Current status: v0.3.0 Public Beta.**
+> **Current status: v0.4.1 Public Beta.**
 >
-> Core remote generation, generic ComfyUI API Workflow support, Windows Setup, Tailscale remote access, Doctor diagnostics, and Windows login autostart are available. Advanced crash recovery, multi-host support, and Wake-on-LAN are not implemented yet.
+> Generic ComfyUI API Workflow support, mobile creation, retained-media Retry, actual image output metadata, Windows Setup, Tailscale remote access, Doctor diagnostics, and guarded Recovery Lite controls are available. Full automatic watchdog recovery, multi-host support, and Wake-on-LAN are not implemented.
 
 Comfy Remote is a mobile-first remote creation panel for ComfyUI. It runs on the Windows computer that hosts ComfyUI and turns locally verified **ComfyUI API Workflows** into a phone-friendly interface for selecting workflows, adding media, editing prompts, submitting jobs, and reviewing results.
 
-The focus of v0.3 is **Public Readiness + Configurator 2.0**. First-time installation does not require hand-writing TOML and does not require a MiniMax H3 environment. Unknown API Workflows are analyzed using schema information, graph connections, and a conservative heuristic fallback, then validated through Preflight and a real Runtime Test.
+The current v0.4.1 baseline builds on **Public Readiness + Configurator 2.0** with a clearer Specialized / Generic creation boundary, explicit Seed Policy, reference-image resolution preprocessing, guarded manual ComfyUI recovery, reliable historical-media Retry, and actual image product metadata. It still avoids silently rewriting arbitrary workflows or exposing ComfyUI directly to the network.
 
 ## What it does
 
@@ -18,11 +18,15 @@ The focus of v0.3 is **Public Readiness + Configurator 2.0**. First-time install
 - Uses **Schema + Graph + heuristic fallback** instead of assuming every workflow must contain fixed fields such as `width`, `height`, or `batch_size`.
 - Configurator 2.0 presents explicit confirmation and advanced manual mapping for uncertain cases; it does not silently rewrite the workflow graph to fit the UI.
 - Supports image / video / audio / file artifacts and job history.
-- Supports submit, queue, live progress, cancel, retry, result preview, and download.
+- Supports submit, queue, live progress, cancel, Retry, result preview, and download.
+- Restores retained historical reference media on Retry without requiring the same file to be reselected or re-uploaded from the phone; retained inputs can still be replaced or removed explicitly.
+- Shows actual produced image width, height, format, and file size when the output file is available.
+- Provides `randomize / fixed / increment` Seed Policy and reference-image resolution preprocessing while keeping Generic controls bound to real Workflow inputs.
+- Provides guarded Recovery Lite controls for managed ComfyUI processes; an `unresponsive` state requires three consecutive failed health polls while the recorded process is still independently verified alive.
 - Provides `setup`, `start / stop / restart / status`, `doctor`, and Windows login autostart commands.
 - Detects existing Windows Portable ComfyUI launch scripts and preserves their real static arguments, including options such as `--enable-manager` and `--use-sage-attention`.
 - Recommends Tailscale Serve for phone access while keeping both the Panel and ComfyUI bound to localhost.
-- The Web Panel supports **English / 简体中文** switching and remembers the browser preference.
+- Public documentation is available in English and Simplified Chinese; the current Web Panel release keeps the accepted stable Chinese UI baseline.
 - Includes six MiniMax H3 workflows as **Bundled / Verified examples**. Missing H3 nodes or models do not block you from using your own workflows.
 
 ## Quick Start — Windows
@@ -110,15 +114,15 @@ Phone → Tailscale HTTPS Serve → 127.0.0.1:8190 Comfy Remote → 127.0.0.1:81
 
 See [SECURITY.md](SECURITY.md) for details.
 
-## Known limitations — v0.3 Public Beta
+## Known limitations — v0.4.1 Public Beta
 
 - **Windows 10/11 is the primary validated platform.** Linux participates in CI, but the public install and real-device path is currently Windows-first.
 - **Tailscale is the primary remote transport today.** The core architecture is not intended to be permanently tied to Tailscale, but other transports do not yet have an equivalent public installation path.
-- **Recovery from severe ComfyUI crashes is still limited.** The Panel can start, stop, and restart the ComfyUI process it manages, but GPU OOM, driver faults, and abnormal process trees do not yet have a complete watchdog/recovery policy.
-- **No Wake-on-LAN.** Waking a sleeping or powered-off computer from outside the machine is not part of v0.3.
+- **Recovery Lite is manual, not a full watchdog.** The Panel can identify a verified managed process as unresponsive after three consecutive failed health polls and offer a guarded force restart, but it does not automatically restart crash loops, recover GPU/driver faults, or resubmit interrupted jobs.
+- **Real hard-hang/OOM recovery remains field-validated rather than manufactured for release testing.** Safety and debounce paths are automated-test covered, but v0.4.1 does not intentionally force GPU/ComfyUI hangs during acceptance.
+- **No Wake-on-LAN.** Waking a sleeping or powered-off computer from outside the machine is not part of v0.4.1.
 - **No multi-host support.** One Panel currently maps to one local ComfyUI installation.
 - **Third-party Custom Node compatibility depends on schema and real runtime behavior.** Configurator 2.0 analyzes what it can, but cannot guarantee automatic understanding of every custom node.
-- **Seed Policy has not been designed as a separate feature yet.** v0.3 keeps the simple rule: blank = random; an explicit number, including `0`, = fixed.
 
 See [TODO / Roadmap](docs/TODO.md) for the next development baseline.
 
@@ -163,6 +167,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before contributing.
 - [Windows first-run guide](docs/GETTING_STARTED_WINDOWS.md) · [简体中文](docs/GETTING_STARTED_WINDOWS.zh-CN.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md) · [简体中文](docs/TROUBLESHOOTING.zh-CN.md)
 - [Workflow / Configurator 2.0 guide](docs/WORKFLOWS.md) · [简体中文](docs/WORKFLOWS.zh-CN.md)
+- [Release Acceptance](docs/ACCEPTANCE.md)
 - [Public Readiness Acceptance](docs/PUBLIC_READINESS_ACCEPTANCE.md)
 - [TODO / Roadmap](docs/TODO.md)
 - [Security](SECURITY.md)

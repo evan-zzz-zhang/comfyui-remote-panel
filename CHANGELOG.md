@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.4.1 — Media Continuity
+
+Comfy Remote v0.4.1 completes the v0.4 mobile creation/recovery baseline with reliable Retry media continuity and actual image output metadata.
+
+### Highlights
+
+- Retry restores retained historical reference media through authenticated server URLs instead of placeholder-only state or fabricated browser `File`/`Blob` objects.
+- Retained media can be reused without reselecting it on the phone, while replacement and deletion remain explicit per-Job actions.
+- Each retried Job keeps its own private input copy; when image resolution policy and target are unchanged, saved preprocessing metadata is reused and redundant image processing is skipped.
+- Changing the resolution policy or target processes only the new Job's private copy and leaves the source Job untouched.
+- Image result cards show actual output width, height, format, and file size read from the produced file; historical image metadata is lazily backfilled when available.
+- `job_artifacts.metadata_json` is additive and the existing SQLite compatibility marker is preserved for rollback compatibility.
+- Recovery Lite now requires three consecutive failed ComfyUI health polls before a verified still-running managed process is classified as `unresponsive`; any successful poll resets the streak. Force restart is not offered during the first two failures.
+- Existing H3 / Generic workflow behavior, Seed Policy, mobile Prompt keyboard behavior, Settings, and Recovery Lite controls remain regression-covered.
+
+### Verification
+
+- Real-phone acceptance completed on 2026-08-29 for retained preview, prompt-only Retry, A → B → C Retry continuity, Replace / Delete, resolution-policy changes, H3 ↔ Generic switching, Settings, Recovery Lite, and WAI txt2img/img2img output-dimension comparison.
+- The three-failure unresponsive debounce is covered by automated tests, including streak reset after a successful health poll; a real GPU/ComfyUI hard hang is intentionally not manufactured for acceptance.
+- CI covers minimum dependencies, repository/history safety, Windows and Ubuntu on Python 3.11 / 3.13, pytest, JavaScript syntax checks, i18n smoke, and package builds.
+
+### Still out of scope
+
+- Automatic watchdog / crash-loop recovery and automatic job resubmission.
+- Wake-on-LAN or powered-off/sleeping host recovery.
+- Multi-host routing.
+- Media library / global Asset system, content-addressed storage, hardlinks, or reference counting.
+- Video poster generation or FFmpeg/OpenCV-based media parsing.
+
 ## v0.3.0 — Public Beta
 
 Comfy Remote v0.3.0 is the first public-beta baseline focused on making a local ComfyUI installation usable from a phone without requiring users to hand-edit project configuration.

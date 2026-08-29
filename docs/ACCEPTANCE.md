@@ -102,7 +102,7 @@ CI release gates：minimum-dependencies、Windows/Linux、Python 3.11/3.13、tes
 ## 2026-08-25 vivo X300 移动实机反馈
 
 - 环境：vivo X300、Microsoft Edge、中国广电 5G、Tailscale 已连接。
-- 纯文字、仅首帧、仅尾帧、首尾帧四种 FL2VA 均成功；Ref2VA 真实任务成功。
+- 纯文字、仅首帧、仅尾帧四种 FL2VA 均成功；Ref2VA 真实任务成功。
 - 生成、播放、拖动和下载整体通过。
 
 ## 2026-08-26 Mobile UX Rebuild 最终验收
@@ -192,3 +192,39 @@ CI release gates：minimum-dependencies、Windows/Linux、Python 3.11/3.13、tes
 - pytest、JavaScript syntax check、repository scan、wheel/source build：通过。
 
 **结论：v0.4 Recovery Lite 当前范围真机验收通过。真实 OOM / 卡死恢复保留为后续现场验证项，不阻塞本阶段合并与收尾。**
+
+---
+
+## 2026-08-29 v0.4.1 Media Continuity 最终验收
+
+本轮在 `feat/v0.4.1-media-continuity` 完成 Retry 历史素材连续性与实际图片产物元数据，并在发布收尾时加入 Recovery Lite 无响应三次连续失败防抖。
+
+### 手机真机验收通过
+
+- H3 ↔ Generic 工作流切换未发现回归。
+- 手机 Prompt 键盘进入、编辑、退出未发现回归。
+- Retry 后历史参考图恢复真实预览，不再只有“已保留素材”占位。
+- 仅修改 Prompt 可直接再次生成，不要求重新选择参考图。
+- A → B → C 连续 Retry 可持续沿用参考素材。
+- retained 图片 Replace / Delete 行为符合预期，历史 Job 不被后续任务修改。
+- 1.0 MP → 1.0 MP、1.0 MP → 0.5 MP 与 Never Upscale 路径未发现异常。
+- WAI txt2img / img2img 任务卡显示的实际输出尺寸与产物文件对照通过。
+- Settings 与 Recovery Lite 回归未发现问题。
+- 用户完成整轮验收后确认：**未发现问题**。
+
+### 无响应防抖自动化验收
+
+由于不主动制造真实 GPU / ComfyUI 卡死事故，本项按用户授权由自动化验证完成：
+
+- 已核验受管 ComfyUI 进程仍存活时，第 1 次健康检查失败不判 `unresponsive`，且不开放强制重启。
+- 第 2 次连续失败仍不判 `unresponsive`，且不开放强制重启。
+- 第 3 次连续失败才判 `unresponsive` 并沿用 Recovery Lite 的受控强制重启能力。
+- 任意一次健康检查成功都会把失败计数清零；之后再次失败从第 1 次重新累计。
+- 未发现受管进程时仍直接按 `offline` 处理，不会因为失败次数误判为卡死。
+
+### CI 与结论
+
+- 防抖改动加入后，minimum-dependencies、repository/history safety、Ubuntu Python 3.11 / 3.13、Windows Python 3.11 / 3.13 的 pytest 与 build 全部通过。
+- 最终发布 gate 要求版本、文档和代码位于同一提交链，并再次通过上述完整 CI 后合并；不以真实 GPU 卡死作为发布阻塞项。
+
+**结论：v0.4.1 真机功能验收通过；卡死防抖由自动化覆盖并通过。满足最终发布 gate，合并仅在完整 CI 全绿后执行。**

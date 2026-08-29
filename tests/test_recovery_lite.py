@@ -138,21 +138,21 @@ class _OnlineComfy:
         return None
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("managed_alive", "expected_state"),
-    [(False, "offline"), (True, "unresponsive")],
-)
-async def test_metrics_distinguishes_offline_from_verified_unresponsive_process(
-    tmp_path, managed_alive, expected_state
-):
+def _lifecycle_mock(managed_alive: bool):
     lifecycle_mock = Mock()
     lifecycle_mock.managed_process_alive.return_value = managed_alive
     lifecycle_mock.snapshot.side_effect = lambda online, **kwargs: {
         "enabled": True,
         "state": "online" if online else ("unresponsive" if kwargs["managed_process_alive"] else "offline"),
         "managed_process_alive": kwargs["managed_process_alive"],
+        "can_force_restart": bool(kwargs["managed_process_alive"] and not online),
     }
+    return lifecycle_mock
+
+
+@pytest.mark.asyncio
+async def test_metrics_reports_offline_immediately_when_no_verified_process(tmp_path):
+    lifecycle_mock = _lifecycle_mock(False)
     service = MetricsService(
         _FakeDb(), _FailingComfy(), {}, Mock(), tmp_path, 3, 1, lifecycle_mock
     )
@@ -160,20 +160,59 @@ async def test_metrics_distinguishes_offline_from_verified_unresponsive_process(
 
     snapshot = await service.collect()
 
-    assert snapshot["comfyui"]["state"] == expected_state
-    lifecycle_mock.snapshot.assert_called_once()
-    assert lifecycle_mock.snapshot.call_args.kwargs["managed_process_alive"] is managed_alive
+    assert snapshot["comfyui"]["state"] == "offline"
+    assert snapshot["comfyui"]["control"]["can_force_restart"] is False
+    assert service._comfy_failures == 1
+
+
+@pytest.mark.asyncio
+async def test_metrics_requires_three_consecutive_failures_for_unresponsive(tmp_path):
+    lifecycle_mock = _lifecycle_mock(True)
+    service = MetricsService(
+        _FakeDb(), _FailingComfy(), {}, Mock(), tmp_path, 3, 1, lifecycle_mock
+    )
+    service._nvidia_gpus = AsyncMock(return_value=[])
+
+    first = await service.collect()
+    second = await service.collect()
+    third = await service.collect()
+
+    assert first["comfyui"]["state"] == "offline"
+    assert first["comfyui"]["control"]["can_force_restart"] is False
+    assert second["comfyui"]["state"] == "offline"
+    assert second["comfyui"]["control"]["can_force_restart"] is False
+    assert third["comfyui"]["state"] == "unresponsive"
+    assert third["comfyui"]["control"]["can_force_restart"] is True
+    assert service._comfy_failures == 3
+
+
+@pytest.mark.asyncio
+async def test_success_resets_unresponsive_failure_streak(tmp_path):
+    lifecycle_mock = _lifecycle_mock(True)
+    service = MetricsService(
+        _FakeDb(), _FailingComfy(), {}, Mock(), tmp_path, 3, 1, lifecycle_mock
+    )
+    service._nvidia_gpus = AsyncMock(return_value=[])
+
+    await service.collect()
+    await service.collect()
+    assert service._comfy_failures == 2
+
+    service.comfy = _OnlineComfy()
+    online = await service.collect()
+    assert online["comfyui"]["state"] == "online"
+    assert service._comfy_failures == 0
+
+    service.comfy = _FailingComfy()
+    after_reset = await service.collect()
+    assert after_reset["comfyui"]["state"] == "offline"
+    assert after_reset["comfyui"]["control"]["can_force_restart"] is False
+    assert service._comfy_failures == 1
 
 
 @pytest.mark.asyncio
 async def test_online_api_wins_even_when_managed_process_record_exists(tmp_path):
-    lifecycle_mock = Mock()
-    lifecycle_mock.managed_process_alive.return_value = True
-    lifecycle_mock.snapshot.side_effect = lambda online, **kwargs: {
-        "enabled": True,
-        "state": "online" if online else "unresponsive",
-        "managed_process_alive": kwargs["managed_process_alive"],
-    }
+    lifecycle_mock = _lifecycle_mock(True)
     service = MetricsService(
         _FakeDb(), _OnlineComfy(), {}, Mock(), tmp_path, 3, 1, lifecycle_mock
     )
