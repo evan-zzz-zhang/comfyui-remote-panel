@@ -20,6 +20,7 @@ LOGIN = {"Tailscale-User-Login": "owner@example.com"}
 async def comfy_server_v042(aiohttp_server):
     app = web.Application()
     app["submitted"] = []
+    app["history"] = {}
 
     async def stats(_):
         return web.json_response({"system": {"comfyui_version": "0.30.0"}, "devices": []})
@@ -49,8 +50,10 @@ async def comfy_server_v042(aiohttp_server):
         app["submitted"].append(body)
         return web.json_response({"prompt_id": body["prompt_id"], "number": 1, "node_errors": {}})
 
-    async def history(_):
-        return web.json_response({})
+    async def history(request):
+        job_id = request.match_info["job_id"]
+        entry = app["history"].get(job_id)
+        return web.json_response({job_id: entry} if entry is not None else {})
 
     async def cancel(_):
         return web.json_response({"cancelled": False})
@@ -106,6 +109,67 @@ async def test_virtual_fl2va_group_routes_lightx2v(panel_client_v042, comfy_serv
     assert graph["124"]["inputs"]["scheduler"] == "simple"
     assert graph["149"]["inputs"]["sampler_name"] == "euler"
     assert graph["124"]["inputs"]["steps"] == 8
+
+
+@pytest.mark.asyncio
+async def test_standardized_prompt_is_saved_from_preview_history_and_retry_keeps_original(
+    panel_client_v042, comfy_server_v042
+):
+    form = FormData(default_to_multipart=True)
+    form.add_field("preset_id", "h3-fl2va-group")
+    form.add_field("prompt", "原始提示词")
+    form.add_field("values_json", json.dumps({
+        "generation_mode": "v4_600step",
+        "prompt_standardization": True,
+    }))
+    response = await panel_client_v042.post("/api/jobs", data=form, headers=LOGIN)
+    assert response.status == 201, await response.text()
+    created = await response.json()
+    job_id = created["id"]
+
+    comfy_server_v042.app["history"][job_id] = {
+        "status": {"completed": True, "status_str": "success", "messages": []},
+        "outputs": {"153": {"text": ["H3 标准化后的完整提示词"]}},
+    }
+    await panel_client_v042.app["jobs"].reconcile_once()
+
+    stored = await panel_client_v042.app["db"].get_job(job_id)
+    public = panel_client_v042.app["jobs"].public_job(stored)
+    assert public["prompt"] == "原始提示词"
+    assert public["standardized_prompt"] == "H3 标准化后的完整提示词"
+    assert "_v042_standardized_prompt" not in public["input_values"]
+
+    draft = await panel_client_v042.app["jobs"].retry(job_id)
+    assert draft["prompt"] == "原始提示词"
+    assert "_v042_standardized_prompt" not in draft["values"]
+
+
+@pytest.mark.asyncio
+async def test_standardized_prompt_is_not_saved_when_standardization_is_off(
+    panel_client_v042, comfy_server_v042
+):
+    form = FormData(default_to_multipart=True)
+    form.add_field("preset_id", "h3-fl2va-group")
+    form.add_field("prompt", "直接使用原始提示词")
+    form.add_field("values_json", json.dumps({
+        "generation_mode": "v4_600step",
+        "prompt_standardization": False,
+    }))
+    response = await panel_client_v042.post("/api/jobs", data=form, headers=LOGIN)
+    assert response.status == 201, await response.text()
+    created = await response.json()
+    job_id = created["id"]
+
+    comfy_server_v042.app["history"][job_id] = {
+        "status": {"completed": True, "status_str": "success", "messages": []},
+        "outputs": {"153": {"text": ["直接使用原始提示词"]}},
+    }
+    await panel_client_v042.app["jobs"].reconcile_once()
+
+    stored = await panel_client_v042.app["db"].get_job(job_id)
+    public = panel_client_v042.app["jobs"].public_job(stored)
+    assert public["prompt"] == "直接使用原始提示词"
+    assert public["standardized_prompt"] is None
 
 
 @pytest.mark.asyncio
