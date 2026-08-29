@@ -184,7 +184,7 @@
 
   applyPreset = function(presetId, overrides = {}) {
     const merged = mergedOverrides(overrides);
-    const directMode = modeForPreset(presetId);
+    const directMode = presetId === ENTRY_ID ? null : modeForPreset(presetId);
     const visibleId = directMode ? ENTRY_ID : presetId;
     const isUnifiedFl2va = visibleId === ENTRY_ID;
     const mode = isUnifiedFl2va
