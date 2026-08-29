@@ -113,7 +113,7 @@
     const list = $("#about-build-info", page || document);
     if (!list) return;
     const dirty = info.tracked_dirty === true
-      ? "有已跟踪修改"
+      ? "本地有已跟踪修改"
       : info.tracked_dirty === false
         ? "干净"
         : "不可用";
