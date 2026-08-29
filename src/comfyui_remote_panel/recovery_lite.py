@@ -10,7 +10,25 @@ def install() -> None:
     """Install the small, explicit Recovery Lite compatibility layer."""
 
     from . import app as app_module
+    from . import lifecycle as lifecycle_module
     from . import metrics as metrics_module
+
+    original_snapshot = lifecycle_module.ComfyLifecycle.snapshot
+    original_trigger = lifecycle_module.ComfyLifecycle.trigger
+
+    def snapshot_recovery_lite(self, online: bool, **kwargs):
+        snapshot = original_snapshot(self, online, **kwargs)
+        if online:
+            snapshot["can_force_restart"] = False
+        return snapshot
+
+    async def trigger_recovery_lite(self, action: str):
+        if action == "force_restart" and await self._is_online():
+            raise lifecycle_module.LifecycleError("ComfyUI 当前在线，请使用普通重启")
+        return await original_trigger(self, action)
+
+    lifecycle_module.ComfyLifecycle.snapshot = snapshot_recovery_lite
+    lifecycle_module.ComfyLifecycle.trigger = trigger_recovery_lite
 
     original_collect_once = metrics_module.MetricsService._collect_once
 

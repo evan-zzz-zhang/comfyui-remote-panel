@@ -1,5 +1,6 @@
 (() => {
   const baseRenderMetricsRecoveryLite = renderMetrics;
+  const baseJobCardRecoveryLite = jobCard;
   const recoveryStateLabels = {
     online: "在线",
     offline: "离线",
@@ -13,6 +14,13 @@
     stop: "正在关闭",
     restart: "正在重启",
     force_restart: "正在强制重启",
+  };
+  const failureLabels = {
+    cuda_oom: "显存不足（CUDA OOM）。可降低分辨率或时长后重试。",
+    missing_model: "工作流缺少所需模型，请在本机检查模型文件。",
+    missing_node: "工作流缺少所需自定义节点，请在本机检查 ComfyUI 节点。",
+    output_missing: "任务已结束，但未找到预期输出文件。",
+    comfyui_disconnected: "ComfyUI 连接异常，当前任务状态无法可靠确认。",
   };
 
   function stateLabel(comfy) {
@@ -35,6 +43,14 @@
     return button;
   }
 
+  jobCard = function jobCardRecoveryLite(job) {
+    const friendly = failureLabels[job?.error_category]
+      || (job?.error_category === "interrupted" && job?.status === "interrupted"
+        ? "任务执行过程中被中断。"
+        : null);
+    return baseJobCardRecoveryLite(friendly ? { ...job, error_summary: friendly } : job);
+  };
+
   renderControl = function renderControlRecoveryLite(comfy) {
     const control = comfy.control || { enabled: false };
     const stateValue = comfy.state || control.state || (comfy.online ? "online" : "offline");
@@ -51,7 +67,9 @@
     });
 
     if (forceButton) {
-      const forceVisible = stateValue === "unresponsive" || operation === "force_restart";
+      const forceVisible = Boolean(control.can_force_restart)
+        || stateValue === "unresponsive"
+        || operation === "force_restart";
       forceButton.classList.toggle("hidden", !forceVisible);
       forceButton.disabled = !control.enabled || Boolean(operation) || !control.can_force_restart;
     }
