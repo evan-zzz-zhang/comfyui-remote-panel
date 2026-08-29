@@ -87,12 +87,10 @@ class MetricsService:
             gpus = fallback_gpus
 
         now = time.time()
-        unresponsive = (
-            not comfy_online
-            and self._comfy_failures >= 3
-            and self._last_comfy_success_at is not None
-            and now - self._last_comfy_success_at <= 60
-        )
+        managed_process_alive = False
+        if self.lifecycle is not None:
+            managed_process_alive = await asyncio.to_thread(self.lifecycle.managed_process_alive)
+        unresponsive = not comfy_online and managed_process_alive
         should_check_presets = comfy_online and (
             not self._was_comfy_online or now - self._last_preset_check >= 300
         )
@@ -104,6 +102,7 @@ class MetricsService:
         control = self.lifecycle.snapshot(
             comfy_online,
             unresponsive=unresponsive,
+            managed_process_alive=managed_process_alive,
             last_success_at=self._last_comfy_success_at,
         ) if self.lifecycle else {"enabled": False}
         device_state = control.get(
@@ -136,10 +135,6 @@ class MetricsService:
         )
         subprocess_options: dict[str, Any] = {}
         if sys.platform == "win32":
-            # The panel itself is normally launched detached on Windows. Without
-            # CREATE_NO_WINDOW, every polling nvidia-smi console process gets its
-            # own visible terminal window and flashes on screen once per metrics
-            # interval. Keep the child entirely headless, matching lifecycle.py.
             subprocess_options["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
         try:
             process = await asyncio.create_subprocess_exec(
