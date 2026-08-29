@@ -8,6 +8,7 @@
     original: { label: "原版", preset_id: "h3-fl2va" },
   };
 
+  const baseLoadPresetsV042 = loadPresets;
   const baseApplyPresetV042 = applyPreset;
   const baseUpdateSubmitAvailabilityV042 = updateSubmitAvailability;
 
@@ -212,6 +213,24 @@
     } else {
       removeControls();
     }
+    return result;
+  };
+
+  function hideModeOptionsFromSelect() {
+    const hiddenIds = new Set(
+      Object.values(modeDefinitions())
+        .map(item => item?.preset_id)
+        .filter(id => id && id !== ENTRY_ID)
+    );
+    document.querySelectorAll("#preset-select option").forEach(option => {
+      if (hiddenIds.has(option.value)) option.remove();
+    });
+  }
+
+  loadPresets = async function() {
+    const result = await baseLoadPresetsV042();
+    hideModeOptionsFromSelect();
+    if (state.presets.has(ENTRY_ID)) applyPreset(ENTRY_ID);
     return result;
   };
 
