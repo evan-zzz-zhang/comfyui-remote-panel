@@ -1,8 +1,8 @@
 # Comfy Remote Roadmap / TODO
 
-当前开发基线：**v0.4 Reliability / Recovery**。
+当前开发基线：**v0.4 Recovery Lite**。
 
-`v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；`v0.4 Creation Experience` 已完成开发、CI 与移动端真机验收，下一阶段进入 Reliability / Recovery。
+`v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；`v0.4 Creation Experience` 已完成开发、CI 与移动端真机验收。当前只做一层轻量人工恢复能力，不把完整 watchdog / 自动恢复系统一次性塞进 v0.4。
 
 ---
 
@@ -45,18 +45,6 @@ v0.3 在独立 Windows 环境完成了以下真实链路验证：
 
 v0.3 最终发布定位为 **Public Beta**：核心路径可用，但不把高级恢复、多主机、WoL 等后续能力包装成已完成能力。
 
-### v0.3 明确延后
-
-以下内容没有为了 Public Readiness 临时塞入 v0.3：
-
-- 高级生成现场恢复 / watchdog；
-- Windows 睡眠、休眠、系统重启、关机；
-- Wake-on-LAN；
-- 多主机 Host Registry / routing / selector；
-- 高清参考图自动压缩；
-- 视频缩略图专项；
-- 独立 Seed Policy（`randomize / fixed / increment`，可扩展 decrement）。
-
 ---
 
 ## v0.4 Creation Experience — Completed
@@ -90,56 +78,52 @@ H3 Specialized ↔ WAI Generic 多次切换
 
 ---
 
-## v0.4 Reliability / Recovery — Current baseline
+## v0.4 Recovery Lite — Current baseline
 
-v0.4 下一阶段的目标不是继续堆更多 Workflow 类型，而是让“已经能远程用”变成“长时间无人看守也更可靠”。
+本阶段只解决一个现实问题：**人在外面时，如果 ComfyUI 崩溃、卡死或失联，手机端能够判断问题，并安全地手动恢复 ComfyUI。**
 
-### 1. ComfyUI 故障恢复
+### 当前范围
 
-- [ ] 明确定义 ComfyUI 状态：online / starting / stopping / crashed / unhealthy / unknown。
-- [ ] 区分“API 暂时无响应”“ComfyUI 进程退出”“GPU/driver 级异常”。
-- [ ] 任务执行期间 ComfyUI 异常时保留可解释的失败原因，而不是只显示连接断开。
-- [ ] 增加受控的强制停止 / 进程树清理策略，避免误杀用户其他 Python 进程。
-- [ ] 根据配置决定是否自动拉起 ComfyUI，并提供退避/最大重试，避免 crash loop。
-- [ ] Panel 重启后恢复可恢复的 lifecycle / task 状态。
+- [x] 设备状态收敛为用户可理解的 `在线 / 离线 / 无响应`；Panel 与 ComfyUI 状态明确分开。
+- [x] `无响应` 由“ComfyUI API 不可用 + 已记录且重新核验通过的 ComfyUI 主进程仍存活”判断，不依赖模糊的最近成功窗口。
+- [x] 新增人工 `force_restart`：只允许对 Remote Panel 已记录并重新核验 PID / create time / executable / command line 的 ComfyUI 主进程执行。
+- [x] 强制关闭仅处理从已验证 ComfyUI 主进程实时枚举出的进程树；每个目标在终止前再次核验进程实例，禁止按 `python.exe`、端口或模糊进程名批量杀进程。
+- [x] ComfyUI 正常在线时拒绝 `force_restart`，要求使用普通重启；只有离线但已验证进程仍存活等恢复场景才开放强制重启。
+- [x] 设备页显示 Remote Panel / ComfyUI 两个独立状态；ComfyUI 无响应时出现“强制重启”并进行二次确认，存在未完成任务时明确提示会中断。
+- [x] 任务卡对已有 `cuda_oom / missing_model / missing_node / output_missing / comfyui_disconnected` 分类显示更清楚的用户提示，不增加任务自动续跑。
+- [x] 回归测试覆盖：offline / unresponsive 判定、PID 实例变化保护、进程树限制、在线状态拒绝强制重启、前端脚本注入与 JS syntax check。
+- [ ] Windows 真机验收：正常在线、正常 restart、手动关闭后重新 start。
+- [ ] Windows 真机验收：安全模拟“进程仍在但 API 无响应”，手机显示“无响应”并完成强制重启。
+- [ ] Windows 真机验收：伪造/失效 process record 时必须拒绝强杀，不能影响其他 Python 进程。
+- [ ] 真机验收通过后同步用户文档 / ACCEPTANCE，创建 PR 并合并 `main`。
 
-### 2. 任务可靠性
+### 明确不做
 
-- [ ] 明确 submitted / queued / running / completed / failed / interrupted 的恢复语义。
-- [ ] ComfyUI 断开后重新查询 history/queue，尽可能确认任务真实最终状态。
-- [ ] 避免因 WebSocket/浏览器断线把仍在生成的任务误判失败。
-- [ ] 提供更清楚的 OOM / missing model / custom node runtime / output missing 分类。
-- [ ] 为恢复逻辑补充真实故障 fixture 与集成测试。
+Recovery Lite 不加入以下复杂能力：
 
-### 3. 设备页 Recovery UX
+- watchdog / 后台自动拉起；
+- 自动重试、指数退避、crash-loop 管理；
+- 任务自动恢复、自动续跑或重新提交；
+- 更复杂的 queue/history reconciliation；
+- Panel 重启后的生成现场恢复；
+- GPU / driver 级自动诊断；
+- Windows 睡眠 / 休眠 / 系统重启恢复；
+- Wake-on-LAN；
+- 多主机。
 
-- [ ] 把“Panel 在线”和“ComfyUI 在线”明确分开。
-- [ ] 显示最近一次 ComfyUI 崩溃/重启原因与时间。
-- [ ] 对安全可恢复状态提供“重启 ComfyUI”；对危险/未知状态给出明确提示。
-- [ ] 保持手机端操作简单，不把 PID、进程树、driver 错误等内部细节直接暴露给普通用户。
-
-### 4. Transport 继续解耦
-
-- [ ] 保持 Tailscale 为一种 transport，而不是核心身份/运行时模型的一部分。
-- [ ] 抽象 remote transport / auth capability，为后续受限公司网络或其他接入方式留出实现边界。
-- [ ] 新 transport 必须维持“Panel/ComfyUI 默认不直接暴露公网”的安全原则。
-
-### 5. Release quality
-
-- [ ] 将真实崩溃/恢复场景加入 v0.4 release gate。
-- [ ] 保持 Windows 为主要真机验证平台，同时继续 Windows/Linux CI。
-- [ ] 任何恢复功能必须优先保证“不误杀、不误重启、不伪造任务成功”。
+完成标准：**正常时不添麻烦；ComfyUI 卡死时能从手机安全恢复；任何无法确认进程身份的情况都宁可拒绝恢复，也不能误杀其他进程。**
 
 ---
 
 ## Later / separate design tracks
 
-这些方向可以继续研究，但不自动并入当前 Reliability / Recovery 阶段：
+这些方向可以继续研究，但不自动并入 Recovery Lite：
 
+- Full Reliability / Watchdog：自动拉起、重试退避、crash-loop、防断线误判、任务最终状态 reconciliation 等完整无人值守恢复能力。
 - Multi-host：家里 / 公司 / 其他主机的 Host Registry、selector、routing。
 - Wake-on-LAN / external watchdog：依赖局域网或机外常驻设备的电源恢复。
 - Web i18n / Language switch：重构为 key-based `t()` + 中英文语言包 + 显式 rerender；不再使用全局 DOM 扫描或 `MutationObserver` 追踪翻译。当前网页端继续保持中文稳定版，CLI / 文档双语不受影响。
 - Media optimization：视频缩略图、远程预览带宽优化，以及参考图预处理策略的后续增强。
 - Additional transports：在不降低安全边界的前提下补充 Tailscale 之外的连接方式。
 
-路线图原则：**先把远程生成做稳，再扩机器数量、连接方式、电源控制和全局体验能力。**
+路线图原则：**先解决真实远程恢复痛点，再决定是否值得引入完整无人值守恢复系统。**
