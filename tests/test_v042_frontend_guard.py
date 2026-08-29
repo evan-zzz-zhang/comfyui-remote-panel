@@ -42,6 +42,7 @@ def test_fl2va_mode_ui_stays_inside_existing_advanced_settings():
 
 
 def test_generation_mode_defaults_to_v4_and_uses_local_storage():
+    assert 'const ENTRY_ID = "h3-fl2va-group"' in JS
     assert 'const DEFAULT_MODE = "v4_600step"' in JS
     assert 'comfy-remote.fl2va.generation-mode' in JS
     assert 'window.localStorage.getItem(MODE_STORAGE_KEY)' in JS
@@ -50,15 +51,41 @@ def test_generation_mode_defaults_to_v4_and_uses_local_storage():
     assert 'applyPreset(ENTRY_ID)' in JS
 
 
+def test_lightx2v_has_deterministic_mode_defaults():
+    assert 'lightx2v: { scheduler: "simple", sampler: "euler", steps: 8 }' in JS
+    assert 'v4_600step: { scheduler: "beta", sampler: "euler", steps: 8 }' in JS
+    assert 'original: { scheduler: "simple", sampler: "res_multistep", steps: 20 }' in JS
+    assert 'applyModeDefaults(next)' in JS
+
+
 def test_prompt_requirement_tracks_standardizer_and_frame_presence():
     assert 'const hasFrame = ["#first-frame", "#last-frame"].some' in JS
     assert 'prompt.required = Boolean(toggle?.checked) || !hasFrame' in JS
 
 
-def test_fl2va_extra_values_use_existing_values_json_transport():
-    assert 'hidden.name = "values_json"' in JS
-    assert 'generation_mode: mode' in JS
-    assert 'prompt_standardization: standardize !== false' in JS
+def test_standardizer_uses_compact_toggle_instead_of_raw_checkbox_ui():
+    assert 'class="v042-switch"' in JS
+    assert '.v042-switch input:checked + i' in JS
+
+
+def test_fl2va_values_json_is_merged_and_deduplicated_before_upload():
+    assert 'formData.getAll("values_json")' in JS
+    assert 'formData.delete("values_json")' in JS
+    assert 'formData.set("values_json", JSON.stringify(values))' in JS
+    assert 'values.generation_mode = mode' in JS
+    assert 'values.prompt_standardization = standardize' in JS
+    assert 'values.media_resolution = mediaResolution' in JS
+    assert 'dedupeScalarFields(formData)' in JS
+
+
+def test_physical_fl2va_presets_are_hidden_from_creation_picker_but_keep_mode_status():
+    assert 'const ENTRY_ID = "h3-fl2va-group"' in JS
+    assert 'function physicalPresetIds()' in JS
+    assert 'function hidePhysicalWorkflowChoices()' in JS
+    assert 'button.remove()' in JS
+    assert 'function modeEnabled(mode)' in JS
+    assert 'item.status === "enabled"' in JS
+    assert 'new MutationObserver(() => queueMicrotask(hidePhysicalWorkflowChoices))' in JS
 
 
 @pytest.mark.asyncio
