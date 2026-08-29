@@ -94,6 +94,6 @@ async def test_root_loads_v042_script_after_existing_frontend_layers(tmp_path, a
     response = await client.get("/", headers={"Tailscale-User-Login": "owner@example.com"})
     assert response.status == 200
     html = await response.text()
-    assert html.count('<script src="/static/v042_ui.js?v=0.4.2" defer></script>') == 1
+    assert html.count('<script src="/static/v042_ui.js?v=0.4.2.1" defer></script>') == 1
     assert '<script src="/static/v041_ui.js?v=0.4.1" defer></script>' in html
     assert '<label class="creation-section prompt-field">' in html
