@@ -43,6 +43,51 @@
     return button;
   }
 
+  function aboutRow() {
+    return $$(".settings-row.static").find(row =>
+      row.querySelector("strong")?.textContent.trim() === "关于"
+    ) || null;
+  }
+
+  async function loadBuildInfo() {
+    try {
+      const response = await fetch("/api/about");
+      if (!response.ok) return;
+      const info = await response.json();
+      const row = aboutRow();
+      if (!row) return;
+
+      const summary = row.querySelector("small");
+      if (summary) summary.textContent = `Comfy Remote v${info.version || "未知"}`;
+
+      const container = row.querySelector("span");
+      if (container) {
+        let detail = container.querySelector(".about-build-identity");
+        if (!detail) {
+          detail = document.createElement("small");
+          detail.className = "about-build-identity";
+          container.append(detail);
+        }
+        const commit = info.commit ? String(info.commit).slice(0, 12) : null;
+        const branch = info.branch || (info.source === "git" ? "detached" : "release");
+        const parts = [branch];
+        if (commit) parts.push(commit);
+        if (info.tracked_dirty === true) parts.push("本地有已跟踪修改");
+        if (!commit) parts.push("Git 提交信息不可用");
+        detail.textContent = parts.join(" · ");
+        detail.title = info.commit || "";
+      }
+
+      let marker = row.querySelector(".about-acceptance-marker");
+      if (!marker) {
+        marker = document.createElement("span");
+        marker.className = "row-value about-acceptance-marker";
+        row.append(marker);
+      }
+      marker.textContent = "验收版本";
+    } catch (_) {}
+  }
+
   jobCard = function jobCardRecoveryLite(job) {
     const friendly = failureLabels[job?.error_category]
       || (job?.error_category === "interrupted" && job?.status === "interrupted"
@@ -116,6 +161,7 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     ensureForceRestartButton();
+    loadBuildInfo();
     $("#device-actions")?.addEventListener("click", async event => {
       const control = event.target.closest('[data-recovery-control="force_restart"]');
       if (!control) return;
