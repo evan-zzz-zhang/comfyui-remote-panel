@@ -27,10 +27,12 @@ def values():
         ({"first": "h3_remote/a/first.png", "last": "h3_remote/a/last.jpg"}, {"first_frame", "last_frame"}),
     ],
 )
-def test_builds_all_frame_modes_without_placeholder_links(preset, frames, expected_inputs):
+def test_builds_all_frame_modes_through_reference_frame_router(preset, frames, expected_inputs):
     graph = preset.build_prompt(values(), "00000000-0000-0000-0000-000000000001", frames)
-    target = graph["136"]["inputs"]
-    assert {name for name in ("first_frame", "last_frame") if name in target} == expected_inputs
+    frame_router = graph["156"]["inputs"]
+    assert {name for name in ("first_frame", "last_frame") if name in frame_router} == expected_inputs
+    assert graph["136"]["inputs"]["first_frame"] == ["156", 0]
+    assert graph["136"]["inputs"]["last_frame"] == ["156", 1]
     assert ("9001" in graph) == ("first" in frames)
     assert ("9002" in graph) == ("last" in frames)
 
@@ -60,30 +62,24 @@ def test_all_eight_aspect_ratios(preset):
 
 
 @pytest.mark.parametrize(
-    ("frames", "source_node"),
+    "frames",
     [
-        ({"first": "h3_remote/a/first.png"}, "9001"),
-        ({"last": "h3_remote/a/last.png"}, "9002"),
-        ({"first": "h3_remote/a/first.png", "last": "h3_remote/a/last.png"}, "9001"),
+        {"first": "h3_remote/a/first.png"},
+        {"last": "h3_remote/a/last.png"},
+        {"first": "h3_remote/a/first.png", "last": "h3_remote/a/last.png"},
     ],
 )
-def test_reference_aspect_uses_first_then_falls_back_to_last(preset, frames, source_node):
+def test_reference_aspect_uses_h3_aspect_router_without_legacy_size_nodes(preset, frames):
     data = values()
     data["aspect_ratio"] = "reference"
     data["megapixels"] = 0.8
     graph = preset.build_prompt(data, "job", frames)
-    assert graph["9003"] == {
-        "class_type": "ImageScaleToTotalPixels",
-        "inputs": {
-            "image": [source_node, 0],
-            "upscale_method": "nearest-exact",
-            "megapixels": 0.8,
-            "resolution_steps": 32,
-        },
-    }
-    assert graph["9004"] == {"class_type": "GetImageSize", "inputs": {"image": ["9003", 0]}}
-    assert graph["136"]["inputs"]["width"] == ["9004", 0]
-    assert graph["136"]["inputs"]["height"] == ["9004", 1]
+    assert "9003" not in graph
+    assert "9004" not in graph
+    assert graph["155"]["inputs"]["aspect_source"] == "auto"
+    assert graph["115"]["inputs"]["megapixels"] == 0.8
+    assert graph["136"]["inputs"]["width"] == ["155", 0]
+    assert graph["136"]["inputs"]["height"] == ["155", 1]
 
 
 def test_reference_aspect_rejects_missing_reference_image(preset):
