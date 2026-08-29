@@ -27,6 +27,7 @@ jobs:
       - run: node --check src/comfyui_remote_panel/static/configurator_v2_runtime.js
       - run: node --check src/comfyui_remote_panel/static/v04_ui.js
       - run: node --check src/comfyui_remote_panel/static/v041_ui.js
+      - run: node --check src/comfyui_remote_panel/static/v042_ui.js
       - run: node --check src/comfyui_remote_panel/static/ux_refinements.js
       - run: node --check src/comfyui_remote_panel/static/recovery_lite.js
       - run: python scripts/check_repository.py
