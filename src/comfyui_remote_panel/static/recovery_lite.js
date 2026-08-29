@@ -22,6 +22,7 @@
     output_missing: "任务已结束，但未找到预期输出文件。",
     comfyui_disconnected: "ComfyUI 连接异常，当前任务状态无法可靠确认。",
   };
+  let buildInfoRecoveryLite = null;
 
   function stateLabel(comfy) {
     const value = comfy?.state || (comfy?.online ? "online" : "offline");
@@ -44,48 +45,115 @@
   }
 
   function aboutRow() {
-    return $$(".settings-row.static").find(row =>
+    return $("#open-about") || $$("#settings-home .settings-row").find(row =>
       row.querySelector("strong")?.textContent.trim() === "关于"
     ) || null;
+  }
+
+  function ensureAboutPage() {
+    let page = $("#about-page");
+    if (page) return page;
+    const view = $("#view-workflows");
+    if (!view) return null;
+    page = document.createElement("div");
+    page.id = "about-page";
+    page.className = "hidden";
+    page.innerHTML = `
+      <div class="page-heading">
+        <button id="about-back" class="icon-button back-button" type="button" aria-label="返回设置">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <h2>关于</h2>
+      </div>
+      <div id="about-build-info" class="settings-list">
+        <div class="settings-row static"><span><strong>版本</strong><small>正在读取…</small></span></div>
+        <div class="settings-row static"><span><strong>分支</strong><small>正在读取…</small></span></div>
+        <div class="settings-row static"><span><strong>提交</strong><small>正在读取…</small></span></div>
+        <div class="settings-row static"><span><strong>工作区</strong><small>正在读取…</small></span></div>
+      </div>
+      <p class="form-message">这里显示当前实际运行的构建信息，用于真机验收时确认版本与提交是否对齐。</p>`;
+    view.append(page);
+    $("#about-back", page)?.addEventListener("click", closeAboutPage);
+    return page;
+  }
+
+  function installAboutEntry() {
+    const current = aboutRow();
+    if (!current || current.id === "open-about") return current;
+    const button = document.createElement("button");
+    button.id = "open-about";
+    button.type = "button";
+    button.className = "settings-row";
+    button.innerHTML = `
+      <span><strong>关于</strong><small>Comfy Remote 构建与版本信息</small></span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>`;
+    current.replaceWith(button);
+    button.addEventListener("click", openAboutPage);
+    return button;
+  }
+
+  function buildIdentity(info) {
+    const commit = info?.commit ? String(info.commit).slice(0, 12) : null;
+    const branch = info?.branch || (info?.source === "git" ? "detached" : "release");
+    return { branch, commit };
+  }
+
+  function renderBuildInfo(info) {
+    if (!info) return;
+    buildInfoRecoveryLite = info;
+    const row = installAboutEntry();
+    const identity = buildIdentity(info);
+    const summary = row?.querySelector("small");
+    if (summary) {
+      const commitText = identity.commit ? ` · ${identity.commit}` : "";
+      summary.textContent = `v${info.version || "未知"} · ${identity.branch}${commitText}`;
+    }
+
+    const page = ensureAboutPage();
+    const list = $("#about-build-info", page || document);
+    if (!list) return;
+    const dirty = info.tracked_dirty === true
+      ? "有已跟踪修改"
+      : info.tracked_dirty === false
+        ? "干净"
+        : "不可用";
+    list.innerHTML = `
+      <div class="settings-row static"><span><strong>版本</strong><small>Comfy Remote v${escapeHtml(info.version || "未知")}</small></span><span class="row-value">验收版本</span></div>
+      <div class="settings-row static"><span><strong>分支</strong><small>${escapeHtml(identity.branch)}</small></span></div>
+      <div class="settings-row static"><span><strong>提交</strong><small title="${escapeHtml(info.commit || "")}">${escapeHtml(identity.commit || "Git 提交信息不可用")}</small></span></div>
+      <div class="settings-row static"><span><strong>工作区</strong><small>${escapeHtml(dirty)}</small></span></div>`;
   }
 
   async function loadBuildInfo() {
     try {
       const response = await fetch("/api/about");
-      if (!response.ok) return;
-      const info = await response.json();
-      const row = aboutRow();
-      if (!row) return;
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      renderBuildInfo(await response.json());
+    } catch (_) {
+      const row = installAboutEntry();
+      const summary = row?.querySelector("small");
+      if (summary) summary.textContent = "构建信息读取失败";
+      const page = ensureAboutPage();
+      const list = $("#about-build-info", page || document);
+      if (list) list.innerHTML = '<p class="form-message error">无法读取当前构建信息。</p>';
+    }
+  }
 
-      const summary = row.querySelector("small");
-      if (summary) summary.textContent = `Comfy Remote v${info.version || "未知"}`;
+  function openAboutPage() {
+    const home = $("#settings-home");
+    const page = ensureAboutPage();
+    if (!home || !page) return;
+    home.classList.add("hidden");
+    page.classList.remove("hidden");
+    if (buildInfoRecoveryLite) renderBuildInfo(buildInfoRecoveryLite);
+    else loadBuildInfo();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
-      const container = row.querySelector("span");
-      if (container) {
-        let detail = container.querySelector(".about-build-identity");
-        if (!detail) {
-          detail = document.createElement("small");
-          detail.className = "about-build-identity";
-          container.append(detail);
-        }
-        const commit = info.commit ? String(info.commit).slice(0, 12) : null;
-        const branch = info.branch || (info.source === "git" ? "detached" : "release");
-        const parts = [branch];
-        if (commit) parts.push(commit);
-        if (info.tracked_dirty === true) parts.push("本地有已跟踪修改");
-        if (!commit) parts.push("Git 提交信息不可用");
-        detail.textContent = parts.join(" · ");
-        detail.title = info.commit || "";
-      }
-
-      let marker = row.querySelector(".about-acceptance-marker");
-      if (!marker) {
-        marker = document.createElement("span");
-        marker.className = "row-value about-acceptance-marker";
-        row.append(marker);
-      }
-      marker.textContent = "验收版本";
-    } catch (_) {}
+  function closeAboutPage() {
+    $("#about-page")?.classList.add("hidden");
+    $("#settings-home")?.classList.remove("hidden");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   jobCard = function jobCardRecoveryLite(job) {
@@ -161,6 +229,8 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     ensureForceRestartButton();
+    installAboutEntry();
+    ensureAboutPage();
     loadBuildInfo();
     $("#device-actions")?.addEventListener("click", async event => {
       const control = event.target.closest('[data-recovery-control="force_restart"]');
