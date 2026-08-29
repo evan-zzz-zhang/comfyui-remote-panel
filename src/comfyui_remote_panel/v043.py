@@ -99,9 +99,11 @@ def install() -> None:
             )
 
         # v0.4.2 could permanently mark a successfully generated task as failed
-        # when execution_success arrived just before /history became final. Allow
-        # authoritative success history to repair that exact terminal mismatch.
-        if current["status"] == "failed" and terminal_kind == "succeeded":
+        # when execution_success arrived just before /history became final. Repair
+        # only that exact generic false-failure signature. A specific WebSocket
+        # execution_error remains authoritative and must not be overwritten by a
+        # delayed/stale success result from a concurrent reconcile pass.
+        if _is_legacy_false_failure_candidate(current) and terminal_kind == "succeeded":
             # Keep older wrappers in the chain (notably the v0.4.2 standardized
             # prompt capture) before correcting the terminal job itself.
             await original_apply_history(self, current, entry)
