@@ -6,7 +6,7 @@ from aiohttp import web
 
 
 _SCRIPT_TAG = '<script src="/static/v042_ui.js?v=0.4.2.1" defer></script>'
-_PATCH_TAG = '<script src="/static/v042_patch.js?v=0.4.2.2" defer></script>'
+_PATCH_TAG = '<script src="/static/v042_patch.js?v=0.4.2.3" defer></script>'
 
 
 def install() -> None:
