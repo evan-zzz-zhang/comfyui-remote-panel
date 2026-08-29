@@ -52,12 +52,16 @@ async def comfy_server_v042(aiohttp_server):
     async def history(_):
         return web.json_response({})
 
+    async def cancel(_):
+        return web.json_response({"cancelled": False})
+
     app.router.add_get("/system_stats", stats)
     app.router.add_get("/queue", queue)
     app.router.add_get("/object_info/{node}", object_info)
     app.router.add_get("/models/{category}", models)
     app.router.add_post("/prompt", submit)
     app.router.add_get("/history/{job_id}", history)
+    app.router.add_post("/api/jobs/{job_id}/cancel", cancel)
     return await aiohttp_server(app)
 
 
