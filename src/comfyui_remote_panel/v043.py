@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import mimetypes
 import time
-from pathlib import Path
 from typing import Any
 
 from .comfy import ComfyError
 from .db import ACTIVE_STATUSES, TERMINAL_STATUSES
-from .files import FileValidationError
 
 
 _GENERIC_EXECUTION_FAILURE = "ComfyUI 执行失败，请检查本机日志"
@@ -64,94 +61,12 @@ def _is_legacy_false_failure_candidate(job: dict[str, Any]) -> bool:
     )
 
 
-def _local_primary_output(files: Any, job_id: str) -> Path | None:
-    """Find a uniquely attributable managed MP4 without relying on history.
-
-    v0.4.2 writes a deterministic rp_<job-key> prefix into the ComfyUI save
-    node before submission. If ComfyUI history later disappears, that prefix is
-    still enough to attribute a single managed MP4 to the original job. Refuse
-    ambiguous matches instead of guessing which output is primary.
-    """
-
-    final = files.output_root / files.flat_output_name(job_id)
-    if final.exists():
-        try:
-            validated = files.validate_output_file(final)
-        except (FileValidationError, OSError):
-            return None
-        return validated if validated.stat().st_size > 0 else None
-
-    prefix = files.storage_key(job_id).lower() + "_"
-    candidates: list[Path] = []
-    try:
-        entries = list(files.output_root.iterdir())
-    except OSError:
-        return None
-    for path in entries:
-        if not path.name.lower().startswith(prefix) or path.suffix.lower() != ".mp4":
-            continue
-        try:
-            validated = files.validate_output_file(path)
-        except (FileValidationError, OSError):
-            continue
-        if validated.stat().st_size > 0:
-            candidates.append(validated)
-    if len(candidates) != 1:
-        return None
-    return candidates[0]
-
-
-async def _recover_legacy_output_from_disk(self: Any, job: dict[str, Any]) -> dict[str, Any] | None:
-    """Repair a v0.4.2 generic false failure when ComfyUI history is gone."""
-
-    if not _is_legacy_false_failure_candidate(job):
-        return None
-    candidate = _local_primary_output(self.files, job["id"])
-    if candidate is None:
-        return None
-
-    original_name = candidate.name
-    try:
-        final = self.files.finalize_output(job["id"], candidate)
-    except (FileValidationError, OSError):
-        return None
-    size = final.stat().st_size
-    await self.db.add_artifact(
-        job["id"],
-        "output",
-        "primary",
-        0,
-        final,
-        "video",
-        mimetypes.guess_type(final.name)[0],
-        original_name,
-        size,
-    )
-    await self.db.add_file(job["id"], "output", final, size)
-    return await self.db.update_job(
-        job["id"],
-        status="succeeded",
-        stage="已完成",
-        finished_at=time.time(),
-        queue_position=None,
-        error_code=None,
-        error_summary=None,
-        recovery_attempts=0,
-        recovery_next_at=None,
-        recovery_last_error=None,
-        missing_observations=0,
-        missing_first_at=None,
-    )
-
-
 def install() -> None:
     """Install v0.4.3 task/history reconciliation hardening.
 
     The invariant is that Panel may enter a terminal state only from explicit
     ComfyUI terminal evidence. A WebSocket execution_success event is itself
     explicit success evidence even when /history is a few milliseconds behind.
-    Legacy v0.4.2 false failures can also be repaired from a uniquely
-    attributable managed output file when ComfyUI history has already vanished.
     """
 
     from . import jobs as jobs_module
@@ -286,7 +201,8 @@ def install() -> None:
 
         # One release of v0.4.2 could already have persisted the race as a
         # generic failed terminal job. Re-check only that narrow signature for
-        # 24 hours so existing affected tasks repair themselves after upgrade.
+        # 24 hours, but require explicit ComfyUI success evidence. Disk files do
+        # not redefine task state.
         page = await self.db.list_jobs(1, 100, statuses={"failed"})
         now = time.time()
         for job in page["items"]:
@@ -298,16 +214,11 @@ def install() -> None:
             try:
                 history = await self.comfy.history(job["id"])
             except ComfyError:
-                history = {}
+                continue
             entry = history.get(job["id"]) if isinstance(history, dict) else None
-            if isinstance(entry, dict) and _history_terminal_kind(entry) == "succeeded":
-                updated = await self._apply_history(job, entry)
-            else:
-                # ComfyUI can evict/clear history while the managed output file
-                # remains on disk. The deterministic rp_<job-key> prefix lets us
-                # repair the known v0.4.2 false-failure signature without a
-                # broad filesystem scan or filename guessing.
-                updated = await _recover_legacy_output_from_disk(self, job)
+            if not isinstance(entry, dict) or _history_terminal_kind(entry) != "succeeded":
+                continue
+            updated = await self._apply_history(job, entry)
             if updated:
                 self.events.publish("job", self.public_job(updated))
 
