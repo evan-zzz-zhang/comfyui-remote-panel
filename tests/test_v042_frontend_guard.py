@@ -11,6 +11,7 @@ from comfyui_remote_panel.config import Config
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "src" / "comfyui_remote_panel" / "static"
 JS = (STATIC / "v042_ui.js").read_text(encoding="utf-8")
+PATCH = (STATIC / "v042_patch.js").read_text(encoding="utf-8")
 INDEX = (STATIC / "index.html").read_text(encoding="utf-8")
 
 
@@ -63,9 +64,19 @@ def test_prompt_requirement_tracks_standardizer_and_frame_presence():
     assert 'prompt.required = Boolean(toggle?.checked) || !hasFrame' in JS
 
 
-def test_standardizer_uses_compact_toggle_instead_of_raw_checkbox_ui():
-    assert 'class="v042-switch"' in JS
-    assert '.v042-switch input:checked + i' in JS
+def test_standardizer_patch_hides_native_checkbox_and_uses_existing_toggle_button():
+    assert '[data-v042-standardizer-field] .v042-switch { display: none !important; }' in PATCH
+    assert 'button.className = "toggle-button"' in PATCH
+    assert 'button.classList.toggle("on", enabled)' in PATCH
+    assert 'button.setAttribute("aria-checked", enabled ? "true" : "false")' in PATCH
+    assert 'checkbox.checked = !checkbox.checked' in PATCH
+
+
+def test_standardized_prompt_is_rendered_in_job_history():
+    assert 'job?.standardized_prompt' in PATCH
+    assert '标准化提示词' in PATCH
+    assert 'v042-standardized-prompt' in PATCH
+    assert 'jobCard = function(job)' in PATCH
 
 
 def test_fl2va_values_json_is_merged_and_deduplicated_before_upload():
@@ -89,11 +100,15 @@ def test_physical_fl2va_presets_are_hidden_from_creation_picker_but_keep_mode_st
 
 
 @pytest.mark.asyncio
-async def test_root_loads_v042_script_after_existing_frontend_layers(tmp_path, aiohttp_client):
+async def test_root_loads_v042_scripts_after_existing_frontend_layers(tmp_path, aiohttp_client):
     client = await aiohttp_client(create_app(_config(tmp_path)))
     response = await client.get("/", headers={"Tailscale-User-Login": "owner@example.com"})
     assert response.status == 200
     html = await response.text()
-    assert html.count('<script src="/static/v042_ui.js?v=0.4.2.1" defer></script>') == 1
+    ui_tag = '<script src="/static/v042_ui.js?v=0.4.2.1" defer></script>'
+    patch_tag = '<script src="/static/v042_patch.js?v=0.4.2.2" defer></script>'
+    assert html.count(ui_tag) == 1
+    assert html.count(patch_tag) == 1
+    assert html.index(ui_tag) < html.index(patch_tag)
     assert '<script src="/static/v041_ui.js?v=0.4.1" defer></script>' in html
     assert '<label class="creation-section prompt-field">' in html
