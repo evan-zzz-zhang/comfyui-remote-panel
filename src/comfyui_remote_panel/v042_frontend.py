@@ -6,6 +6,7 @@ from aiohttp import web
 
 
 _SCRIPT_TAG = '<script src="/static/v042_ui.js?v=0.4.2.1" defer></script>'
+_PATCH_TAG = '<script src="/static/v042_patch.js?v=0.4.2.2" defer></script>'
 
 
 def install() -> None:
@@ -31,17 +32,19 @@ def install() -> None:
                 and response.content_type == "text/html"
             ):
                 html = response.text
-                if html and _SCRIPT_TAG not in html:
-                    html = html.replace("</body>", f"  {_SCRIPT_TAG}\n</body>")
-                    replacement = web.Response(
-                        text=html,
-                        status=response.status,
-                        content_type="text/html",
-                    )
-                    for key, value in response.headers.items():
-                        if key.lower() not in {"content-type", "content-length"}:
-                            replacement.headers[key] = value
-                    return replacement
+                if html:
+                    missing = [tag for tag in (_SCRIPT_TAG, _PATCH_TAG) if tag not in html]
+                    if missing:
+                        html = html.replace("</body>", "  " + "\n  ".join(missing) + "\n</body>")
+                        replacement = web.Response(
+                            text=html,
+                            status=response.status,
+                            content_type="text/html",
+                        )
+                        for key, value in response.headers.items():
+                            if key.lower() not in {"content-type", "content-length"}:
+                                replacement.headers[key] = value
+                        return replacement
             return response
 
         application.middlewares.insert(0, v042_frontend)
