@@ -5,7 +5,8 @@ import secrets
 from typing import Any
 
 
-FL2VA_ENTRY_ID = "h3-fl2va"
+FL2VA_ENTRY_ID = "h3-fl2va-group"
+LEGACY_FL2VA_ENTRY_ID = "h3-fl2va"
 DEFAULT_GENERATION_MODE = "v4_600step"
 GENERATION_MODES = {
     "original": "h3-fl2va",
@@ -123,6 +124,15 @@ def _install_job_service() -> None:
     original_retry = jobs_module.JobService.retry
     original_public_job = jobs_module.JobService.public_job
 
+    async def require_enabled(self, preset_id: str) -> None:
+        get_workflow = getattr(self.db, "get_workflow", None)
+        if not callable(get_workflow):
+            return
+        item = await get_workflow(preset_id)
+        if item is not None and item.get("status") != "enabled":
+            mode = PRESET_TO_GENERATION_MODE.get(preset_id, preset_id)
+            raise preset_module.PresetError(f"生成模式 {mode} 对应工作流已禁用")
+
     async def create_v042(
         self,
         fields: dict[str, Any],
@@ -138,15 +148,23 @@ def _install_job_service() -> None:
                 self, routed, uploaded, job_id, is_test=is_test
             )
 
-        if preset_id == FL2VA_ENTRY_ID:
+        # The virtual group entry keeps the user-facing FL2VA workflow separate
+        # from the physical original preset. The previous v0.4.2 entry contract
+        # (h3-fl2va + generation_mode) remains accepted while this branch is in
+        # development, and h3-fl2va without generation_mode again means original.
+        unified_request = preset_id == FL2VA_ENTRY_ID or (
+            preset_id == LEGACY_FL2VA_ENTRY_ID and "generation_mode" in routed
+        )
+        if unified_request:
             try:
                 mode = _normalize_generation_mode(routed.get("generation_mode"))
             except ValueError as exc:
                 raise preset_module.PresetError(str(exc)) from exc
-            routed["preset_id"] = GENERATION_MODES[mode]
+            target_id = GENERATION_MODES[mode]
+            await require_enabled(self, target_id)
+            routed["preset_id"] = target_id
         elif preset_id in FL2VA_PRESET_IDS:
-            # Direct IDs remain accepted for backward compatibility.
-            pass
+            await require_enabled(self, preset_id)
 
         routed.pop("generation_mode", None)
         return await original_create(
