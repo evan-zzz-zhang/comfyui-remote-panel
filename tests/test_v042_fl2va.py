@@ -38,6 +38,8 @@ def test_three_fl2va_workflows_load_with_new_contract():
 def test_unified_fl2va_exposes_v4_as_default_generation_mode():
     preset = load_presets()["h3-fl2va"]
     metadata = preset.public_metadata()
+    assert v042.FL2VA_ENTRY_ID == "h3-fl2va-group"
+    assert v042.LEGACY_FL2VA_ENTRY_ID == "h3-fl2va"
     assert metadata["generation_modes"]["default"] == "v4_600step"
     assert metadata["generation_modes"]["values"] == {
         "v4_600step": {
