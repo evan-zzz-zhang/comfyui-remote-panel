@@ -26,6 +26,7 @@ def test_recovery_lite_about_entry_is_navigable_and_shows_build_identity():
     assert "验收版本" in script
     assert "工作区" in script
     assert "本地有已跟踪修改" in script
+    assert "这里显示当前实际运行的构建信息" not in script
 
 
 def test_recovery_lite_does_not_reintroduce_arbitrary_process_control():
