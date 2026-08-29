@@ -15,6 +15,20 @@ def test_recovery_lite_frontend_is_explicit_and_observer_free():
     assert 'unresponsive: "无响应"' in script
 
 
+def test_recovery_lite_about_entry_is_navigable_and_shows_build_identity():
+    script = (STATIC / "recovery_lite.js").read_text(encoding="utf-8")
+    assert 'button.id = "open-about"' in script
+    assert 'page.id = "about-page"' in script
+    assert 'id="about-back"' in script
+    assert 'fetch("/api/about")' in script
+    assert "openAboutPage" in script
+    assert "closeAboutPage" in script
+    assert "验收版本" in script
+    assert "工作区" in script
+    assert "本地有已跟踪修改" not in script
+    assert "有已跟踪修改" in script
+
+
 def test_recovery_lite_does_not_reintroduce_arbitrary_process_control():
     script = (STATIC / "recovery_lite.js").read_text(encoding="utf-8")
     backend = (ROOT / "src" / "comfyui_remote_panel" / "recovery_lite.py").read_text(encoding="utf-8")
