@@ -154,23 +154,47 @@ async def test_create_uses_same_panel_and_prompt_id(panel_client, comfy_server):
     assert submitted["prompt_id"] == job["id"]
     assert submitted["prompt"]["127"]["inputs"]["unet_name"] == r"MiniMax-H3\minimax_h3_fl2va_pruned_int8_convrot.safetensors"
     assert submitted["prompt"]["128"]["inputs"]["clip_name"] == r"MiniMax-H3\qwen3vl_32b_minimax_h3_int8_convrot.safetensors"
-    assert "first_frame" not in submitted["prompt"]["136"]["inputs"]
-    assert "last_frame" not in submitted["prompt"]["136"]["inputs"]
+    assert submitted["prompt"]["156"]["inputs"] == {}
+    assert submitted["prompt"]["136"]["inputs"]["first_frame"] == ["156", 0]
+    assert submitted["prompt"]["136"]["inputs"]["last_frame"] == ["156", 1]
 
 
 @pytest.mark.asyncio
-async def test_fl2va_image_submission_allows_empty_prompt(panel_client, comfy_server):
+async def test_fl2va_standardizer_rejects_empty_prompt_with_image(panel_client, comfy_server):
     image_data = io.BytesIO()
     Image.new("RGB", (24, 12), "red").save(image_data, format="PNG")
     form = FormData(default_to_multipart=True)
+    form.add_field("preset_id", "h3-fl2va")
     form.add_field("prompt", "")
+    form.add_field("first_frame", image_data.getvalue(), filename="first.png", content_type="image/png")
+    response = await panel_client.post("/api/jobs", data=form, headers=LOGIN)
+    assert response.status == 400
+    assert "提示词不能为空" in (await response.json())["error"]["message"]
+    assert not comfy_server.app["submitted"]
+
+
+@pytest.mark.asyncio
+async def test_fl2va_image_submission_allows_empty_prompt_when_standardizer_disabled(panel_client, comfy_server):
+    image_data = io.BytesIO()
+    Image.new("RGB", (24, 12), "red").save(image_data, format="PNG")
+    form = FormData(default_to_multipart=True)
+    form.add_field("preset_id", "h3-fl2va")
+    form.add_field("prompt", "")
+    form.add_field("values_json", json.dumps({
+        "generation_mode": "v4_600step",
+        "prompt_standardization": False,
+    }))
     form.add_field("first_frame", image_data.getvalue(), filename="first.png", content_type="image/png")
     response = await panel_client.post("/api/jobs", data=form, headers=LOGIN)
     assert response.status == 201, await response.text()
     job = await response.json()
     assert job["status"] == "queued"
-    assert comfy_server.app["submitted"][-1]["prompt"]["136"]["inputs"]["first_frame"] == ["9001", 0]
-    assert comfy_server.app["submitted"][-1]["prompt"]["138"]["inputs"]["value"] == ""
+    assert job["generation_mode"] == "v4_600step"
+    graph = comfy_server.app["submitted"][-1]["prompt"]
+    assert graph["156"]["inputs"]["first_frame"] == ["9001", 0]
+    assert graph["136"]["inputs"]["first_frame"] == ["156", 0]
+    assert graph["138"]["inputs"]["value"] == ""
+    assert graph["154"]["inputs"]["switch"] is False
 
 
 @pytest.mark.asyncio
