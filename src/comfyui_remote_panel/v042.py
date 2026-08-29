@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import copy
+import json
 import secrets
+import time
 from typing import Any
 
 
@@ -15,6 +17,7 @@ GENERATION_MODES = {
 }
 PRESET_TO_GENERATION_MODE = {preset_id: mode for mode, preset_id in GENERATION_MODES.items()}
 FL2VA_PRESET_IDS = frozenset(PRESET_TO_GENERATION_MODE)
+_STANDARDIZED_PROMPT_KEY = "_v042_standardized_prompt"
 
 
 def _normalize_generation_mode(value: Any) -> str:
@@ -22,6 +25,98 @@ def _normalize_generation_mode(value: Any) -> str:
     if mode not in GENERATION_MODES:
         raise ValueError("生成模式必须是 original / lightx2v / v4_600step")
     return mode
+
+
+def _connection_source(value: Any) -> str | None:
+    if isinstance(value, (list, tuple)) and value:
+        return str(value[0])
+    return None
+
+
+def _preview_node_for_standardized_prompt(preset: Any) -> str | None:
+    standardizer = preset.manifest.get("h3_prompt_standardizer")
+    if not isinstance(standardizer, dict) or standardizer.get("node") is None:
+        return None
+    standardizer_node = str(standardizer["node"])
+    switches = {
+        str(node_id)
+        for node_id, node in preset.template.items()
+        if isinstance(node, dict)
+        and node.get("class_type") == "LazySwitchKJ"
+        and _connection_source((node.get("inputs") or {}).get("on_true")) == standardizer_node
+    }
+    for node_id, node in preset.template.items():
+        if not isinstance(node, dict) or node.get("class_type") != "PreviewAny":
+            continue
+        if _connection_source((node.get("inputs") or {}).get("source")) in switches:
+            return str(node_id)
+    return None
+
+
+def _history_text(value: Any) -> str | None:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            text = _history_text(item)
+            if text is not None:
+                return text
+    if isinstance(value, dict):
+        for key in ("text", "value", "string"):
+            if key in value:
+                text = _history_text(value[key])
+                if text is not None:
+                    return text
+    return None
+
+
+def _standardized_prompt_from_history(service: Any, job: dict[str, Any], entry: dict[str, Any]) -> str | None:
+    preset = service.presets.get(str(job.get("preset_id") or ""))
+    if preset is None or preset.id not in FL2VA_PRESET_IDS:
+        return None
+    values = job.get("input_values") if isinstance(job.get("input_values"), dict) else {}
+    enabled = values.get("prompt_standardization")
+    if enabled is None:
+        spec = preset.manifest.get("parameters", {}).get("prompt_standardization", {})
+        enabled = spec.get("default", True) if isinstance(spec, dict) else True
+    if enabled is not True:
+        return None
+    preview_node = _preview_node_for_standardized_prompt(preset)
+    outputs = entry.get("outputs") if isinstance(entry, dict) else None
+    if preview_node is None or not isinstance(outputs, dict):
+        return None
+    text = _history_text(outputs.get(preview_node))
+    return text if isinstance(text, str) and text.strip() else None
+
+
+def _install_database_behavior() -> None:
+    from . import db as db_module
+
+    if hasattr(db_module.Database, "set_standardized_prompt_v042"):
+        return
+
+    async def set_standardized_prompt_v042(self, job_id: str, prompt: str) -> dict[str, Any] | None:
+        async with self._lock:
+            with self._connect() as connection:
+                row = connection.execute(
+                    "SELECT input_values_json FROM jobs WHERE id = ?", (job_id,)
+                ).fetchone()
+                if row is None:
+                    return None
+                try:
+                    values = json.loads(row[0]) if row[0] else {}
+                except json.JSONDecodeError:
+                    values = {}
+                if not isinstance(values, dict):
+                    values = {}
+                values[_STANDARDIZED_PROMPT_KEY] = prompt
+                connection.execute(
+                    "UPDATE jobs SET input_values_json = ?, updated_at = ? WHERE id = ?",
+                    (json.dumps(values, ensure_ascii=False), time.time(), job_id),
+                )
+        return await self.get_job(job_id)
+
+    db_module.Database.set_standardized_prompt_v042 = set_standardized_prompt_v042
 
 
 def _install_preset_behavior() -> None:
@@ -123,6 +218,7 @@ def _install_job_service() -> None:
     original_create = jobs_module.JobService.create
     original_retry = jobs_module.JobService.retry
     original_public_job = jobs_module.JobService.public_job
+    original_apply_history = jobs_module.JobService._apply_history
 
     async def require_enabled(self, preset_id: str) -> None:
         get_workflow = getattr(self.db, "get_workflow", None)
@@ -173,6 +269,9 @@ def _install_job_service() -> None:
 
     async def retry_v042(self, job_id: str) -> dict[str, Any]:
         draft = await original_retry(self, job_id)
+        values = draft.get("values")
+        if isinstance(values, dict):
+            values.pop(_STANDARDIZED_PROMPT_KEY, None)
         preset_id = str(draft.get("preset_id") or "")
         mode = PRESET_TO_GENERATION_MODE.get(preset_id)
         if mode is not None:
@@ -180,10 +279,19 @@ def _install_job_service() -> None:
             draft["preset_id"] = FL2VA_ENTRY_ID
         return draft
 
+    async def apply_history_v042(self, job: dict[str, Any], entry: dict[str, Any]) -> dict[str, Any]:
+        standardized_prompt = _standardized_prompt_from_history(self, job, entry)
+        if standardized_prompt:
+            await self.db.set_standardized_prompt_v042(job["id"], standardized_prompt)
+        return await original_apply_history(self, job, entry)
+
     def public_job_v042(self, job: dict[str, Any] | None):
         result = original_public_job(self, job)
         if result is None or job is None:
             return result
+        values = dict(result.get("input_values") or {})
+        result["standardized_prompt"] = values.pop(_STANDARDIZED_PROMPT_KEY, None)
+        result["input_values"] = values
         preset_id = str(job.get("preset_id") or "")
         mode = PRESET_TO_GENERATION_MODE.get(preset_id)
         if mode is not None:
@@ -192,14 +300,17 @@ def _install_job_service() -> None:
 
     create_v042._v042_fl2va_modes = True  # type: ignore[attr-defined]
     retry_v042._v042_fl2va_modes = True  # type: ignore[attr-defined]
+    apply_history_v042._v042_fl2va_modes = True  # type: ignore[attr-defined]
     public_job_v042._v042_fl2va_modes = True  # type: ignore[attr-defined]
     jobs_module.JobService.create = create_v042
     jobs_module.JobService.retry = retry_v042
+    jobs_module.JobService._apply_history = apply_history_v042
     jobs_module.JobService.public_job = public_job_v042
 
 
 def install() -> None:
     """Install the v0.4.2 FL2VA mode routing and H3 prompt/aspect contract."""
 
+    _install_database_behavior()
     _install_preset_behavior()
     _install_job_service()
