@@ -114,6 +114,28 @@ async def test_incomplete_history_keeps_active_job_non_terminal(
 
 
 @pytest.mark.asyncio
+async def test_message_only_success_history_is_not_misclassified(
+    panel_client_v043, comfy_server_v043
+):
+    created = await _create_job(panel_client_v043)
+    comfy_server_v043.app["history"][created["id"]] = {
+        "status": {
+            "completed": False,
+            "status_str": "",
+            "messages": [["execution_success", {"timestamp": 1}]],
+        },
+        "outputs": {},
+    }
+
+    await panel_client_v043.app["jobs"].reconcile_once()
+
+    stored = await panel_client_v043.app["db"].get_job(created["id"])
+    assert stored["status"] == "succeeded"
+    assert stored["error_code"] is None
+    assert stored["error_summary"] is None
+
+
+@pytest.mark.asyncio
 async def test_explicit_history_error_still_marks_job_failed(
     panel_client_v043, comfy_server_v043
 ):
