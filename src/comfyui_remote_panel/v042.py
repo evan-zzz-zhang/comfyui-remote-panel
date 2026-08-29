@@ -60,6 +60,13 @@ def _install_preset_behavior() -> None:
         if not isinstance(router, dict) and not isinstance(standardizer, dict):
             return original_build_prompt(self, values, job_id, media)
 
+        if isinstance(router, dict):
+            reference_parameter = router.get("reference_parameter", "reference")
+            if values.get("aspect_ratio") == reference_parameter and not any(
+                role in media for role in ("first", "last")
+            ):
+                raise preset_module.PresetError("参考图比例需要至少上传一张参考图")
+
         # v0.4 handled reference aspect by dynamically inserting size nodes and
         # overriding the generation node width/height. These H3 workflows own
         # the decision through H3AspectRouter instead, so disable only that
@@ -139,9 +146,7 @@ def _install_job_service() -> None:
             routed["preset_id"] = GENERATION_MODES[mode]
         elif preset_id in FL2VA_PRESET_IDS:
             # Direct IDs remain accepted for backward compatibility.
-            mode = PRESET_TO_GENERATION_MODE[preset_id]
-        else:
-            mode = None
+            pass
 
         routed.pop("generation_mode", None)
         return await original_create(
