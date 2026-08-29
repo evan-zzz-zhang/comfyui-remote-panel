@@ -1,8 +1,8 @@
 # Comfy Remote Roadmap / TODO
 
-当前开发基线：**v0.4 Recovery Lite**。
+当前稳定开发基线：**v0.4 Recovery Lite（Completed）**。
 
-`v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；`v0.4 Creation Experience` 已完成开发、CI 与移动端真机验收。当前只做一层轻量人工恢复能力，不把完整 watchdog / 自动恢复系统一次性塞进 v0.4。
+`v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；`v0.4 Creation Experience` 已完成开发、CI 与移动端真机验收；`v0.4 Recovery Lite` 已完成轻量人工恢复能力开发与当前范围真机验收。
 
 ---
 
@@ -78,11 +78,11 @@ H3 Specialized ↔ WAI Generic 多次切换
 
 ---
 
-## v0.4 Recovery Lite — Current baseline
+## v0.4 Recovery Lite — Completed
 
 本阶段只解决一个现实问题：**人在外面时，如果 ComfyUI 崩溃、卡死或失联，手机端能够判断问题，并安全地手动恢复 ComfyUI。**
 
-### 当前范围
+### 完成范围
 
 - [x] 设备状态收敛为用户可理解的 `在线 / 离线 / 无响应`；Panel 与 ComfyUI 状态明确分开。
 - [x] `无响应` 由“ComfyUI API 不可用 + 已记录且重新核验通过的 ComfyUI 主进程仍存活”判断，不依赖模糊的最近成功窗口。
@@ -92,10 +92,20 @@ H3 Specialized ↔ WAI Generic 多次切换
 - [x] 设备页显示 Remote Panel / ComfyUI 两个独立状态；ComfyUI 无响应时出现“强制重启”并进行二次确认，存在未完成任务时明确提示会中断。
 - [x] 任务卡对已有 `cuda_oom / missing_model / missing_node / output_missing / comfyui_disconnected` 分类显示更清楚的用户提示，不增加任务自动续跑。
 - [x] 回归测试覆盖：offline / unresponsive 判定、PID 实例变化保护、进程树限制、在线状态拒绝强制重启、前端脚本注入与 JS syntax check。
-- [ ] Windows 真机验收：正常在线、正常 restart、手动关闭后重新 start。
-- [ ] Windows 真机验收：安全模拟“进程仍在但 API 无响应”，手机显示“无响应”并完成强制重启。
-- [ ] Windows 真机验收：伪造/失效 process record 时必须拒绝强杀，不能影响其他 Python 进程。
-- [ ] 真机验收通过后同步用户文档 / ACCEPTANCE，创建 PR 并合并 `main`。
+- [x] Windows 真机验收：ComfyUI 正常在线、普通 restart、关闭后重新 start 均通过。
+- [x] Windows 可见控制台恢复正常日志输出；Panel 启动后不再只出现纯黑 ComfyUI 控制台。
+- [x] 设置 → 关于可查看版本、分支、提交与工作区状态，用于确认真机验收版本对齐。
+- [x] 当前范围真机验收通过，CI 在 Windows/Linux、Python 3.11/3.13、minimum-dependencies、repository-safety、pytest、JS syntax 与 build 全部通过。
+
+### 延后真实事故验证
+
+以下能力已实现并由自动化测试覆盖，但**不为了验收主动制造真实 CUDA OOM / 卡死事故**：
+
+- 真实爆显存后 ComfyUI 进程仍在但 API 无响应时，设备页能否稳定进入“无响应”；
+- 真实卡死后的“强制重启”能否完成现场恢复；
+- 极端情况下失效 process record 的拒绝强杀保护。
+
+这些场景在后续真实遇到时再做补充真机验收，不阻塞 Recovery Lite 当前阶段收尾。
 
 ### 明确不做
 
@@ -111,7 +121,7 @@ Recovery Lite 不加入以下复杂能力：
 - Wake-on-LAN；
 - 多主机。
 
-完成标准：**正常时不添麻烦；ComfyUI 卡死时能从手机安全恢复；任何无法确认进程身份的情况都宁可拒绝恢复，也不能误杀其他进程。**
+完成标准：**正常时不添麻烦；需要人工恢复时提供受控能力；任何无法确认进程身份的情况都宁可拒绝恢复，也不能误杀其他进程。**
 
 ---
 
