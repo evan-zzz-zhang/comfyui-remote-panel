@@ -72,11 +72,25 @@ def test_standardizer_patch_hides_native_checkbox_and_uses_existing_toggle_butto
     assert 'checkbox.checked = !checkbox.checked' in PATCH
 
 
-def test_standardized_prompt_is_rendered_in_job_history():
+def test_standardized_prompt_is_only_added_to_task_details():
     assert 'job?.standardized_prompt' in PATCH
     assert '标准化提示词' in PATCH
-    assert 'v042-standardized-prompt' in PATCH
-    assert 'jobCard = function(job)' in PATCH
+    assert 'addStandardizedPromptToTaskDetails' in PATCH
+    assert 'data-task-details' in PATCH
+    assert 'data.v042StandardizedPromptRow' not in PATCH
+    assert 'row.dataset.v042StandardizedPromptRow = "true"' in PATCH
+    assert 'jobCard = function(job)' not in PATCH
+    assert 'baseJobCardV042Patch' not in PATCH
+
+
+def test_retry_resyncs_compact_generation_settings_after_final_values_are_restored():
+    assert 'function syncGenerationSettingsSummary()' in PATCH
+    assert '#settings-chips' in PATCH
+    assert 'select[name="aspect_ratio"]' in PATCH
+    assert 'input[name="duration_seconds"]' in PATCH
+    assert '#megapixels-value' in PATCH
+    assert '/^\\/api\\/jobs\\/[^/]+\\/retry$/' in PATCH
+    assert 'window.setTimeout(syncGenerationSettingsSummary, 0)' in PATCH
 
 
 def test_fl2va_values_json_is_merged_and_deduplicated_before_upload():
@@ -106,7 +120,7 @@ async def test_root_loads_v042_scripts_after_existing_frontend_layers(tmp_path, 
     assert response.status == 200
     html = await response.text()
     ui_tag = '<script src="/static/v042_ui.js?v=0.4.2.1" defer></script>'
-    patch_tag = '<script src="/static/v042_patch.js?v=0.4.2.2" defer></script>'
+    patch_tag = '<script src="/static/v042_patch.js?v=0.4.2.3" defer></script>'
     assert html.count(ui_tag) == 1
     assert html.count(patch_tag) == 1
     assert html.index(ui_tag) < html.index(patch_tag)
