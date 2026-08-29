@@ -105,8 +105,10 @@ def test_mobile_creation_shell_uses_comfy_remote_design_system():
     assert 'name="duration_seconds" type="range" min="5" max="15" step="1"' in html
     assert all(f'data-megapixels="{value}"' in html for value in ("0.2", "0.4", "0.6", "0.8", "0.9", "1.0"))
     assert 'accept=".wav,.mp3,.flac,.ogg,.m4a"' in html
-    assert '/static/workflow_ux.js?v=0.6.0' in html
-    assert '/static/ux_refinements.js?v=0.1.0' in html
+    # v0.4 serves static assets with no-store, so the design contract checks
+    # the resource path rather than pinning an arbitrary cache-bust query.
+    assert '/static/workflow_ux.js' in html
+    assert '/static/ux_refinements.js' in html
 
     assert "--accent: #c8f36a" in css
     assert "body.prompt-focused" in css

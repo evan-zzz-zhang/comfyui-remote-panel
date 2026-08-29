@@ -2,7 +2,7 @@
 
 当前开发基线：**v0.4 Reliability / Recovery**。
 
-`v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；v0.3.0 以 **Public Beta** 作为第一个面向公开用户的发布基线。
+`v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；`v0.4 Creation Experience` 已完成开发、CI 与移动端真机验收，下一阶段进入 Reliability / Recovery。
 
 ---
 
@@ -59,9 +59,40 @@ v0.3 最终发布定位为 **Public Beta**：核心路径可用，但不把高�
 
 ---
 
+## v0.4 Creation Experience — Completed
+
+本阶段目标是把创作页从 H3 优先的历史结构收敛成明确的 Specialized / Generic 双路径，并完成手机端真实工作流体验验收。
+
+### 完成范围
+
+- [x] Specialized 与 Generic 在数据源和 renderer 层明确分离；Generic 不再继承 H3 的 `beta / euler / 8` 等默认控件。
+- [x] Generic 高级参数只来自 Configurator 保存的真实 Workflow binding；没有真实 `node / input` binding 的控件不得出现在创作页。
+- [x] Generic 生成设置仅在真实绑定 `width / height / batch_size` 时显示；WAI img2img 跟随源图时不再出现空的“生成设置”。
+- [x] Seed Policy：`randomize / fixed / increment`；随机策略隐藏数值 Seed，固定/递增策略显示数值输入。
+- [x] 参考图分辨率预处理：保持原图 / 0.5 / 1.0 / 1.5 / 2.0 MP；保持比例、不放大小图，并覆盖 JPG/PNG/WebP 与 EXIF orientation。
+- [x] Prompt 移动端输入改为稳定的原生 focus/blur 行为；移除会引起整页重排的 `prompt-focused` 模式，不增加自定义“收起键盘”按钮。
+- [x] 工作流切换时 H3 / Generic 控件可正确恢复且不互相污染。
+- [x] WAI Generic 高级参数、参考素材、Prompt、Seed、生成设置边界与真实生成链路通过移动端实机验收。
+- [x] Windows/Linux、Python 3.11/3.13、minimum-dependencies、repository-safety、pytest、JS syntax check 与 build 全部通过。
+
+### 真机验收记录
+
+2026-08-29 完成 Creation Experience 收尾验收：
+
+```text
+H3 Specialized ↔ WAI Generic 多次切换
+→ Generic 仅显示真实绑定参数
+→ Seed 策略显示/隐藏符合预期
+→ Prompt 键盘进入/退出稳定，无明显布局抖动
+→ WAI img2img 上传参考图后不出现空“生成设置”
+→ 用户确认验收通过
+```
+
+---
+
 ## v0.4 Reliability / Recovery — Current baseline
 
-v0.4 的目标不是继续堆更多 Workflow 类型，而是让“已经能远程用”变成“长时间无人看守也更可靠”。
+v0.4 下一阶段的目标不是继续堆更多 Workflow 类型，而是让“已经能远程用”变成“长时间无人看守也更可靠”。
 
 ### 1. ComfyUI 故障恢复
 
@@ -103,12 +134,12 @@ v0.4 的目标不是继续堆更多 Workflow 类型，而是让“已经能远�
 
 ## Later / separate design tracks
 
-这些方向可以继续研究，但不自动并入 v0.4：
+这些方向可以继续研究，但不自动并入当前 Reliability / Recovery 阶段：
 
 - Multi-host：家里 / 公司 / 其他主机的 Host Registry、selector、routing。
 - Wake-on-LAN / external watchdog：依赖局域网或机外常驻设备的电源恢复。
-- Seed Policy：把数字 seed 与 `randomize / fixed / increment` 等运行策略分离。
-- Media optimization：高清参考图自动压缩、视频缩略图、远程预览带宽优化。
+- Web i18n / Language switch：重构为 key-based `t()` + 中英文语言包 + 显式 rerender；不再使用全局 DOM 扫描或 `MutationObserver` 追踪翻译。当前网页端继续保持中文稳定版，CLI / 文档双语不受影响。
+- Media optimization：视频缩略图、远程预览带宽优化，以及参考图预处理策略的后续增强。
 - Additional transports：在不降低安全边界的前提下补充 Tailscale 之外的连接方式。
 
-路线图原则：**先把远程生成做稳，再扩机器数量、连接方式和电源控制。**
+路线图原则：**先把远程生成做稳，再扩机器数量、连接方式、电源控制和全局体验能力。**

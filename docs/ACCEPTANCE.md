@@ -1,8 +1,8 @@
-# v0.2 实机验收 / Release Acceptance
+# Comfy Remote 实机验收 / Release Acceptance
 
-自动化测试不替代真实模型、真实工作流和手机网络验收。以下项目构成 v0.2 发布验收记录。
+自动化测试不替代真实模型、真实工作流和手机网络验收。本文件持续记录已完成阶段的真机验收结果。
 
-## Comfy Remote 移动端 UX
+## v0.2 Comfy Remote 移动端 UX
 
 - 首页品牌显示 **Comfy Remote**，不再显示“H3 生成台”。
 - 主导航仅为 **创作 / 任务 / 设备**；工作流管理从右上角设置进入。
@@ -17,7 +17,7 @@
 - 图片任务显示图片结果；视频任务可直接播放。
 - `Sampler / Scheduler / Steps / Seed / Workflow Revision` 等技术信息默认不占任务卡主视觉。
 
-## 三类基准工作流
+## v0.2 三类基准工作流
 
 ### FL2VA
 
@@ -48,7 +48,7 @@
 - “生成设置”位于“高级设置”之前。
 - 图片结果、多图展示、结果查看、下载和基础“再次生成”通过验证。
 
-## 工作流管理
+## v0.2 工作流管理
 
 - 六个内置 H3 工作流可修改前端显示名称；内部 workflow ID 不改变。
 - 工作流列表开关的日常语义是 **显示在创作页 / 隐藏**，点击即时反馈并后台持久化。
@@ -58,7 +58,7 @@
 - 自定义工作流删除为真实删除，操作后管理列表和创作 preset 立即同步，无需重启 Remote Panel；历史任务快照不受影响。
 - 同 ID 新 revision 不影响旧任务保存的 workflow snapshot 和 input values。
 
-## 任务与队列
+## v0.2 任务与队列
 
 - 排队、提交、运行、完成、取消和失败场景通过验收。
 - 任务卡保持作品优先，不常驻显示 Prompt。
@@ -66,14 +66,14 @@
 - 失败摘要不会泄露本机绝对路径或地址。
 - 图片与视频结果均可正确读取，不在任务列表初始化时批量预加载大文件。
 
-## 恢复与文件
+## v0.2 恢复与文件
 
 - Panel 任务恢复、SSE 快照、MP4 Range 播放和下载链路已经过阶段性验证。
 - 视频缩略图偶发不稳定作为独立后续专项，不用 UI 无限 reload 视为解决。
 - “移出历史”只隐藏任务并保留本地输入/输出；显式 purge 才物理清理登记文件。
 - 输出缺失恢复机制与 `output_missing` 终态由自动化测试覆盖。
 
-## 设备与网络
+## v0.2 设备与网络
 
 - 面板继续只监听 `127.0.0.1:8190`，ComfyUI 为本机 `8188`。
 - 缺失或错误身份信息访问受保护接口返回 403。
@@ -116,3 +116,43 @@ CI release gates：minimum-dependencies、Windows/Linux、Python 3.11/3.13、tes
 - “生成现场恢复”、视频缩略图稳定性、高清参考图自动压缩、Windows 工作站生命周期均明确转入 `docs/TODO.md` 后续阶段，不阻塞 v0.2 发布。
 
 **结论：Comfy Remote v0.2 满足发布条件。**
+
+---
+
+## 2026-08-29 v0.4 Creation Experience 最终验收
+
+本轮在 `feat/v0.4-creation-experience` 完成 Specialized / Generic 创作体验收敛，并经过真实手机操作确认。
+
+### Renderer 与参数边界
+
+- H3 Specialized 与 Generic imported workflow 分离；WAI 页面不再泄漏 H3 `Scheduler beta / Sampler euler / Steps 8`。
+- WAI Generic 高级设置只显示 Configurator 保存的真实 Workflow binding，包括 Steps、CFG、Sampler、Scheduler、Denoise、Checkpoint、Seed 等实际已绑定参数。
+- Generic 没有真实 `width / height / batch_size` binding 时不显示“生成设置”。
+- WAI img2img 上传参考图后不再因为“跟随源图 / 数量由工作流决定”等只读 capability summary 重新打开空“生成设置”。
+- H3 → WAI → H3 → WAI 切换后 Specialized / Generic 控件可正确恢复，不互相污染。
+
+### Seed 与参考图
+
+- Seed 策略 UI 验收通过：Random 只显示 Seed 策略；Fixed / Increment 显示数值 Seed 输入。
+- 参考图分辨率控制保持在高级设置中；支持保持原图 / 0.5 / 1.0 / 1.5 / 2.0 MP。
+- 图像预处理保持宽高比，不放大小图；自动化覆盖 JPG / PNG / WebP、EXIF orientation 与目标 MP 计算。
+- Ref2VA 参考视频不受参考图 MP 预处理影响，保持当前行为。
+
+### Prompt 移动体验
+
+- 移除旧 `prompt-focused` 模式；进入/退出输入时不再隐藏整页、改变生成按钮布局或把 textarea 扩展为 `40dvh`。
+- Prompt 输入框聚焦前后保持稳定尺寸，手机端不允许手动 resize。
+- Prompt 外层不再依赖巨大 `<label>` 导致 blur 后重新 focus；点击 textarea 外可自然收起键盘。
+- 不增加“收起键盘”按钮，不重新启用全局 MutationObserver。
+- 用户确认 Prompt 输入框退出问题及明显布局抖动已解决。
+
+### CI 与结论
+
+- minimum-dependencies：通过。
+- repository-safety：通过。
+- Windows Python 3.11 / 3.13：通过。
+- Ubuntu Python 3.11 / 3.13：通过。
+- pytest、JavaScript syntax check、repository scan、wheel/source build：通过。
+- 用户最终确认 WAI img2img 空“生成设置”修复通过。
+
+**结论：v0.4 Creation Experience 真机验收通过，可以合并到 `main` 作为下一阶段 Reliability / Recovery 的稳定基线。**

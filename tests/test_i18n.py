@@ -26,21 +26,15 @@ def test_public_docs_have_english_and_simplified_chinese_entry_points() -> None:
         assert "English" in chinese.read_text(encoding="utf-8")
 
 
-def test_web_panel_loads_i18n_before_feature_scripts_and_exposes_language_switch() -> None:
+def test_v04_web_panel_temporarily_disables_dynamic_i18n_for_mobile_stability() -> None:
     index = (STATIC / "index.html").read_text(encoding="utf-8")
-    i18n = (STATIC / "i18n.js").read_text(encoding="utf-8")
-
-    assert 'id="language-toggle"' in index
-    assert 'id="language-value"' in index
-    assert index.index('/static/i18n.js') < index.index('/static/app.js')
-    assert 'localStorage.setItem(STORAGE_KEY' in i18n
-    assert 'navigator.language' in i18n
-    assert 'document.documentElement.lang = currentLanguage' in i18n
-    assert 'MutationObserver' in i18n
-    assert 'window.ComfyI18n' in i18n
+    assert 'id="language-toggle"' not in index
+    assert 'id="language-value"' not in index
+    assert '/static/i18n.js' not in index
+    assert '<html lang="zh-CN">' in index
 
 
-def test_web_panel_dictionary_covers_core_and_configurator_surfaces() -> None:
+def test_web_dictionary_still_covers_core_and_configurator_surfaces_for_future_reenablement() -> None:
     i18n = (STATIC / "i18n.js").read_text(encoding="utf-8")
     for source in (
         "创作",

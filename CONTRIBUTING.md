@@ -56,4 +56,10 @@ Use synthetic fixtures such as `example.com` identities and temporary directorie
 
 Update user-facing Chinese/English documentation whenever behavior changes. New public setup behavior should be reflected in `README.md`, `docs/GETTING_STARTED_WINDOWS.md`, or `docs/TROUBLESHOOTING.md` as appropriate.
 
+## Merge and closeout
+
+A merged PR is not automatically a completed development task. When work is merged, synchronize affected documentation/TODO/changelog/version metadata, verify the target branch, and delete the merged remote branch unless there is a documented reason to retain it.
+
+The complete Definition of Done, branch lifecycle, and "merge and close out" checklist are documented in [docs/DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md). AI coding agents must also follow [AGENTS.md](AGENTS.md).
+
 Keep PRs focused. Explain what changed, why the change is safe, what was tested, and any known limitation that remains.
