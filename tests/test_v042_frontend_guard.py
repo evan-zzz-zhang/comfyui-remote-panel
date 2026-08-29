@@ -77,10 +77,18 @@ def test_standardized_prompt_is_only_added_to_task_details():
     assert '标准化提示词' in PATCH
     assert 'addStandardizedPromptToTaskDetails' in PATCH
     assert 'data-task-details' in PATCH
-    assert 'data.v042StandardizedPromptRow' not in PATCH
     assert 'row.dataset.v042StandardizedPromptRow = "true"' in PATCH
     assert 'jobCard = function(job)' not in PATCH
     assert 'baseJobCardV042Patch' not in PATCH
+
+
+def test_standardized_prompt_is_kept_adjacent_to_original_prompt_row():
+    assert 'const PROMPT_ROW_LABELS = new Set(["提示词", "正面提示词", "prompt", "positive_prompt"])' in PATCH
+    assert 'function findPromptRow(list)' in PATCH
+    assert 'function positionStandardizedPromptRow(body)' in PATCH
+    assert 'promptRow.insertAdjacentElement("afterend", row)' in PATCH
+    assert 'queueMicrotask(() => positionStandardizedPromptRow(body))' in PATCH
+    assert 'window.requestAnimationFrame(() => positionStandardizedPromptRow(body))' in PATCH
 
 
 def test_retry_resyncs_compact_generation_settings_after_final_values_are_restored():
@@ -120,7 +128,7 @@ async def test_root_loads_v042_scripts_after_existing_frontend_layers(tmp_path, 
     assert response.status == 200
     html = await response.text()
     ui_tag = '<script src="/static/v042_ui.js?v=0.4.2.1" defer></script>'
-    patch_tag = '<script src="/static/v042_patch.js?v=0.4.2.3" defer></script>'
+    patch_tag = '<script src="/static/v042_patch.js?v=0.4.2.4" defer></script>'
     assert html.count(ui_tag) == 1
     assert html.count(patch_tag) == 1
     assert html.index(ui_tag) < html.index(patch_tag)
