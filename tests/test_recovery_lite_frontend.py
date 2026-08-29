@@ -25,8 +25,7 @@ def test_recovery_lite_about_entry_is_navigable_and_shows_build_identity():
     assert "closeAboutPage" in script
     assert "验收版本" in script
     assert "工作区" in script
-    assert "本地有已跟踪修改" not in script
-    assert "有已跟踪修改" in script
+    assert "本地有已跟踪修改" in script
 
 
 def test_recovery_lite_does_not_reintroduce_arbitrary_process_control():
