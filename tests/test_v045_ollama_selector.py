@@ -12,6 +12,7 @@ from comfyui_remote_panel.config import Config
 ROOT = Path(__file__).resolve().parents[1]
 LOGIN = {"Tailscale-User-Login": "owner@example.com"}
 JS = (ROOT / "src" / "comfyui_remote_panel" / "static" / "v045_ollama_ui.js").read_text(encoding="utf-8")
+SYNC_JS = (ROOT / "src" / "comfyui_remote_panel" / "static" / "v045_generation_sync.js").read_text(encoding="utf-8")
 
 
 def _config(tmp_path: Path) -> Config:
@@ -67,13 +68,15 @@ async def test_authenticated_ollama_model_endpoint_returns_installed_models(
 
 
 @pytest.mark.asyncio
-async def test_root_injects_v045_ollama_selector_script(tmp_path, aiohttp_client):
+async def test_root_injects_v045_frontend_scripts_once(tmp_path, aiohttp_client):
     client = await aiohttp_client(create_app(_config(tmp_path)))
     response = await client.get("/", headers=LOGIN)
     assert response.status == 200
     html = await response.text()
-    tag = '<script src="/static/v045_ollama_ui.js?v=0.4.5.1" defer></script>'
-    assert html.count(tag) == 1
+    ollama_tag = '<script src="/static/v045_ollama_ui.js?v=0.4.5.1" defer></script>'
+    sync_tag = '<script src="/static/v045_generation_sync.js?v=0.4.5.0" defer></script>'
+    assert html.count(ollama_tag) == 1
+    assert html.count(sync_tag) == 1
 
 
 def test_ollama_ui_uses_real_select_and_disables_it_with_standardizer():
@@ -83,3 +86,22 @@ def test_ollama_ui_uses_real_select_and_disables_it_with_standardizer():
     assert 'data-v045-ollama-model' in JS
     assert '（未检测到）' in JS
     assert '11434' not in JS
+
+
+def test_generation_summary_sync_reemits_authoritative_h3_controls_without_polling():
+    workflow_ux = (ROOT / "src" / "comfyui_remote_panel" / "static" / "workflow_ux.js").read_text(encoding="utf-8")
+    assert 'addEventListener("input", updateSettingsSummary)' in workflow_ux
+    assert 'addEventListener("change", updateSettingsSummary)' in workflow_ux
+
+    assert 'function emitH3GenerationState()' in SYNC_JS
+    assert 'select[name="aspect_ratio"]' in SYNC_JS
+    assert 'new Event("change", { bubbles: true })' in SYNC_JS
+    assert 'input[name="duration_seconds"]' in SYNC_JS
+    assert '#megapixels-value' in SYNC_JS
+    assert 'if (name === "generate") emitH3GenerationState();' in SYNC_JS
+    assert '[data-media-action="remove"]' in SYNC_JS
+    assert '#clear-retry' in SYNC_JS
+    assert '#preset-select' in SYNC_JS
+    assert 'MutationObserver' not in SYNC_JS
+    assert 'setInterval' not in SYNC_JS
+    assert 'setTimeout' not in SYNC_JS
