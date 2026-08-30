@@ -37,6 +37,7 @@ def test_fl2va_mode_ui_stays_inside_existing_advanced_settings():
     assert '.advanced-grid' in JS
     assert '生成模式' in JS
     assert '使用 H3 提示词标准化' in JS
+    assert 'Ollama 标准化模型' in JS
     assert 'prompt-field' not in JS
     assert 'settings-close' not in JS
     assert 'v042_ui.js' not in INDEX
@@ -50,6 +51,19 @@ def test_generation_mode_defaults_to_v4_and_uses_local_storage():
     assert 'window.localStorage.setItem(MODE_STORAGE_KEY, mode)' in JS
     assert 'loadPresets = async function()' in JS
     assert 'applyPreset(ENTRY_ID)' in JS
+
+
+def test_ollama_model_uses_existing_advanced_grid_and_remembered_preference():
+    assert 'const DEFAULT_OLLAMA_MODEL = "gemma4:e4b"' in JS
+    assert 'comfy-remote.fl2va.ollama-model' in JS
+    assert 'data-v045-ollama-model-field' in JS
+    assert 'data-v045-ollama-model' in JS
+    assert 'standardizerField.insertAdjacentElement("afterend", ollamaField)' in JS
+    assert 'input.disabled = checkbox?.checked === false' in JS
+    assert 'window.localStorage.getItem(OLLAMA_STORAGE_KEY)' in JS
+    assert 'window.localStorage.setItem(OLLAMA_STORAGE_KEY, model)' in JS
+    assert 'values.ollama_model = ollamaModel' in JS
+    assert 'preferredOllamaModel(merged.ollama_model, mode)' in JS
 
 
 def test_lightx2v_has_deterministic_mode_defaults():
@@ -107,6 +121,7 @@ def test_fl2va_values_json_is_merged_and_deduplicated_before_upload():
     assert 'formData.set("values_json", JSON.stringify(values))' in JS
     assert 'values.generation_mode = mode' in JS
     assert 'values.prompt_standardization = standardize' in JS
+    assert 'values.ollama_model = ollamaModel' in JS
     assert 'values.media_resolution = mediaResolution' in JS
     assert 'dedupeScalarFields(formData)' in JS
 
@@ -127,7 +142,7 @@ async def test_root_loads_v042_scripts_after_existing_frontend_layers(tmp_path, 
     response = await client.get("/", headers={"Tailscale-User-Login": "owner@example.com"})
     assert response.status == 200
     html = await response.text()
-    ui_tag = '<script src="/static/v042_ui.js?v=0.4.2.1" defer></script>'
+    ui_tag = '<script src="/static/v042_ui.js?v=0.4.5.0" defer></script>'
     patch_tag = '<script src="/static/v042_patch.js?v=0.4.2.4" defer></script>'
     assert html.count(ui_tag) == 1
     assert html.count(patch_tag) == 1
