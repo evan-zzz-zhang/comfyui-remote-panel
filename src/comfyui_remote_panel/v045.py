@@ -214,14 +214,21 @@ def _install_job_service() -> None:
                 if updated is not None:
                     self.events.publish("job", self.public_job(updated))
 
-    async def reconcile_once_v045(self) -> None:
-        await original_reconcile_once(self)
+    async def reconcile_output_artifacts_if_due_v045(self) -> None:
         now = time.monotonic()
         last = float(getattr(self, "_last_artifact_reconcile_v045", 0.0))
         if now - last < _ARTIFACT_RECONCILE_INTERVAL:
             return
         self._last_artifact_reconcile_v045 = now
         await reconcile_output_artifacts_v045(self)
+
+    async def reconcile_once_v045(self) -> None:
+        try:
+            await original_reconcile_once(self)
+        except jobs_module.ComfyError:
+            await reconcile_output_artifacts_if_due_v045(self)
+            raise
+        await reconcile_output_artifacts_if_due_v045(self)
 
     async def retry_v045(self, job_id: str) -> dict[str, Any]:
         source = await self.db.get_job(job_id)
@@ -240,10 +247,12 @@ def _install_job_service() -> None:
 
     purge_v045._v045_artifact_sync = True  # type: ignore[attr-defined]
     reconcile_output_artifacts_v045._v045_artifact_sync = True  # type: ignore[attr-defined]
+    reconcile_output_artifacts_if_due_v045._v045_artifact_sync = True  # type: ignore[attr-defined]
     reconcile_once_v045._v045_artifact_sync = True  # type: ignore[attr-defined]
     retry_v045._v045_ollama_model = True  # type: ignore[attr-defined]
     jobs_module.JobService.purge = purge_v045
     jobs_module.JobService.reconcile_output_artifacts_v045 = reconcile_output_artifacts_v045
+    jobs_module.JobService.reconcile_output_artifacts_if_due_v045 = reconcile_output_artifacts_if_due_v045
     jobs_module.JobService.reconcile_once = reconcile_once_v045
     jobs_module.JobService.retry = retry_v045
 
