@@ -18,7 +18,7 @@ Prepare the computer
 → View the result on your phone
 ```
 
-> **v0.3.0 is a Public Beta.** Windows 10/11 is the primary validated platform and Tailscale is the primary remote-access path today.
+> **v0.4.4 is a Public Beta.** Windows 10/11 is the primary validated platform and Tailscale is the primary remote-access path today.
 
 ---
 
@@ -103,13 +103,15 @@ cd comfyui-remote-panel
 The installer will:
 
 ```text
-Check for a stable Python
-→ Create the project's .venv
-→ Install Comfy Remote
+Check for a stable base Python
+→ Health-check an existing project .venv when present
+→ Reuse it if healthy, or preserve it as .venv.broken-<timestamp> and rebuild it if unhealthy
+→ Install Comfy Remote into .venv
+→ Verify the installed package can be imported
 → Enter the Setup wizard automatically
 ```
 
-It does not modify ComfyUI core code.
+The base/global Python is used to bootstrap the project environment. Normal Panel commands run from the project's `.venv`. The installer does not modify ComfyUI core code.
 
 ### If PowerShell blocks the script
 
@@ -460,17 +462,22 @@ Install / remove manually:
 
 ## 13. Update the project
 
-Public Beta releases may move quickly. Make sure no important job is running, then:
+Public Beta releases may move quickly. For a normal source update, make sure no important job is running, then:
 
 ```powershell
 git pull
-.\.venv\Scripts\python.exe -m pip install -e .
-.\.venv\Scripts\comfyui-remote-panel.exe setup
-.\.venv\Scripts\comfyui-remote-panel.exe doctor
 .\.venv\Scripts\comfyui-remote-panel.exe restart
 ```
 
-Setup's check/update path tries to preserve valid settings and backs up `config.toml` to `config.toml.bak` before rewriting it.
+Comfy Remote is installed in editable mode, so a normal `git pull` updates the source used by the existing `.venv`; restarting the Panel reloads the new code.
+
+Run the full installer again only when a release changes dependencies or installation metadata, when Setup/configuration must be refreshed, or when the Python / `.venv` environment needs repair:
+
+```powershell
+.\scripts\windows\Install-ComfyRemote.ps1
+```
+
+The installer health-checks an existing `.venv`, preserves an unhealthy environment as `.venv.broken-<timestamp>`, and rebuilds it before continuing. Setup's check/update path tries to preserve valid settings and backs up `config.toml` to `config.toml.bak` before rewriting it.
 
 ---
 
