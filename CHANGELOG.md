@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.4.4 — Windows Environment Self-Healing
+
+Comfy Remote v0.4.4 hardens the Windows install and autostart path so a damaged project virtual environment no longer requires manual Python troubleshooting before the Panel can be recovered.
+
+### Highlights
+
+- `Install-ComfyRemote.ps1` now actually starts an existing `.venv` and imports core Python modules plus `pip` before deciding it is reusable.
+- A missing or unhealthy `.venv` is preserved as `.venv.broken-YYYYMMDD-HHMMSS` and rebuilt from the selected healthy stable Python instead of being deleted in place.
+- A newly created `.venv` is health-checked before installation continues, and the installed `comfyui_remote_panel` package is imported afterward as a final environment verification.
+- The installer keeps `.venv` as the preferred runtime environment; the global/base Python is used to validate prerequisites and create the project environment rather than becoming the normal long-term Panel runtime.
+- Windows autostart path handling now accepts rooted/absolute Python and config paths in both the startup launcher and Task Scheduler registration path, covering recovery/override scenarios without mangling paths under the project root.
+- Installer `ConfigPath` handling now follows the same relative-or-rooted path semantics.
+
+### Recovery behavior
+
+If an existing environment fails the health probe, the installer follows this sequence:
+
+```text
+existing .venv
+→ launch/import health probe
+→ unhealthy
+→ rename to .venv.broken-<timestamp>
+→ create fresh .venv
+→ health probe again
+→ pip install -e .
+→ import comfyui_remote_panel
+→ Setup
+```
+
+The backup is intentionally retained so a failed rebuild never destroys the previous environment automatically.
+
+### Verification
+
+- Regression coverage checks the venv health probe, backup-before-rebuild behavior, fresh-environment verification, package import verification, rooted config handling, and PowerShell syntax on runners where PowerShell is available.
+- Full CI continues to cover minimum dependencies, repository/history safety, Windows and Ubuntu on Python 3.11 / 3.13, pytest, JavaScript syntax checks, i18n smoke, and package builds.
+
 ## v0.4.3 — Task Reconciliation Hardening
 
 Comfy Remote v0.4.3 hardens task final-state reconciliation around Remote Panel restarts and ComfyUI history timing races.

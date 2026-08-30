@@ -4,13 +4,13 @@
 
 **Run your local ComfyUI workflows from your phone.**
 
-> **Current status: v0.4.3 Public Beta.**
+> **Current status: v0.4.4 Public Beta.**
 >
-> Generic ComfyUI API Workflow support, mobile creation, retained-media Retry, H3 FL2VA unified generation modes, task reconciliation hardening, Windows Setup, Tailscale remote access, Doctor diagnostics, and guarded Recovery Lite controls are available. Full automatic watchdog recovery, multi-host support, and Wake-on-LAN are not implemented.
+> Generic ComfyUI API Workflow support, mobile creation, retained-media Retry, H3 FL2VA unified generation modes, task reconciliation hardening, self-healing Windows installation, Windows Setup, Tailscale remote access, Doctor diagnostics, and guarded Recovery Lite controls are available. Full automatic watchdog recovery, multi-host support, and Wake-on-LAN are not implemented.
 
 Comfy Remote is a mobile-first remote creation panel for ComfyUI. It runs on the Windows computer that hosts ComfyUI and turns locally verified **ComfyUI API Workflows** into a phone-friendly interface for selecting workflows, adding media, editing prompts, submitting jobs, and reviewing results.
 
-The current v0.4.3 baseline builds on **Public Readiness + Configurator 2.0** with a clearer Specialized / Generic creation boundary, explicit Seed Policy, reference-image resolution preprocessing, guarded manual ComfyUI recovery, reliable historical-media Retry, H3 FL2VA product-level mode routing, and safer final-state reconciliation after Panel restarts or transient ComfyUI history timing. It still avoids silently rewriting arbitrary workflows or exposing ComfyUI directly to the network.
+The current v0.4.4 baseline builds on **Public Readiness + Configurator 2.0** with a clearer Specialized / Generic creation boundary, explicit Seed Policy, reference-image resolution preprocessing, guarded manual ComfyUI recovery, reliable historical-media Retry, H3 FL2VA product-level mode routing, safer final-state reconciliation, and Windows environment self-healing when an existing project `.venv` is damaged. It still avoids silently rewriting arbitrary workflows or exposing ComfyUI directly to the network.
 
 ## What it does
 
@@ -26,6 +26,7 @@ The current v0.4.3 baseline builds on **Public Readiness + Configurator 2.0** wi
 - Hardens task reconciliation so incomplete ComfyUI history is not treated as failure and explicit `execution_success` remains success evidence even when final history persistence is slightly delayed.
 - Provides guarded Recovery Lite controls for managed ComfyUI processes; an `unresponsive` state requires three consecutive failed health polls while the recorded process is still independently verified alive.
 - Provides `setup`, `start / stop / restart / status`, `doctor`, and Windows login autostart commands.
+- The Windows installer actively health-checks an existing project `.venv`; an unhealthy environment is backed up and rebuilt instead of being reused or silently replaced by the global Python runtime.
 - Detects existing Windows Portable ComfyUI launch scripts and preserves their real static arguments, including options such as `--enable-manager` and `--use-sage-attention`.
 - Recommends Tailscale Serve for phone access while keeping both the Panel and ComfyUI bound to localhost.
 - Public documentation is available in English and Simplified Chinese; the current Web Panel release keeps the accepted stable Chinese UI baseline.
@@ -51,7 +52,7 @@ cd comfyui-remote-panel
 .\scripts\windows\Install-ComfyRemote.ps1
 ```
 
-The installer checks Python, creates `.venv`, installs Comfy Remote, and then enters the Setup wizard.
+The installer checks the base Python, health-checks the project's existing `.venv` when present, preserves and rebuilds it if unhealthy, installs Comfy Remote into `.venv`, verifies the package import, and then enters the Setup wizard. The base/global Python is used to bootstrap the project environment; normal Panel commands continue to run from `.venv`.
 
 After Setup:
 
@@ -116,14 +117,14 @@ Phone → Tailscale HTTPS Serve → 127.0.0.1:8190 Comfy Remote → 127.0.0.1:81
 
 See [SECURITY.md](SECURITY.md) for details.
 
-## Known limitations — v0.4.3 Public Beta
+## Known limitations — v0.4.4 Public Beta
 
 - **Windows 10/11 is the primary validated platform.** Linux participates in CI, but the public install and real-device path is currently Windows-first.
 - **Tailscale is the primary remote transport today.** The core architecture is not intended to be permanently tied to Tailscale, but other transports do not yet have an equivalent public installation path.
 - **Recovery Lite is manual, not a full watchdog.** The Panel can identify a verified managed process as unresponsive after three consecutive failed health polls and offer a guarded force restart, but it does not automatically restart crash loops, recover GPU/driver faults, or resubmit interrupted jobs.
-- **Real hard-hang/OOM recovery remains field-validated rather than manufactured for release testing.** Safety and debounce paths are automated-test covered, but v0.4.3 does not intentionally force GPU/ComfyUI hangs during acceptance.
-- **Task state remains evidence-based.** v0.4.3 prevents the known history timing race, but it does not retroactively infer success from a leftover MP4 if an older version already misclassified a task and ComfyUI later cleared that task's history.
-- **No Wake-on-LAN.** Waking a sleeping or powered-off computer from outside the machine is not part of v0.4.3.
+- **Real hard-hang/OOM recovery remains field-validated rather than manufactured for release testing.** Safety and debounce paths are automated-test covered, but v0.4.4 does not intentionally force GPU/ComfyUI hangs during acceptance.
+- **Task state remains evidence-based.** v0.4.4 retains the v0.4.3 history-timing fix, but it does not retroactively infer success from a leftover MP4 if an older version already misclassified a task and ComfyUI later cleared that task's history.
+- **No Wake-on-LAN.** Waking a sleeping or powered-off computer from outside the machine is not part of v0.4.4.
 - **No multi-host support.** One Panel currently maps to one local ComfyUI installation.
 - **Third-party Custom Node compatibility depends on schema and real runtime behavior.** Configurator 2.0 analyzes what it can, but cannot guarantee automatic understanding of every custom node.
 

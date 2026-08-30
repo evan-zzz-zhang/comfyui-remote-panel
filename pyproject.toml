@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "comfyui-remote-panel"
-version = "0.4.3"
+version = "0.4.4"
 description = "Comfy Remote: a mobile-first remote creation panel for trusted ComfyUI workflows."
 readme = "README.md"
 requires-python = ">=3.11"
