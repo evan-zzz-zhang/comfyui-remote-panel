@@ -64,6 +64,17 @@ Setup 完成后：
 
 如果 Setup 已配置 Tailscale Serve，手机打开向导显示的 `https://…ts.net` 地址。
 
+### 更新
+
+日常更新前确认没有重要任务正在运行，然后执行：
+
+```powershell
+git pull
+.\.venv\Scripts\comfyui-remote-panel.exe restart
+```
+
+Comfy Remote 使用 editable install，正常情况下 `git pull` 会直接更新现有 `.venv` 所引用的项目源码，重启 Panel 后即可加载新代码。只有在版本修改依赖或安装元数据、需要重新检查 Setup / 配置，或者 Python / `.venv` 环境需要修复时，才重新运行 `Install-ComfyRemote.ps1`。
+
 ## Workflow compatibility
 
 在 ComfyUI 中先确认目标工作流能够正常运行，然后导出 **API Workflow JSON**。普通的 UI Workflow JSON 不是同一种格式。
