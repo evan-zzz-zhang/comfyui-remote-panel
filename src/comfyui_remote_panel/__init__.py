@@ -1,6 +1,6 @@
 """Comfy Remote."""
 
-__version__ = "0.4.4"
+__version__ = "0.4.5"
 
 # v0.4 is layered as explicit runtime integration modules so the creation
 # policies stay isolated from the v0.3 compatibility core while the beta is
