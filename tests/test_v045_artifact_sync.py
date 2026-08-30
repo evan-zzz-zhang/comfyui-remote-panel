@@ -34,6 +34,7 @@ async def _job(
     status: str = "succeeded",
     with_input: bool = True,
     snapshot: dict | None = None,
+    input_values: dict | None = None,
 ) -> dict:
     inputs = []
     if with_input:
@@ -46,7 +47,7 @@ async def _job(
         "workflow_id": "h3-fl2va-v4step600",
         "workflow_revision": 2,
         "workflow_snapshot": snapshot,
-        "input_values": {"prompt": "test"},
+        "input_values": input_values or {"prompt": "test"},
         "status": status,
         "mode": "首帧",
         "prompt": "test",
@@ -144,6 +145,21 @@ async def test_jobs_without_registered_outputs_and_active_jobs_are_not_removed(t
     assert (await db.get_job("running-output"))["status"] == "running"
 
 
+@pytest.mark.asyncio
+async def test_manual_purge_removes_secondary_output_artifacts(tmp_path):
+    service, db, files = await _service(tmp_path)
+    await _job(db, files, "job-purge")
+    first = await _output(db, files, "job-purge", "first.mp4", ordinal=0)
+    second = await _output(db, files, "job-purge", "second.mp4", ordinal=1)
+
+    await service.purge("job-purge")
+
+    assert await db.get_job("job-purge") is None
+    assert not first.exists()
+    assert not second.exists()
+    assert not any(files.input_root.iterdir())
+
+
 def _values(preset, model: str | None = None):
     values = {
         name: spec.get("default")
@@ -186,11 +202,26 @@ def test_blank_ollama_model_falls_back_to_default():
 
 
 @pytest.mark.asyncio
+async def test_retry_keeps_custom_ollama_model_from_job_values(tmp_path):
+    service, db, files = await _service(tmp_path)
+    await _job(
+        db,
+        files,
+        "custom-model-job",
+        input_values={"prompt": "test", "ollama_model": "qwen3:8b"},
+    )
+
+    draft = await service.retry("custom-model-job")
+
+    assert draft["ollama_model"] == "qwen3:8b"
+    assert draft["values"]["ollama_model"] == "qwen3:8b"
+
+
+@pytest.mark.asyncio
 async def test_legacy_retry_recovers_ollama_model_from_workflow_snapshot(tmp_path):
     service, db, files = await _service(tmp_path)
     preset = load_presets()["h3-fl2va-v4step600"]
-    legacy_snapshot = preset.snapshot()
-    legacy_snapshot = copy.deepcopy(legacy_snapshot)
+    legacy_snapshot = copy.deepcopy(preset.snapshot())
     legacy_snapshot["manifest"]["parameters"].pop("ollama_model", None)
     lock = next(
         item for item in legacy_snapshot["manifest"]["locked"]
