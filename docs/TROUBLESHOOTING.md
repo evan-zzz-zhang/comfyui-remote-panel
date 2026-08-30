@@ -14,6 +14,25 @@ When you need to report a problem, also run:
 .\.venv\Scripts\comfyui-remote-panel.exe doctor --report
 ```
 
+## The project `.venv` is broken
+
+If `.\.venv\Scripts\python.exe` cannot start, core imports fail, or you see errors such as `SRE module mismatch`, do not try to repair individual files inside `site-packages` or silently switch the Panel to long-term global-Python execution.
+
+Run the Windows installer from the project root:
+
+```powershell
+.\scripts\windows\Install-ComfyRemote.ps1
+```
+
+Since v0.4.4, the installer actually starts an existing `.venv` and probes core Python imports plus `pip`. A healthy environment is reused. An unhealthy environment is preserved as `.venv.broken-YYYYMMDD-HHMMSS`, then a fresh `.venv` is created from a healthy stable base Python, health-checked again, and Comfy Remote is reinstalled.
+
+This installer path is for first installation, dependency/install-metadata changes, Setup/configuration refreshes, and environment repair. A normal code update remains:
+
+```powershell
+git pull
+.\.venv\Scripts\comfyui-remote-panel.exe restart
+```
+
 ## Setup cannot find ComfyUI
 
 Make sure the path you enter is one of these two root layouts:
