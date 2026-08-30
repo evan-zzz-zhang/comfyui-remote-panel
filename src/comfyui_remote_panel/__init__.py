@@ -16,6 +16,7 @@ from .v041_frontend import install as _install_v041_frontend
 from .v042 import install as _install_v042
 from .v042_frontend import install as _install_v042_frontend
 from .v043 import install as _install_v043
+from .v045 import install as _install_v045
 
 _install_v04()
 _install_v04_overrides()
@@ -28,6 +29,7 @@ _install_v041_frontend()
 _install_v042()
 _install_v042_frontend()
 _install_v043()
+_install_v045()
 del (
     _install_v04,
     _install_v04_overrides,
@@ -40,4 +42,5 @@ del (
     _install_v042,
     _install_v042_frontend,
     _install_v043,
+    _install_v045,
 )
