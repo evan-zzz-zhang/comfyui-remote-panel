@@ -4,13 +4,13 @@
 
 **Run your local ComfyUI workflows from your phone.**
 
-> **Current status: v0.4.4 Public Beta.**
+> **Current status: v0.4.5 Public Beta.**
 >
-> Generic ComfyUI API Workflow support, mobile creation, retained-media Retry, H3 FL2VA unified generation modes, task reconciliation hardening, self-healing Windows installation, Windows Setup, Tailscale remote access, Doctor diagnostics, and guarded Recovery Lite controls are available. Full automatic watchdog recovery, multi-host support, and Wake-on-LAN are not implemented.
+> Generic ComfyUI API Workflow support, mobile creation, retained-media Retry, H3 FL2VA unified generation modes, registered-output history sync, configurable H3 prompt-standardizer Ollama model, task reconciliation hardening, self-healing Windows installation, Windows Setup, Tailscale remote access, Doctor diagnostics, and guarded Recovery Lite controls are available. Full automatic watchdog recovery, multi-host support, and Wake-on-LAN are not implemented.
 
 Comfy Remote is a mobile-first remote creation panel for ComfyUI. It runs on the Windows computer that hosts ComfyUI and turns locally verified **ComfyUI API Workflows** into a phone-friendly interface for selecting workflows, adding media, editing prompts, submitting jobs, and reviewing results.
 
-The current v0.4.4 baseline builds on **Public Readiness + Configurator 2.0** with a clearer Specialized / Generic creation boundary, explicit Seed Policy, reference-image resolution preprocessing, guarded manual ComfyUI recovery, reliable historical-media Retry, H3 FL2VA product-level mode routing, safer final-state reconciliation, and Windows environment self-healing when an existing project `.venv` is damaged. It still avoids silently rewriting arbitrary workflows or exposing ComfyUI directly to the network.
+The current v0.4.5 baseline builds on **Public Readiness + Configurator 2.0** with a clearer Specialized / Generic creation boundary, explicit Seed Policy, reference-image resolution preprocessing, guarded manual ComfyUI recovery, reliable historical-media Retry, H3 FL2VA product-level mode routing, safer final-state reconciliation, Windows environment self-healing, output-artifact/history synchronization, and a lightweight configurable Ollama model for H3 FL2VA prompt standardization. It still avoids silently rewriting arbitrary workflows or exposing ComfyUI directly to the network.
 
 ## What it does
 
@@ -21,8 +21,10 @@ The current v0.4.4 baseline builds on **Public Readiness + Configurator 2.0** wi
 - Supports submit, queue, live progress, cancel, Retry, result preview, and download.
 - Restores retained historical reference media on Retry without requiring the same file to be reselected or re-uploaded from the phone; retained inputs can still be replaced or removed explicitly.
 - Shows actual produced image width, height, format, and file size when the output file is available.
+- Reconciles Jobs that have registered output artifacts with those managed local files. If an output is deleted or moved away, its stale artifact reference is removed; once all registered outputs for that Job are gone, the Job is removed from history. Jobs that never registered an output are not deleted merely for having no result file.
 - Provides `randomize / fixed / increment` Seed Policy and reference-image resolution preprocessing while keeping Generic controls bound to real Workflow inputs.
 - Groups the three bundled H3 FL2VA physical workflows behind one creation entry with `v4_600step`, `LightX2V`, and `original` modes while keeping their physical workflow enable/disable state authoritative.
+- H3 FL2VA prompt standardization remains optional. Its Ollama model is an Advanced Setting, defaults to `gemma4:e4b`, is remembered in the browser, and is stored with the Job so Retry can restore the model actually used.
 - Hardens task reconciliation so incomplete ComfyUI history is not treated as failure and explicit `execution_success` remains success evidence even when final history persistence is slightly delayed.
 - Provides guarded Recovery Lite controls for managed ComfyUI processes; an `unresponsive` state requires three consecutive failed health polls while the recorded process is still independently verified alive.
 - Provides `setup`, `start / stop / restart / status`, `doctor`, and Windows login autostart commands.
@@ -128,14 +130,15 @@ Phone → Tailscale HTTPS Serve → 127.0.0.1:8190 Comfy Remote → 127.0.0.1:81
 
 See [SECURITY.md](SECURITY.md) for details.
 
-## Known limitations — v0.4.4 Public Beta
+## Known limitations — v0.4.5 Public Beta
 
 - **Windows 10/11 is the primary validated platform.** Linux participates in CI, but the public install and real-device path is currently Windows-first.
 - **Tailscale is the primary remote transport today.** The core architecture is not intended to be permanently tied to Tailscale, but other transports do not yet have an equivalent public installation path.
 - **Recovery Lite is manual, not a full watchdog.** The Panel can identify a verified managed process as unresponsive after three consecutive failed health polls and offer a guarded force restart, but it does not automatically restart crash loops, recover GPU/driver faults, or resubmit interrupted jobs.
-- **Real hard-hang/OOM recovery remains field-validated rather than manufactured for release testing.** Safety and debounce paths are automated-test covered, but v0.4.4 does not intentionally force GPU/ComfyUI hangs during acceptance.
-- **Task state remains evidence-based.** v0.4.4 retains the v0.4.3 history-timing fix, but it does not retroactively infer success from a leftover MP4 if an older version already misclassified a task and ComfyUI later cleared that task's history.
-- **No Wake-on-LAN.** Waking a sleeping or powered-off computer from outside the machine is not part of v0.4.4.
+- **Real hard-hang/OOM recovery remains field-validated rather than manufactured for release testing.** Safety and debounce paths are automated-test covered, but v0.4.5 does not intentionally force GPU/ComfyUI hangs during acceptance.
+- **Task state remains evidence-based.** v0.4.5 retains the v0.4.3 history-timing fix. Output-artifact deletion controls history retention but does not redefine a successful task as failed, and leftover files are not used to retroactively infer execution success.
+- **No Ollama management layer.** The H3 FL2VA Advanced Setting changes the model name passed to `H3PromptStandardizer`; Comfy Remote does not start/stop Ollama, download/remove models, or enumerate installed models.
+- **No Wake-on-LAN.** Waking a sleeping or powered-off computer from outside the machine is not part of v0.4.5.
 - **No multi-host support.** One Panel currently maps to one local ComfyUI installation.
 - **Third-party Custom Node compatibility depends on schema and real runtime behavior.** Configurator 2.0 analyzes what it can, but cannot guarantee automatic understanding of every custom node.
 
