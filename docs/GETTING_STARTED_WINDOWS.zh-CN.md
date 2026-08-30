@@ -18,7 +18,7 @@
 → 在手机查看结果
 ```
 
-> **v0.3.0 是 Public Beta。** Windows 10/11 是当前主要验证平台，Tailscale 是当前主要远程访问方式。
+> **v0.4.4 是 Public Beta。** Windows 10/11 是当前主要验证平台，Tailscale 是当前主要远程访问方式。
 
 ---
 
@@ -103,13 +103,15 @@ cd comfyui-remote-panel
 安装器会：
 
 ```text
-检查稳定版 Python
-→ 创建项目自己的 .venv
-→ 安装 Comfy Remote
+检查稳定版基础 Python
+→ 如果已有项目 .venv，就真正启动它做健康检查
+→ 健康则继续复用；损坏则先备份为 .venv.broken-<时间戳> 再重建
+→ 把 Comfy Remote 安装到 .venv
+→ 验证安装后的包可以正常 import
 → 自动进入 Setup 向导
 ```
 
-它不会修改 ComfyUI 核心代码。
+基础/全局 Python 只负责提供和创建项目环境，Panel 的正常命令使用项目自己的 `.venv`。安装器不会修改 ComfyUI 核心代码。
 
 ### PowerShell 阻止脚本怎么办
 
@@ -468,17 +470,22 @@ Schema
 
 ## 13. 更新项目
 
-Public Beta 阶段更新较快。更新前建议没有正在运行的重要任务，然后：
+Public Beta 阶段更新较快。日常更新前确认没有重要任务正在运行，然后：
 
 ```powershell
 git pull
-.\.venv\Scripts\python.exe -m pip install -e .
-.\.venv\Scripts\comfyui-remote-panel.exe setup
-.\.venv\Scripts\comfyui-remote-panel.exe doctor
 .\.venv\Scripts\comfyui-remote-panel.exe restart
 ```
 
-Setup 的“检查并更新”会尽量保留有效配置，并在改写前备份 `config.toml.bak`。
+Comfy Remote 使用 editable install，正常情况下 `git pull` 会直接更新现有 `.venv` 所引用的项目源码，重启 Panel 后即可加载新代码。
+
+只有在版本修改依赖或安装元数据、需要重新检查 Setup / 配置，或者 Python / `.venv` 环境需要修复时，才重新运行完整安装器：
+
+```powershell
+.\scripts\windows\Install-ComfyRemote.ps1
+```
+
+安装器会真正启动已有 `.venv` 做健康检查；损坏环境会先保留为 `.venv.broken-<时间戳>`，再重建后继续安装。Setup 的“检查并更新”会尽量保留有效配置，并在改写前备份 `config.toml.bak`。
 
 ---
 
