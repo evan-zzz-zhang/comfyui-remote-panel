@@ -9,7 +9,8 @@ import aiohttp
 from aiohttp import web
 
 
-_SCRIPT_TAG = '<script src="/static/v045_ollama_ui.js?v=0.4.5.1" defer></script>'
+_OLLAMA_SCRIPT_TAG = '<script src="/static/v045_ollama_ui.js?v=0.4.5.1" defer></script>'
+_GENERATION_SYNC_SCRIPT_TAG = '<script src="/static/v045_generation_sync.js?v=0.4.5.0" defer></script>'
 _DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 
 
@@ -56,7 +57,7 @@ async def _fetch_ollama_models() -> list[str]:
 
 
 def install() -> None:
-    """Expose local Ollama models through the authenticated Panel and load the v0.4.5 selector UI."""
+    """Expose local Ollama models and load the v0.4.5 frontend compatibility layers."""
 
     from . import app as app_module
 
@@ -90,17 +91,22 @@ def install() -> None:
                 and response.content_type == "text/html"
             ):
                 html = response.text
-                if html and _SCRIPT_TAG not in html:
-                    html = html.replace("</body>", f"  {_SCRIPT_TAG}\n</body>")
-                    replacement = web.Response(
-                        text=html,
-                        status=response.status,
-                        content_type="text/html",
-                    )
-                    for key, value in response.headers.items():
-                        if key.lower() not in {"content-type", "content-length"}:
-                            replacement.headers[key] = value
-                    return replacement
+                if html:
+                    missing = [
+                        tag for tag in (_OLLAMA_SCRIPT_TAG, _GENERATION_SYNC_SCRIPT_TAG)
+                        if tag not in html
+                    ]
+                    if missing:
+                        html = html.replace("</body>", "  " + "\n  ".join(missing) + "\n</body>")
+                        replacement = web.Response(
+                            text=html,
+                            status=response.status,
+                            content_type="text/html",
+                        )
+                        for key, value in response.headers.items():
+                            if key.lower() not in {"content-type", "content-length"}:
+                                replacement.headers[key] = value
+                        return replacement
             return response
 
         application.middlewares.insert(0, v045_ollama_frontend)
