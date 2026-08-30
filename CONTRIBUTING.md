@@ -1,6 +1,6 @@
 # Contributing / 贡献指南
 
-Comfy Remote is currently a **v0.3 Public Beta**. Contributions should keep the project small, auditable, local-first, and safe by default.
+Comfy Remote is currently a **Public Beta**. Contributions should keep the project small, auditable, local-first, and safe by default.
 
 ## Development setup
 
