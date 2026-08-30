@@ -2,7 +2,9 @@
   const ENTRY_ID = "h3-fl2va-group";
   const ORIGINAL_ID = "h3-fl2va";
   const DEFAULT_MODE = "v4_600step";
+  const DEFAULT_OLLAMA_MODEL = "gemma4:e4b";
   const MODE_STORAGE_KEY = "comfy-remote.fl2va.generation-mode";
+  const OLLAMA_STORAGE_KEY = "comfy-remote.fl2va.ollama-model";
   const FALLBACK_MODES = {
     v4_600step: { label: "v4_600step", preset_id: "h3-fl2va-v4step600" },
     lightx2v: { label: "LightX2V", preset_id: "h3-fl2va-lightx2v" },
@@ -88,6 +90,28 @@
   function targetPreset(mode) {
     const definition = modeDefinitions()[mode];
     return definition ? state.presets.get(definition.preset_id) : null;
+  }
+
+  function defaultOllamaModel(mode) {
+    const value = targetPreset(mode)?.parameters?.ollama_model?.default
+      ?? state.presets.get(ENTRY_ID)?.parameters?.ollama_model?.default
+      ?? DEFAULT_OLLAMA_MODEL;
+    return String(value || DEFAULT_OLLAMA_MODEL).trim() || DEFAULT_OLLAMA_MODEL;
+  }
+
+  function preferredOllamaModel(candidate, mode) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+    try {
+      const stored = window.localStorage.getItem(OLLAMA_STORAGE_KEY);
+      if (stored?.trim()) return stored.trim();
+    } catch (_) {}
+    return defaultOllamaModel(mode);
+  }
+
+  function rememberOllamaModel(value) {
+    const model = String(value || "").trim();
+    if (!model) return;
+    try { window.localStorage.setItem(OLLAMA_STORAGE_KEY, model); } catch (_) {}
   }
 
   function tuningDefaults(mode) {
@@ -233,13 +257,20 @@
     if (prompt) prompt.required = Boolean(toggle?.checked) || !hasFrame;
   }
 
+  function syncOllamaModelState() {
+    const checkbox = document.querySelector("[data-v042-prompt-standardization]");
+    const input = document.querySelector("[data-v045-ollama-model]");
+    if (input) input.disabled = checkbox?.checked === false;
+  }
+
   function removeControls() {
     document.querySelector("[data-v042-mode-field]")?.remove();
     document.querySelector("[data-v042-standardizer-field]")?.remove();
+    document.querySelector("[data-v045-ollama-model-field]")?.remove();
     document.querySelectorAll("#v042-fl2va-values").forEach(node => node.remove());
   }
 
-  function ensureControls(mode, standardization) {
+  function ensureControls(mode, standardization, ollamaModel) {
     installToggleStyle();
     const preset = selectedPreset();
     const advanced = document.querySelector("#advanced-settings");
@@ -279,6 +310,17 @@
     const checkbox = standardizerField.querySelector("[data-v042-prompt-standardization]");
     checkbox.checked = standardization !== false;
 
+    let ollamaField = grid.querySelector("[data-v045-ollama-model-field]");
+    if (!ollamaField) {
+      ollamaField = document.createElement("label");
+      ollamaField.className = "field";
+      ollamaField.dataset.v045OllamaModelField = "true";
+      ollamaField.innerHTML = `<span>Ollama 标准化模型</span><input type="text" autocomplete="off" data-v045-ollama-model>`;
+      standardizerField.insertAdjacentElement("afterend", ollamaField);
+    }
+    const ollamaInput = ollamaField.querySelector("[data-v045-ollama-model]");
+    ollamaInput.value = preferredOllamaModel(ollamaModel, selectedMode);
+
     modeSelect.onchange = () => {
       const next = modeSelect.value;
       if (!validMode(next) || !modeEnabled(next)) return;
@@ -286,8 +328,17 @@
       applyModeDefaults(next);
       updateSubmitAvailability();
     };
-    checkbox.onchange = syncPromptRequired;
+    checkbox.onchange = () => {
+      syncPromptRequired();
+      syncOllamaModelState();
+    };
+    ollamaInput.onchange = () => {
+      const model = preferredOllamaModel(ollamaInput.value, selectedMode);
+      ollamaInput.value = model;
+      rememberOllamaModel(model);
+    };
     syncPromptRequired();
+    syncOllamaModelState();
   }
 
   function parseValuesJsonEntries(formData) {
@@ -342,6 +393,9 @@
     dedupeScalarFields(formData);
     const mode = preferredMode(document.querySelector("[data-v042-generation-mode]")?.value);
     const standardize = document.querySelector("[data-v042-prompt-standardization]")?.checked !== false;
+    const ollamaInput = document.querySelector("[data-v045-ollama-model]");
+    const ollamaModel = preferredOllamaModel(ollamaInput?.value, mode);
+    rememberOllamaModel(ollamaModel);
     const values = parseValuesJsonEntries(formData);
     const directMediaResolution = formData.get("media_resolution");
     if (typeof directMediaResolution === "string" && directMediaResolution) {
@@ -351,6 +405,7 @@
     if (mediaResolution) values.media_resolution = mediaResolution;
     values.generation_mode = mode;
     values.prompt_standardization = standardize;
+    values.ollama_model = ollamaModel;
     formData.delete("media_resolution");
     formData.delete("values_json");
     formData.set("values_json", JSON.stringify(values));
@@ -385,7 +440,8 @@
       ?? targetPreset(mode)?.parameters?.prompt_standardization?.default
       ?? state.presets.get(ENTRY_ID)?.parameters?.prompt_standardization?.default
       ?? true;
-    ensureControls(mode, standardization);
+    const ollamaModel = preferredOllamaModel(merged.ollama_model, mode);
+    ensureControls(mode, standardization, ollamaModel);
     return result;
   };
 
