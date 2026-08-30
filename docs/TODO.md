@@ -1,8 +1,8 @@
 # Comfy Remote Roadmap / TODO
 
-当前稳定开发基线：**v0.4.3 Task Reconciliation Hardening（Completed）**。
+当前稳定开发基线：**v0.4.4 Windows Environment Self-Healing（Completed）**。
 
-`v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；`v0.4 Creation Experience`、`v0.4 Recovery Lite`、`v0.4.1 Media Continuity`、`v0.4.2 H3 FL2VA Unified Modes` 与 `v0.4.3 Task Reconciliation Hardening` 均已完成当前范围收尾。
+`v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；`v0.4 Creation Experience`、`v0.4 Recovery Lite`、`v0.4.1 Media Continuity`、`v0.4.2 H3 FL2VA Unified Modes`、`v0.4.3 Task Reconciliation Hardening` 与 `v0.4.4 Windows Environment Self-Healing` 均已完成当前范围收尾。
 
 ---
 
@@ -203,11 +203,28 @@ H3 ↔ Generic
 
 ---
 
+## v0.4.4 Windows Environment Self-Healing — Completed
+
+本阶段针对 Windows 项目环境损坏后的安装/修复路径做加固，目标是让已有 `.venv` 不能因为“文件还在”就被误认为可用。
+
+### 完成范围
+
+- [x] `Install-ComfyRemote.ps1` 会真正启动已有 `.venv`，检查核心标准库与 `pip`，而不是只判断 `python.exe` 是否存在。
+- [x] `.venv` 健康时继续复用；损坏时先保留为 `.venv.broken-YYYYMMDD-HHMMSS`，再用健康的稳定版基础 Python 重建。
+- [x] 新创建的 `.venv` 在继续安装前再次做健康检查；`pip install -e .` 完成后再验证 `comfyui_remote_panel` 可以正常 import。
+- [x] `.venv` 继续作为 Panel 的标准运行环境；全局/基础 Python 只承担前置检查和创建项目环境，不作为静默长期 fallback。
+- [x] Windows 启动脚本与 Task Scheduler 注册路径都支持绝对 `PythonPath`；安装器同时支持绝对 `ConfigPath`。
+- [x] 文档明确区分日常更新与完整安装/修复：正常更新为 `git pull` + Panel `restart`；只有依赖/安装元数据、Setup/配置或环境修复场景才重新运行安装器。
+- [x] 回归测试覆盖健康检查、坏环境备份重建、新环境验证、包 import 验证、绝对路径处理与 PowerShell 语法检查。
+- [x] Windows/Linux、Python 3.11/3.13、minimum-dependencies、repository-safety、pytest 与 build CI 通过。
+
+---
+
 ## Later / separate design tracks
 
-这些方向可以继续研究，但不自动并入 Recovery Lite / v0.4.3：
+这些方向可以继续研究，但不自动并入 Recovery Lite / v0.4.4：
 
-- Ref2VA grouped workflow：沿用 v0.4.2 的产品级模式路由，把三个 H3 Ref2VA 物理工作流收敛成一个用户入口；建议作为后续独立 feature branch，不与本次 reconciliation hotfix 混合。
+- Ref2VA grouped workflow：沿用 v0.4.2 的产品级模式路由，把三个 H3 Ref2VA 物理工作流收敛成一个用户入口；建议作为后续独立 feature branch，不与本次环境自愈修复混合。
 - Full Reliability / Watchdog：自动拉起、重试退避、crash-loop、防断线误判、任务最终状态 reconciliation 等完整无人值守恢复能力。
 - Multi-host：家里 / 公司 / 其他主机的 Host Registry、selector、routing。
 - Wake-on-LAN / external watchdog：依赖局域网或机外常驻设备的电源恢复。
