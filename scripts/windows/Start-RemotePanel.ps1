@@ -8,7 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath $ProjectRoot).Path
-$python = Join-Path $root $PythonPath
+$python = if ([System.IO.Path]::IsPathRooted($PythonPath)) { $PythonPath } else { Join-Path $root $PythonPath }
 $config = Join-Path $root $ConfigPath
 
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
