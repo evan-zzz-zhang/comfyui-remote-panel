@@ -14,6 +14,25 @@
 .\.venv\Scripts\comfyui-remote-panel.exe doctor --report
 ```
 
+## 项目 `.venv` / Python 环境损坏
+
+如果 `.\.venv\Scripts\python.exe` 无法正常启动、基础标准库 import 失败，或者出现 `SRE module mismatch` 一类错误，不要尝试手工修补 `site-packages`，也不要把 Panel 长期改成用全局 Python 运行。
+
+在项目根目录重新运行 Windows 安装器：
+
+```powershell
+.\scripts\windows\Install-ComfyRemote.ps1
+```
+
+从 v0.4.4 开始，安装器会真正启动已有 `.venv`，检查基础 Python 模块和 `pip`。健康环境直接复用；损坏环境会先保留为 `.venv.broken-YYYYMMDD-HHMMSS`，然后用健康的稳定版基础 Python 创建新的 `.venv`，再次健康检查并重新安装 Comfy Remote。
+
+这个安装器路径用于首次安装、依赖/安装元数据变化、需要刷新 Setup / 配置，以及环境修复。正常代码更新仍然只需要：
+
+```powershell
+git pull
+.\.venv\Scripts\comfyui-remote-panel.exe restart
+```
+
 ## setup 找不到 ComfyUI
 
 确认你输入的是以下两种根目录之一：
