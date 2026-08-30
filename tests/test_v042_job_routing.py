@@ -98,17 +98,20 @@ async def test_virtual_fl2va_group_routes_lightx2v(panel_client_v042, comfy_serv
     form.add_field("values_json", json.dumps({
         "generation_mode": "lightx2v",
         "prompt_standardization": True,
+        "ollama_model": "qwen3:8b",
     }))
 
     response = await panel_client_v042.post("/api/jobs", data=form, headers=LOGIN)
     assert response.status == 201, await response.text()
     job = await response.json()
     assert job["generation_mode"] == "lightx2v"
+    assert job["input_values"]["ollama_model"] == "qwen3:8b"
     graph = comfy_server_v042.app["submitted"][-1]["prompt"]
     assert graph["145"]["inputs"]["lora_name"] == "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
     assert graph["124"]["inputs"]["scheduler"] == "simple"
     assert graph["149"]["inputs"]["sampler_name"] == "euler"
     assert graph["124"]["inputs"]["steps"] == 8
+    assert graph["152"]["inputs"]["ollama_model"] == "qwen3:8b"
 
 
 @pytest.mark.asyncio
@@ -141,6 +144,7 @@ async def test_standardized_prompt_is_saved_from_preview_history_and_retry_keeps
 
     draft = await panel_client_v042.app["jobs"].retry(job_id)
     assert draft["prompt"] == "原始提示词"
+    assert draft["values"]["ollama_model"] == "gemma4:e4b"
     assert "_v042_standardized_prompt" not in draft["values"]
 
 
