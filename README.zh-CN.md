@@ -4,13 +4,13 @@
 
 **从手机运行你本地的 ComfyUI 工作流。**
 
-> **当前状态：v0.4.4 Public Beta。**
+> **当前状态：v0.4.5 Public Beta。**
 >
-> 通用 ComfyUI API Workflow、手机创作、历史素材 Retry、H3 FL2VA 统一生成模式、任务状态 reconciliation 加固、Windows 环境自愈安装、Windows Setup、Tailscale 远程访问、Doctor 诊断和受控 Recovery Lite 已可用。完整自动 watchdog、多主机和 Wake-on-LAN 尚未实现。
+> 通用 ComfyUI API Workflow、手机创作、历史素材 Retry、H3 FL2VA 统一生成模式、已登记生成产物与历史同步、H3 提示词标准化 Ollama 模型可配置、任务状态 reconciliation 加固、Windows 环境自愈安装、Windows Setup、Tailscale 远程访问、Doctor 诊断和受控 Recovery Lite 已可用。完整自动 watchdog、多主机和 Wake-on-LAN 尚未实现。
 
 Comfy Remote 是一个手机优先的 ComfyUI 远程创作面板。它运行在 ComfyUI 所在的 Windows 电脑上，把已经在本机验证过的 **ComfyUI API Workflow** 转成适合手机使用的创作界面：选择工作流、添加素材、填写提示词、提交任务、查看结果。
 
-当前 v0.4.4 基线在 **Public Readiness + Configurator 2.0** 之上补齐了 Specialized / Generic 创作边界、Seed Policy、参考图分辨率预处理、受控人工恢复、历史参考素材 Retry 连续性、H3 FL2VA 产品级模式路由、更稳健的任务最终状态 reconciliation，以及项目 `.venv` 损坏时的 Windows 环境自愈能力，同时继续避免静默改写陌生工作流，也不把 ComfyUI 本身直接暴露到网络。
+当前 v0.4.5 基线在 **Public Readiness + Configurator 2.0** 之上补齐了 Specialized / Generic 创作边界、Seed Policy、参考图分辨率预处理、受控人工恢复、历史参考素材 Retry 连续性、H3 FL2VA 产品级模式路由、更稳健的任务最终状态 reconciliation、Windows 环境自愈、生成产物与历史记录同步，以及 H3 FL2VA 提示词标准化模型的轻量可配置能力，同时继续避免静默改写陌生工作流，也不把 ComfyUI 本身直接暴露到网络。
 
 ## 能做什么
 
@@ -21,8 +21,10 @@ Comfy Remote 是一个手机优先的 ComfyUI 远程创作面板。它运行在 
 - 支持提交、排队、实时进度、取消、再次生成、结果查看与下载。
 - Retry 时可恢复历史参考素材的真实预览，不要求手机重新选择或上传同一文件；retained 素材仍可显式替换或删除。
 - 图片产物存在时，任务卡可显示实际输出宽、高、格式与文件大小。
+- 对已经登记过 output artifact 的 Job，Panel 会检查对应受管本地生成产物；如果某个产物被删除或移走，就移除失效 artifact 引用；当该 Job 的全部已登记生成产物都不存在后，对应历史记录自动移除。从未登记过 output 的失败/中断任务不会仅因为“没有文件”被删除。
 - 提供 `randomize / fixed / increment` Seed Policy 与参考图分辨率预处理；Generic 控件只来自真实 Workflow binding。
 - 把三个内置 H3 FL2VA 物理工作流收敛到一个创作入口，通过 `v4_600step`、`LightX2V`、`original` 三种模式选择，同时仍由各物理工作流的启用/禁用状态决定是否可用。
+- H3 FL2VA 提示词标准化继续保持可选；高级设置可修改传给 `H3PromptStandardizer` 的 Ollama 模型，默认 `gemma4:e4b`，浏览器会记住选择，每个 Job 也会保存实际模型供 Retry 恢复。
 - 加固任务状态 reconciliation：不完整 ComfyUI history 不再直接算失败；最终 history 尚未完全落盘时，明确的 `execution_success` 仍作为成功证据。
 - 提供 Recovery Lite 受控恢复能力；只有 ComfyUI 健康检查连续失败 3 次、且已记录受管进程仍重新核验为存活时，才判为“无响应”。
 - 提供 `setup`、`start / stop / restart / status`、`doctor` 和 Windows 登录自启动命令。
@@ -128,14 +130,15 @@ Phone → Tailscale HTTPS Serve → 127.0.0.1:8190 Comfy Remote → 127.0.0.1:81
 
 安全细节见 [SECURITY.md](SECURITY.md)。
 
-## Known limitations — v0.4.4 Public Beta
+## Known limitations — v0.4.5 Public Beta
 
 - **Windows 10/11 是当前主要验证平台。** Linux 参与 CI，但公开安装和真机使用路径目前以 Windows 为主。
 - **Tailscale 是当前主要远程传输方式。** 核心架构不要求永远绑定 Tailscale，但其他远程 transport 尚未形成同等级公开安装路径。
 - **Recovery Lite 是人工恢复，不是完整 watchdog。** Panel 可在连续 3 次健康检查失败、且受管进程仍核验存活时判为“无响应”并提供受控强制重启，但不会自动处理 crash loop、GPU/驱动故障，也不会自动续跑或重新提交被中断任务。
-- **真实硬卡死 / OOM 恢复继续依赖现场补充验证。** 安全保护和防抖路径有自动化覆盖，但 v0.4.4 不会为了发布验收故意制造 GPU / ComfyUI 卡死。
-- **任务状态仍以证据为准。** v0.4.4 保留 v0.4.3 的 history 时序竞态修复，但如果旧版本已经误判任务、之后 ComfyUI 又清除了对应 history，不会仅凭残留 MP4 反推成功。
-- **没有 Wake-on-LAN。** 电脑睡眠、关机后的机外唤醒不属于 v0.4.4。
+- **真实硬卡死 / OOM 恢复继续依赖现场补充验证。** 安全保护和防抖路径有自动化覆盖，但 v0.4.5 不会为了发布验收故意制造 GPU / ComfyUI 卡死。
+- **任务状态仍以证据为准。** v0.4.5 保留 v0.4.3 的 history 时序竞态修复。生成产物删除只决定历史记录是否继续保留，不会把成功任务改写成失败；也不会仅凭残留文件反推旧任务执行成功。
+- **不提供 Ollama 管理层。** H3 FL2VA 高级设置只修改传给 `H3PromptStandardizer` 的模型名；Panel 不负责启动/关闭 Ollama、下载/删除模型或自动读取模型列表。
+- **没有 Wake-on-LAN。** 电脑睡眠、关机后的机外唤醒不属于 v0.4.5。
 - **没有多主机。** 当前一个 Panel 对应本机一套 ComfyUI。
 - **第三方 Custom Node 兼容性取决于 schema 和真实运行。** Configurator 2.0 会尽量分析，但不能保证所有第三方节点都能被自动理解。
 
