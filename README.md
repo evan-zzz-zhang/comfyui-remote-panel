@@ -64,6 +64,17 @@ After Setup:
 
 If Setup configured Tailscale Serve, open the displayed `https://…ts.net` address on your phone.
 
+### Update
+
+For a normal source update, make sure no important job is running, then:
+
+```powershell
+git pull
+.\.venv\Scripts\comfyui-remote-panel.exe restart
+```
+
+Because Comfy Remote is installed in editable mode, a normal `git pull` updates the source used by the existing `.venv`; restarting the Panel reloads that code. Re-run `Install-ComfyRemote.ps1` only when the release changes dependencies or installation metadata, when Setup/configuration must be refreshed, or when the Python / `.venv` environment needs repair.
+
 ## Workflow compatibility
 
 First confirm that the target workflow runs correctly in ComfyUI, then export it as an **API Workflow JSON**. A normal UI Workflow JSON is a different format.
