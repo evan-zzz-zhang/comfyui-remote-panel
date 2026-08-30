@@ -2,7 +2,7 @@
 
 ## Supported version
 
-Security fixes are provided for the latest released version. During the v0.3 Public Beta, the supported release line is **0.3.x**.
+Security fixes are provided for the latest released version. The currently supported public-beta release line is **0.4.x**; older release lines may not receive backported fixes.
 
 ## Deployment boundary
 
@@ -24,6 +24,8 @@ Do **not** open a public issue containing real identities, local absolute paths,
 For a security-sensitive report, contact the repository owner privately with the smallest reproducible example and sanitized diagnostics.
 
 ## 中文摘要
+
+安全修复以最新公开版本为准；当前 Public Beta 支持线为 **0.4.x**，旧版本线不保证回补安全修复。
 
 面板与 ComfyUI 应只监听本机，通过 Tailscale Serve 访问，不得启用 Funnel 或公网端口映射。第三方 ComfyUI Custom Node 仍属于本机代码执行边界，Comfy Remote 不会对它们进行沙箱隔离。
 
