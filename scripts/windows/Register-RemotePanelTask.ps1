@@ -9,8 +9,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath $ProjectRoot).Path
-$python = (Resolve-Path -LiteralPath (Join-Path $root $PythonPath)).Path
-$config = (Resolve-Path -LiteralPath (Join-Path $root $ConfigPath)).Path
+$pythonCandidate = if ([System.IO.Path]::IsPathRooted($PythonPath)) { $PythonPath } else { Join-Path $root $PythonPath }
+$configCandidate = if ([System.IO.Path]::IsPathRooted($ConfigPath)) { $ConfigPath } else { Join-Path $root $ConfigPath }
+$python = (Resolve-Path -LiteralPath $pythonCandidate).Path
+$config = (Resolve-Path -LiteralPath $configCandidate).Path
 $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
 $pythonw = Join-Path (Split-Path -Parent $python) 'pythonw.exe'
@@ -18,7 +20,7 @@ $launcher = if (Test-Path -LiteralPath $pythonw) { $pythonw } else { $python }
 
 $action = New-ScheduledTaskAction `
     -Execute $launcher `
-    -Argument ('-m comfyui_remote_panel start --config "{0}"' -f $config) `
+    -Argument ('-m comfyui_remote_panel start --config \"{0}\"' -f $config) `
     -WorkingDirectory $root
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
 $settings = New-ScheduledTaskSettingsSet `
