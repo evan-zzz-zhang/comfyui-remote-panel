@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.4.5 — Artifact History Sync & Ollama Model Setting
+
+Comfy Remote v0.4.5 keeps task history aligned with registered local outputs and makes the H3 FL2VA prompt-standardizer Ollama model configurable without adding a separate Ollama management layer.
+
+### Highlights
+
+- Jobs that previously registered output artifacts are reconciled against their actual managed local paths on startup/periodic reconciliation; deleting or moving the only registered output removes the corresponding Job from history.
+- Multi-output Jobs keep surviving outputs when only some registered artifacts disappear, and the Job is purged only after all registered outputs are gone.
+- Jobs that never registered an output are not removed merely because no file exists, and active `submitting / queued / running` Jobs are excluded from artifact cleanup.
+- Artifact reconciliation does not redefine execution state: ComfyUI history/WebSocket evidence still decides `succeeded / failed / interrupted`.
+- Purge is artifact-aware so secondary Generic output artifacts are cleaned together with tracked Job inputs instead of relying only on the legacy primary `job_files` entry.
+- H3 FL2VA `original / LightX2V / v4_600step` expose `ollama_model` as an Advanced Setting, defaulting to `gemma4:e4b`; `unload_after=true` remains locked.
+- The selected Ollama model is remembered in the browser, stored in each new Job's input values, and restored by Retry. Legacy FL2VA Jobs recover the old model from their workflow snapshot when available.
+- Ollama process control, model installation/removal, model enumeration, and Ref2VA standardization remain out of scope.
+
+### Verification
+
+- Focused regression coverage checks single-output deletion, partial/all multi-output deletion, active/no-output protections, artifact-aware purge, all three FL2VA model bindings, blank-model fallback, legacy Retry restoration, and frontend preference/form wiring.
+- CI covers minimum dependencies, repository/history safety, Windows and Ubuntu on Python 3.11 / 3.13, pytest, JavaScript syntax checks, i18n smoke, and package builds.
+- Real Windows/phone acceptance for deleting or moving a produced artifact and changing the standardizer model remains a release acceptance step before merge/closeout.
+
 ## v0.4.4 — Windows Environment Self-Healing
 
 Comfy Remote v0.4.4 hardens the Windows install and autostart path so a damaged project virtual environment no longer requires manual Python troubleshooting before the Panel can be recovered.
