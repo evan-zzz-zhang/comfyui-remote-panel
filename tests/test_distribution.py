@@ -22,7 +22,7 @@ def test_wheel_contains_and_loads_all_workflow_resources(tmp_path):
             if "/workflows/" in name and name.endswith(".json")
         ]
         static_files = [name for name in archive.namelist() if "/static/" in name]
-    assert len(workflow_files) == 12
+    assert len(workflow_files) == 18
     assert any(name.endswith("/static/workflow_ux.js") for name in static_files)
     assert any(name.endswith("/static/ux_refinements.js") for name in static_files)
     assert any(name.endswith("/static/ux_refinements.css") for name in static_files)
@@ -55,7 +55,7 @@ async def smoke():
         workflow_dir=root / "missing-workflows", monitoring_interval=60,
         nvidia_smi_timeout=.1,
     )
-    assert len(load_presets(config.workflow_dir)) == 6
+    assert len(load_presets(config.workflow_dir)) == 9
     runner = web.AppRunner(create_app(config))
     await runner.setup()
     site = web.TCPSite(runner, "127.0.0.1", 0)

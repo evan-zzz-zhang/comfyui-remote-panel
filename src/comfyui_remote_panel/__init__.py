@@ -1,6 +1,6 @@
 """Comfy Remote."""
 
-__version__ = "0.4.5"
+__version__ = "0.4.6"
 
 # v0.4 is layered as explicit runtime integration modules so the creation
 # policies stay isolated from the v0.3 compatibility core while the beta is
@@ -18,6 +18,13 @@ from .v042_frontend import install as _install_v042_frontend
 from .v043 import install as _install_v043
 from .v045 import install as _install_v045
 from .v045_ollama import install as _install_v045_ollama
+from .v046 import install as _install_v046
+from .v046_qwen_v44 import install as _install_v046_qwen_v44
+from .v046_job_compat import install as _install_v046_job_compat
+from .v046_phase_timing import install as _install_v046_phase_timing
+from .v046_force_stop_compat import install as _install_v046_force_stop_compat
+from .v046_sage_attention_status import install as _install_v046_sage_attention_status
+from .v046_frontend import install as _install_v046_frontend
 
 _install_v04()
 _install_v04_overrides()
@@ -32,6 +39,13 @@ _install_v042_frontend()
 _install_v043()
 _install_v045()
 _install_v045_ollama()
+_install_v046()
+_install_v046_qwen_v44()
+_install_v046_job_compat()
+_install_v046_phase_timing()
+_install_v046_force_stop_compat()
+_install_v046_sage_attention_status()
+_install_v046_frontend()
 del (
     _install_v04,
     _install_v04_overrides,
@@ -46,4 +60,11 @@ del (
     _install_v043,
     _install_v045,
     _install_v045_ollama,
+    _install_v046,
+    _install_v046_qwen_v44,
+    _install_v046_job_compat,
+    _install_v046_phase_timing,
+    _install_v046_force_stop_compat,
+    _install_v046_sage_attention_status,
+    _install_v046_frontend,
 )

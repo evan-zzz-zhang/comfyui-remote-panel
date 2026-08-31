@@ -1,5 +1,6 @@
 (() => {
   const STANDARDIZER_SELECTOR = "[data-v042-prompt-standardization]";
+  const V046_SELECTOR = "[data-v046-prompt-standardization-mode]";
   const PROMPT_ROW_LABELS = new Set(["提示词", "正面提示词", "prompt", "positive_prompt"]);
 
   function installStyles() {
@@ -15,7 +16,13 @@
   }
 
   function syncSwitchButton(field) {
-    const checkbox = field?.querySelector?.(`input${STANDARDIZER_SELECTOR}`);
+    if (!field) return;
+    if (field.querySelector(V046_SELECTOR)) {
+      field.querySelectorAll("[data-v042-standardizer-switch]").forEach(button => button.remove());
+      return;
+    }
+
+    const checkbox = field.querySelector(`input${STANDARDIZER_SELECTOR}`);
     if (!checkbox) return;
     const legacy = checkbox.closest(".v042-switch");
     if (legacy) legacy.style.setProperty("display", "none", "important");
@@ -132,9 +139,6 @@
       list.prepend(row);
     }
 
-    // ux_refinements may normalize the original prompt label on the same click tick.
-    // Position now, then once more after its deferred normalization so the two rows
-    // are always adjacent regardless of listener/timer ordering.
     positionStandardizedPromptRow(body);
     queueMicrotask(() => positionStandardizedPromptRow(body));
     window.requestAnimationFrame(() => positionStandardizedPromptRow(body));
@@ -158,9 +162,6 @@
     const result = await baseApiActionV042Patch(path, options);
     const method = String(options.method || "GET").toUpperCase();
     if (method === "POST" && /^\/api\/jobs\/[^/]+\/retry$/.test(path)) {
-      // The base retry handler restores aspect/duration/MP after applyPreset().
-      // Refresh the compact summary on the next task so it reads final values,
-      // not the transient reset/default state.
       window.setTimeout(syncGenerationSettingsSummary, 0);
     }
     return result;
@@ -175,8 +176,6 @@
     const details = event.target.closest?.("[data-task-details]");
     if (!details) return;
     const jobId = details.dataset.taskDetails;
-    // Let the existing task-detail renderer build its sections first, then add the
-    // standardized result and force it directly after the original prompt row.
     window.setTimeout(() => addStandardizedPromptToTaskDetails(jobId), 0);
   }, true);
 
