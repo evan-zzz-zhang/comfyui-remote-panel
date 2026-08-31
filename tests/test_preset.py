@@ -89,16 +89,20 @@ def test_reference_aspect_rejects_missing_reference_image(preset):
         preset.build_prompt(data, "job", {})
 
 
-def test_all_six_presets_load_and_keep_their_real_defaults():
+def test_all_nine_presets_load_and_keep_their_real_defaults():
     presets = load_presets(ROOT / "workflows")
     assert set(presets) == {
         "h3-fl2va", "h3-fl2va-lightx2v", "h3-fl2va-v4step600",
+        "h3-fl2va-qwen35-4b", "h3-fl2va-lightx2v-qwen35-4b", "h3-fl2va-v4step600-qwen35-4b",
         "h3-ref2va", "h3-ref2va-lightx2v", "h3-ref2va-v4step600",
     }
     expected = {
         "h3-fl2va": ("simple", "res_multistep", 20),
         "h3-fl2va-lightx2v": ("simple", "euler", 8),
         "h3-fl2va-v4step600": ("beta", "euler", 8),
+        "h3-fl2va-qwen35-4b": ("simple", "res_multistep", 20),
+        "h3-fl2va-lightx2v-qwen35-4b": ("simple", "euler", 8),
+        "h3-fl2va-v4step600-qwen35-4b": ("beta", "euler", 8),
         "h3-ref2va": ("simple", "res_multistep", 20),
         "h3-ref2va-lightx2v": ("simple", "euler", 4),
         "h3-ref2va-v4step600": ("beta", "euler", 8),
@@ -110,7 +114,7 @@ def test_all_six_presets_load_and_keep_their_real_defaults():
 
 def test_packaged_presets_are_available_without_external_directory(tmp_path):
     presets = load_presets(tmp_path / "missing-workflows")
-    assert len(presets) == 6
+    assert len(presets) == 9
     assert BUILTIN_WORKFLOW_DIR.is_dir()
 
 

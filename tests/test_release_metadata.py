@@ -12,6 +12,6 @@ def test_package_and_pyproject_versions_match():
     assert pyproject["project"]["version"] == __version__
 
 
-def test_v045_release_metadata_is_not_marked_as_dev_build():
-    assert __version__ == "0.4.5"
+def test_v046_release_metadata_is_not_marked_as_dev_build():
+    assert __version__ == "0.4.6"
     assert "dev" not in __version__.lower()

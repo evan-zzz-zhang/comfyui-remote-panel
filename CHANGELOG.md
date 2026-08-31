@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.4.6 — FL2VA Multi-Backend Prompt Standardization
+
+Comfy Remote v0.4.6 keeps one H3 FL2VA creation entry while adding Off / Ollama / ComfyUI prompt-standardization routing and tightening FL2VA runtime progress, timing, retry, and recovery behavior.
+
+### Highlights
+
+- `MiniMax H3 FL2VA` keeps one creation entry with `original / LightX2V / v4_600step` generation modes and `关闭 / Ollama / ComfyUI` prompt-standardization modes.
+- Three bundled ComfyUI Qwen3.5 4B physical workflows use `H3OfficialSkillPromptWriterQwen`; the physical presets remain manageable but hidden from the normal creation picker.
+- Retry restores the actual generation mode and prompt-standardization backend. A frontend observer regression that could overwrite the restored backend with the browser preference was fixed.
+- Qwen standardized prompts use the existing `standardized_prompt` Job field. Capture prefers the save-node metadata and falls back to the `PreviewAny` output directly connected to the Qwen writer when ComfyUI history does not expose the embedded video metadata.
+- The obsolete visible Boolean prompt-standardization switch is removed while its hidden compatibility state remains available to older v0.4.2/v0.4.5 frontend logic.
+- FL2VA reference-image aspect remains available and an otherwise unspecified aspect ratio falls back to `9:16`. A hidden-preset drift regression that could submit Ref2VA while rendering the FL2VA UI was fixed.
+- FL2VA progress is standardization-aware (`prepare / standardize / sampling / decode / compose / save`). Only real sampler `value / max` data is used for continuous percentage; non-sampling stages do not invent time-based progress.
+- Queue waiting no longer counts as execution time. Jobs expose queue waiting and execution durations separately, while standardization and sampling timings survive Panel restarts through private runtime metadata.
+- Task cards show compact generation/standardization tags (`LightX2V`, `v4_600step`, `Ollama`, `Qwen3.5 4B`) only when meaningful.
+- Device recovery adds guarded force-stop for a uniquely verified ComfyUI listener when the Panel no longer has a valid process record. Optional launch flags may differ, but executable, working directory, Python entrypoint, and listener identity must still match safely.
+- The device overview conditionally shows `SageAttention` only when the actual currently verified ComfyUI listener command line contains `--use-sage-attention`; the configured start command is not used as a proxy for runtime state.
+- Confirmed ComfyUI outages interrupt stale active jobs and freeze timing. Panel-managed Stop/Restart interrupts active jobs after shutdown is confirmed.
+
+### Verification
+
+- Regression coverage checks all 3 × 3 FL2VA routes, Qwen v4.4 graph preservation, reference-aspect delegation, Retry backend restoration, standardized-prompt metadata/PreviewAny fallback, queue/execution/standardization/sampling timing, semantic progress, offline interruption, FL2VA hidden-preset drift prevention, guarded force-stop, and actual-listener SageAttention detection.
+- CI covers minimum dependencies, repository/history safety, Windows and Ubuntu on Python 3.11 / 3.13, pytest, JavaScript syntax/i18n checks, and package builds.
+- Windows/phone field testing covered repeated Qwen3.5 FL2VA generation, task timing/tags, Retry backend restoration, and guarded force-stop behavior. Extreme GPU hard-hang/OOM behavior remains field-observed rather than intentionally manufactured.
+
 ## v0.4.5 — Artifact History Sync & Ollama Model Setting
 
 Comfy Remote v0.4.5 keeps task history aligned with registered local outputs and makes the H3 FL2VA prompt-standardizer Ollama model configurable without adding a separate Ollama management layer.
@@ -88,81 +113,43 @@ Comfy Remote v0.4.2 introduces one product-level FL2VA creation entry that route
 
 - `MiniMax H3 FL2VA` now exposes `v4_600step`, `LightX2V`, and `original` as generation modes under one creation entry while keeping the physical workflows independently manageable.
 - `v4_600step` is the first-use default and the selected mode is remembered in the browser; Retry restores the actual mode used by the retried task.
-- Optional H3 prompt standardization is exposed as an Advanced Setting and defaults to enabled.
-- The standardizer receives its own randomized hidden seed, separate from the video seed.
-- Standardized prompt text is captured from the actual ComfyUI `PreviewAny` history output and shown next to the raw prompt in task details.
-- H3 reference-aspect routing uses the workflow's own `H3AspectRouter`, and reference-image preprocessing supports original plus 0.5 / 1.0 / 1.5 / 2.0 MP downscale-only policies.
-- Physical workflow disable/enable state remains authoritative for whether each generation mode is available.
-
-## v0.4.1 — Media Continuity
-
-Comfy Remote v0.4.1 completes the v0.4 mobile creation/recovery baseline with reliable Retry media continuity and actual image output metadata.
-
-### Highlights
-
-- Retry restores retained historical reference media through authenticated server URLs instead of placeholder-only state or fabricated browser `File`/`Blob` objects.
-- Retained media can be reused without reselecting it on the phone, while replacement and deletion remain explicit per-Job actions.
-- Each retried Job keeps its own private input copy; when image resolution policy and target are unchanged, saved preprocessing metadata is reused and redundant image processing is skipped.
-- Changing the resolution policy or target processes only the new Job's private copy and leaves the source Job untouched.
-- Image result cards show actual output width, height, format, and file size read from the produced file; historical image metadata is lazily backfilled when available.
-- `job_artifacts.metadata_json` is additive and the existing SQLite compatibility marker is preserved for rollback compatibility.
-- Recovery Lite now requires three consecutive failed ComfyUI health polls before a verified still-running managed process is classified as `unresponsive`; any successful poll resets the streak. Force restart is not offered during the first two failures.
-- Existing H3 / Generic workflow behavior, Seed Policy, mobile Prompt keyboard behavior, Settings, and Recovery Lite controls remain regression-covered.
+- Prompt standardization is optional and enabled by default. The standardizer seed is randomized independently from the video seed so video variation no longer requires destabilizing the prompt-normalization path.
+- The standardized prompt is captured from the workflow's `PreviewAny` history output, persisted inside Job input values, and exposed next to the raw prompt in task details.
+- Physical workflow enabled/disabled state is authoritative; disabling one generation mode prevents new jobs from routing to that preset while preserving the other modes.
 
 ### Verification
 
-- Real-phone acceptance completed on 2026-08-29 for retained preview, prompt-only Retry, A → B → C Retry continuity, Replace / Delete, resolution-policy changes, H3 ↔ Generic switching, Settings, Recovery Lite, and WAI txt2img/img2img output-dimension comparison.
-- The three-failure unresponsive debounce is covered by automated tests, including streak reset after a successful health poll; a real GPU/ComfyUI hard hang is intentionally not manufactured for acceptance.
+- Regression coverage checks all three generation modes, default/remembered mode behavior, Retry restoration, independent standardizer seed behavior, standardized-prompt capture, and route-specific preset availability.
 - CI covers minimum dependencies, repository/history safety, Windows and Ubuntu on Python 3.11 / 3.13, pytest, JavaScript syntax checks, i18n smoke, and package builds.
 
-### Still out of scope
+## v0.4.1 — Workflow Compatibility / Configurator 2.0
 
-- Automatic watchdog / crash-loop recovery and automatic job resubmission.
-- Wake-on-LAN or powered-off/sleeping host recovery.
-- Multi-host routing.
-- Media library / global Asset system, content-addressed storage, hardlinks, or reference counting.
-- Video poster generation or FFmpeg/OpenCV-based media parsing.
-
-## v0.3.0 — Public Beta
-
-Comfy Remote v0.3.0 is the first public-beta baseline focused on making a local ComfyUI installation usable from a phone without requiring users to hand-edit project configuration.
+Comfy Remote v0.4.1 upgrades workflow import from fixed-node guessing to a semantic compatibility model built around API Workflow structure and live ComfyUI `/object_info` metadata.
 
 ### Highlights
 
-- Windows setup wizard and setup-first installation path.
-- Tailscale Serve remote access with identity-based authorization.
-- Generic ComfyUI API Workflow import and runtime submission.
-- Configurator 2.0 workflow analysis using schema + graph + conservative heuristic fallback.
-- Workflow capability / editable-parameter separation; workflows do not need fixed `width`, `height`, or `batch_size` fields.
-- PASS / WARN / FAIL Preflight across structure, nodes, inputs, parameters, outputs, and runtime.
-- Real Runtime Test against the user's local ComfyUI.
-- Image / video / audio / file artifacts and task history.
-- Panel `start / stop / restart / status`, ComfyUI lifecycle controls, and Windows login autostart.
-- Doctor diagnostics and privacy-safe `doctor --report` output.
-- Windows Portable launch-script discovery that preserves real arguments such as `--enable-manager` and optional `--use-sage-attention`.
-- Six MiniMax H3 workflows retained as Bundled / Verified examples without making H3 a core dependency.
+- Workflow inspection now reports node connectivity, literal inputs, output candidates, inferred media inputs, semantic parameter candidates, and compatibility warnings instead of assuming every workflow has the same parameter set.
+- Configurator 2.0 stores explicit parameter/media/output bindings in the workflow manifest and keeps manual Advanced Mapping for uncertain inputs.
+- Unknown custom-node schemas are treated as compatibility uncertainty rather than silently becoming editable controls.
+- Generic workflows can be imported, reviewed, enabled/disabled, tested, copied, exported, and used from the creation page without being forced into the H3 FL2VA/Ref2VA shape.
+- Existing H3 families remain first-class built-ins and keep their specialized mobile UX.
 
-### Verified during v0.3 development
+### Verification
 
-- Fresh Windows installation and Setup on separate machines.
-- Panel background start/status behavior without a persistent Panel console window.
-- ComfyUI lifecycle start/stop/restart with its own visible console.
-- Generic non-H3 API Workflow import, Preflight, runtime submission, generation, and result viewing.
-- Tailscale identity / Serve configuration path and mobile access during acceptance.
-- Windows autostart registration.
-- Environment with H3 nodes/workflows present but H3 model assets absent: optional H3 assets no longer make the generic installation incorrectly `NOT READY`.
-- Normal and SageAttention Portable startup variants with their actual command-line flags preserved.
+- Regression coverage checks semantic analysis, literal-input safety, multiple output candidates, media slot detection, workflow package round-tripping, status management, and Generic runtime execution.
+- CI covers minimum dependencies, repository/history safety, Windows and Ubuntu on Python 3.11 / 3.13, pytest, JavaScript syntax checks, i18n smoke, and package builds.
 
-### Known limitations
+## v0.4.0 — Public Beta
 
-- Windows 10/11 is the primary publicly validated platform.
-- Tailscale is the primary supported remote transport in v0.3.
-- Advanced recovery after severe ComfyUI/GPU/driver crashes is limited.
-- No Wake-on-LAN or off-machine power recovery.
-- No multi-host registry/routing/selector.
-- Third-party Custom Node compatibility depends on `/object_info` schema plus real runtime behavior.
-- Seed Policy is not yet a separate feature; blank seed is random, explicit numeric seed including `0` is fixed.
+Comfy Remote v0.4.0 is the first public-beta baseline for the mobile-first Remote Panel architecture.
 
-### Next
+### Highlights
 
-The v0.4 development baseline is **Reliability / Recovery**: clearer ComfyUI health states, crash/restart policy, task reconciliation after disconnects, safe process-tree recovery, and more explicit failure classification.
+- Mobile creation UI, workflow management, task history, result playback/download, GPU/system telemetry, and guarded ComfyUI lifecycle controls are available through one lightweight Panel service.
+- Built-in H3 FL2VA and Ref2VA workflows use constrained manifests so the phone can safely edit only intended inputs while ComfyUI retains the full generation graph.
+- Tailscale is treated as a transport/authentication path rather than a core workflow dependency, keeping the architecture open to additional connection methods.
+- Job execution, Retry media retention, output recovery, task reconciliation, and controlled ComfyUI start/stop/restart are managed by the Panel instead of exposing the raw ComfyUI API directly.
+
+### Verification
+
+- CI covers minimum dependencies, repository/history safety, Windows and Ubuntu on Python 3.11 / 3.13, pytest, i18n smoke, JavaScript syntax checks, and package builds.

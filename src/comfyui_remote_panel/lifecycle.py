@@ -7,6 +7,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 import psutil
 
@@ -32,6 +33,8 @@ class ComfyLifecycle:
         self.startup_timeout = config.comfyui_startup_timeout
         self.shutdown_timeout = config.comfyui_shutdown_timeout
         self.comfy = comfy
+        parsed_base_url = urlparse(config.comfyui_base_url)
+        self.comfyui_port = parsed_base_url.port or (443 if parsed_base_url.scheme == "https" else 80)
         self.record_path = config.data_dir / "comfyui-process.json"
         self.log_path = config.data_dir / "comfyui-control.log"
         self.operation: str | None = None
@@ -47,9 +50,11 @@ class ComfyLifecycle:
         *,
         unresponsive: bool = False,
         managed_process_alive: bool = False,
+        verified_process_alive: bool = False,
         last_success_at: float | None = None,
     ) -> dict:
         busy = self.operation is not None
+        process_alive = managed_process_alive or verified_process_alive
         if self.phase == "starting":
             state, summary = "starting", "正在启动并等待 ComfyUI 节点加载"
         elif self.phase == "stopping":
@@ -58,7 +63,7 @@ class ComfyLifecycle:
             state, summary = "online", "ComfyUI 在线"
         elif self.last_error and self.last_error_action in {"start", "restart", "force_restart"}:
             state, summary = "start_failed", self.last_error
-        elif unresponsive or managed_process_alive:
+        elif unresponsive or process_alive:
             state, summary = "unresponsive", "ComfyUI 进程仍在运行，但 API 无法正常响应"
         else:
             state, summary = "offline", "ComfyUI 离线"
@@ -71,29 +76,38 @@ class ComfyLifecycle:
             "last_success_at": last_success_at,
             "last_error": self.last_error,
             "managed_process_alive": managed_process_alive,
-            "can_start": self.enabled and not online and not managed_process_alive and not busy,
+            "verified_process_alive": verified_process_alive,
+            "can_start": self.enabled and not online and not process_alive and not busy,
             "can_stop": self.enabled and online and not busy,
             "can_restart": self.enabled and online and not busy,
+            "can_force_stop": self.enabled and process_alive and not busy,
             "can_force_restart": self.enabled and managed_process_alive and not busy,
         }
 
     async def trigger(self, action: str) -> dict:
         if not self.enabled:
             raise LifecycleError("ComfyUI 远程控制尚未配置")
-        if action not in {"start", "stop", "restart", "force_restart"}:
+        if action not in {"start", "stop", "restart", "force_stop", "force_restart"}:
             raise LifecycleError("不支持的控制操作")
         async with self._lock:
             if self._task and not self._task.done():
                 raise LifecycleError("已有 ComfyUI 控制操作正在执行")
             online = await self._is_online()
             managed_process_alive = await asyncio.to_thread(self.managed_process_alive)
+            verified_process_alive = managed_process_alive
+            if not verified_process_alive:
+                verified_process_alive = await asyncio.to_thread(
+                    lambda: self._verified_listener_process() is not None
+                )
             if action == "start":
                 if online:
                     raise LifecycleError("ComfyUI 已经在线")
-                if managed_process_alive:
-                    raise LifecycleError("ComfyUI 进程仍在运行但无响应，请使用强制重启")
+                if verified_process_alive:
+                    raise LifecycleError("ComfyUI 进程仍在运行但无响应，请先强制关闭")
             if action in {"stop", "restart"} and not online:
                 raise LifecycleError("ComfyUI 当前不在线")
+            if action == "force_stop" and not verified_process_alive:
+                raise LifecycleError("无法安全确认 ComfyUI 主进程；未执行强制关闭")
             if action == "force_restart" and not managed_process_alive:
                 raise LifecycleError("无法通过进程记录安全确认 ComfyUI 主进程；未执行强制重启")
             self.operation = action
@@ -103,8 +117,9 @@ class ComfyLifecycle:
             self._task = asyncio.create_task(self._run(action))
         return self.snapshot(
             online,
-            unresponsive=not online and managed_process_alive,
+            unresponsive=not online and verified_process_alive,
             managed_process_alive=managed_process_alive,
+            verified_process_alive=verified_process_alive,
         )
 
     async def _run(self, action: str) -> None:
@@ -116,6 +131,8 @@ class ComfyLifecycle:
             elif action == "restart":
                 await self._stop()
                 await self._start()
+            elif action == "force_stop":
+                await self._force_stop()
             else:
                 await self._force_stop()
                 await self._start()
@@ -213,8 +230,20 @@ class ComfyLifecycle:
     async def _force_stop(self) -> None:
         self.phase = "stopping"
         process = await asyncio.to_thread(self._recorded_process)
+        discovered = False
         if process is None:
-            raise LifecycleError("无法通过进程记录安全确认 ComfyUI 主进程；未执行强制关闭")
+            process = await asyncio.to_thread(self._verified_listener_process)
+            discovered = process is not None
+        if process is None:
+            raise LifecycleError(
+                "无法安全确认正在监听当前端口的 ComfyUI 主进程；未执行强制关闭"
+            )
+        if discovered:
+            log.warning(
+                "Using verified listener fallback for ComfyUI force stop: pid=%s port=%s",
+                process.pid,
+                self.comfyui_port,
+            )
 
         await asyncio.to_thread(self._force_stop_recorded_tree, process)
         self._remove_record()
@@ -298,6 +327,49 @@ class ComfyLifecycle:
             return process.is_running()
         except psutil.Error:
             return False
+
+    def verified_process_alive(self) -> bool:
+        process = self._recorded_process()
+        if process is None:
+            process = self._verified_listener_process()
+        if process is None:
+            return False
+        try:
+            return process.is_running()
+        except psutil.Error:
+            return False
+
+    def _verified_listener_process(self) -> psutil.Process | None:
+        """Find one ComfyUI listener that matches the configured executable and args."""
+        try:
+            connections = psutil.net_connections(kind="tcp")
+        except (psutil.AccessDenied, psutil.Error, OSError):
+            return None
+
+        candidate_pids: set[int] = set()
+        for connection in connections:
+            if connection.status != psutil.CONN_LISTEN or connection.pid is None:
+                continue
+            local = connection.laddr
+            try:
+                port = local.port
+            except AttributeError:
+                try:
+                    port = local[1]
+                except (IndexError, TypeError):
+                    continue
+            if port == self.comfyui_port:
+                candidate_pids.add(int(connection.pid))
+
+        matches: list[psutil.Process] = []
+        for pid in candidate_pids:
+            try:
+                process = psutil.Process(pid)
+                if self._matches(process):
+                    matches.append(process)
+            except psutil.Error:
+                continue
+        return matches[0] if len(matches) == 1 else None
 
     def _configured_executable(self) -> Path:
         executable = Path(self.command[0]).expanduser()

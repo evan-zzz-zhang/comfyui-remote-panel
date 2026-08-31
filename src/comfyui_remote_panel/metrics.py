@@ -88,9 +88,13 @@ class MetricsService:
 
         now = time.time()
         managed_process_alive = False
+        verified_process_alive = False
         if self.lifecycle is not None:
             managed_process_alive = await asyncio.to_thread(self.lifecycle.managed_process_alive)
-        unresponsive = not comfy_online and managed_process_alive
+            verified_process_alive = managed_process_alive
+            if not verified_process_alive:
+                verified_process_alive = await asyncio.to_thread(self.lifecycle.verified_process_alive)
+        unresponsive = not comfy_online and verified_process_alive
         should_check_presets = comfy_online and (
             not self._was_comfy_online or now - self._last_preset_check >= 300
         )
@@ -103,6 +107,7 @@ class MetricsService:
             comfy_online,
             unresponsive=unresponsive,
             managed_process_alive=managed_process_alive,
+            verified_process_alive=verified_process_alive,
             last_success_at=self._last_comfy_success_at,
         ) if self.lifecycle else {"enabled": False}
         device_state = control.get(

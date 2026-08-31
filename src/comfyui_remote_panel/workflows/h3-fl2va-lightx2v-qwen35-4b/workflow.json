@@ -1,0 +1,236 @@
+{
+  "138": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": ""
+    }
+  },
+  "115": {
+    "class_type": "ResolutionSelector",
+    "inputs": {
+      "aspect_ratio": "9:16 (Portrait Widescreen)",
+      "megapixels": 0.4,
+      "multiple": 32
+    }
+  },
+  "132": {
+    "class_type": "PrimitiveFloat",
+    "inputs": {
+      "value": 5
+    }
+  },
+  "173": {
+    "class_type": "H3InputResolverV4",
+    "inputs": {
+      "base_width": ["115", 0],
+      "base_height": ["115", 1],
+      "duration_seconds": ["132", 0],
+      "first_frame": ["174", 0],
+      "last_frame": ["175", 0],
+      "use_reference_aspect": true
+    }
+  },
+  "168": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3.5_4b_bf16.safetensors",
+      "type": "minimax",
+      "device": "default"
+    }
+  },
+  "127": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "MiniMax-H3\\minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "128": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "MiniMax-H3\\qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+      "type": "minimax",
+      "device": "default"
+    }
+  },
+  "119": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    }
+  },
+  "120": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    }
+  },
+  "145": {
+    "class_type": "LoraLoader",
+    "inputs": {
+      "model": ["127", 0],
+      "clip": ["128", 0],
+      "lora_name": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+      "strength_model": 1.0,
+      "strength_clip": 0.0
+    }
+  },
+  "147": {
+    "class_type": "MiniMaxH3SigmaShift",
+    "inputs": {
+      "model": ["145", 0],
+      "shift_video": 12,
+      "shift_audio": 3
+    }
+  },
+  "129": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 693561654242315
+    }
+  },
+  "149": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    }
+  },
+  "124": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "model": ["147", 0],
+      "scheduler": "simple",
+      "steps": 8,
+      "denoise": 1.0
+    }
+  },
+  "136": {
+    "class_type": "MiniMaxH3ImageToVideo",
+    "inputs": {
+      "clip": ["128", 0],
+      "vae": ["119", 0],
+      "first_frame": ["173", 0],
+      "last_frame": ["173", 1],
+      "prompt": ["177", 0],
+      "width": ["173", 2],
+      "height": ["173", 3],
+      "length": ["173", 4]
+    }
+  },
+  "126": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": ["147", 0],
+      "conditioning": ["136", 0]
+    }
+  },
+  "125": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": ["129", 0],
+      "guider": ["126", 0],
+      "sampler": ["149", 0],
+      "sigmas": ["124", 0],
+      "latent_image": ["136", 1]
+    }
+  },
+  "122": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["125", 0],
+      "vae": ["119", 0]
+    }
+  },
+  "121": {
+    "class_type": "VAEDecodeAudio",
+    "inputs": {
+      "samples": ["125", 0],
+      "vae": ["120", 0]
+    }
+  },
+  "130": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": ["122", 0],
+      "audio": ["121", 0],
+      "fps": 24,
+      "bit_depth": 8
+    }
+  },
+  "92": {
+    "class_type": "H3SaveVideoWithPromptMetadata",
+    "inputs": {
+      "video": ["130", 0],
+      "run_metadata": ["183", 0],
+      "filename_prefix": "videos/H3_FL2VA_TURBO_LightX2V_Qwen35-%year%-%month%-%day%",
+      "format": "auto",
+      "codec": "auto"
+    }
+  },
+  "174": {
+    "class_type": "H3OptionalLoadImageV4",
+    "inputs": {
+      "image": "[None]"
+    }
+  },
+  "175": {
+    "class_type": "H3OptionalLoadImageV4",
+    "inputs": {
+      "image": "[None]"
+    }
+  },
+  "176": {
+    "class_type": "H3OfficialSkillPromptWriterQwen",
+    "inputs": {
+      "clip": ["168", 0],
+      "raw_user_request": ["138", 0],
+      "mode": ["173", 6],
+      "requested_duration": ["132", 0],
+      "effective_duration": ["173", 5],
+      "h3_length": ["173", 4],
+      "width": ["173", 2],
+      "height": ["173", 3],
+      "first_frame": ["173", 0],
+      "last_frame": ["173", 1],
+      "enable_standardization": true
+    }
+  },
+  "177": {
+    "class_type": "PreviewAny",
+    "inputs": {
+      "source": ["176", 0]
+    }
+  },
+  "180": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": "此节点会在保存视频时自动写入当次生成的原始自然语言。\n以后把该视频重新导入工作流时，这里会直接显示。"
+    }
+  },
+  "181": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": "此节点会在保存视频时自动写入当次标准化后的 H3 Prompt。\n以后把该视频重新导入工作流时，这里会直接显示。"
+    }
+  },
+  "182": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": "此节点会在保存视频时自动写入当次真正送入 H3 的最终 Prompt。\n如果标准化关闭，这里会显示原始文本；如果标准化开启，这里通常与“标准化 Prompt”一致。"
+    }
+  },
+  "183": {
+    "class_type": "H3RunMetadataPack",
+    "inputs": {
+      "raw_user_request": ["138", 0],
+      "standardized_prompt": ["176", 3],
+      "final_prompt_used": ["176", 0],
+      "mode": ["173", 6],
+      "requested_duration": ["132", 0],
+      "effective_duration": ["173", 5],
+      "width": ["173", 2],
+      "height": ["173", 3],
+      "writer_report": ["176", 2]
+    }
+  }
+}

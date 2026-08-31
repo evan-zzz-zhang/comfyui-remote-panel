@@ -1,8 +1,8 @@
 # Comfy Remote Roadmap / TODO
 
-当前稳定开发基线：**v0.4.4 Windows Environment Self-Healing（Completed）**。
+当前稳定开发基线：**v0.4.6 FL2VA Multi-Backend Prompt Standardization（Completed）**。
 
-`v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；`v0.4 Creation Experience`、`v0.4 Recovery Lite`、`v0.4.1 Media Continuity`、`v0.4.2 H3 FL2VA Unified Modes`、`v0.4.3 Task Reconciliation Hardening` 与 `v0.4.4 Windows Environment Self-Healing` 均已完成当前范围收尾。
+`v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；`v0.4 Creation Experience`、`v0.4 Recovery Lite`、`v0.4.1 Media Continuity`、`v0.4.2 H3 FL2VA Unified Modes`、`v0.4.3 Task Reconciliation Hardening`、`v0.4.4 Windows Environment Self-Healing`、`v0.4.5 Artifact History Sync & Ollama Model Setting` 与 `v0.4.6 FL2VA Multi-Backend Prompt Standardization` 均已完成当前范围收尾。
 
 ---
 
@@ -220,11 +220,56 @@ H3 ↔ Generic
 
 ---
 
+## v0.4.5 Artifact History Sync & Ollama Model Setting — Completed
+
+### 完成范围
+
+- [x] 已登记 output artifact 与本地受管文件同步；本地生成产物被删除/移走后，对应失效 artifact 自动移除，全部产物消失后 Job 从历史移除。
+- [x] 多输出 Job 保留仍存在的输出；从未登记输出的失败/中断 Job 不因本地无文件而被误删。
+- [x] Purge 同步清理已登记 artifact 与历史输入，不依赖单一 legacy output 记录。
+- [x] H3 FL2VA 的 Ollama 标准化模型可在高级设置中配置，默认 `gemma4:e4b`；选择写入 Job 并由 Retry 恢复。
+- [x] 不引入 Ollama 启停、模型下载/删除或模型列表管理层。
+
+---
+
+## v0.4.6 FL2VA Multi-Backend Prompt Standardization — Completed
+
+### 完成范围
+
+- [x] 用户侧继续只有一个 `MiniMax H3 FL2VA` 入口，生成模式保持 `original / LightX2V / v4_600step`。
+- [x] “标准化提示词”改为 `关闭 / Ollama / ComfyUI` 三态；Ollama 复用现有链路，ComfyUI 路由到三套 Qwen3.5 4B 物理工作流。
+- [x] 三套 Qwen 工作流对齐 v4.4 API graph，保留对应生成模式的模型、LoRA、scheduler、sampler、steps 和参考帧路由。
+- [x] Retry 恢复实际生成模式与标准化后端；修复前端 observer 覆盖 Retry 恢复值的问题。
+- [x] 修复 FL2VA 隐藏 preset 漂移到 Ref2VA、reference aspect 丢失和默认画幅漂移问题。
+- [x] 任务进度按 `prepare / standardize / sampling / decode / compose / save` 语义展示；排队、标准化、采样、总执行耗时分开记录和展示。
+- [x] 任务卡按实际组合显示 `LightX2V / v4_600step / Ollama / Qwen3.5 4B` 标签，不给 original/关闭增加额外标签。
+- [x] Qwen 标准化 Prompt 优先从保存节点 metadata 捕获，history 未暴露 metadata 时回退到连接 Qwen writer 的 `PreviewAny(177)`，继续写入统一的 `standardized_prompt` 字段。
+- [x] 设备页增加受控“强制关闭”：当 Panel 缺失进程记录、但能唯一安全识别当前 ComfyUI 监听进程时允许关闭，不按模糊 `python.exe` 批量杀进程。
+- [x] 设备概览仅在当前实际 ComfyUI 监听进程命令行包含 `--use-sage-attention` 时显示 `SageAttention` 状态框；不读取配置文件猜测运行态。
+- [x] 版本号、CHANGELOG、README、v0.4.6 专项中英文文档和回归测试同步。
+
+### 真机验收记录
+
+2026-08-31 至 2026-09-01 在目标 Windows / RTX 4080 SUPER / 手机远程环境持续实测：
+
+```text
+FL2VA 单入口与高级设置三态
+→ v4_600step + ComfyUI Qwen3.5 4B 多次真实生成
+→ 任务卡/详情耗时与运行标签
+→ Retry 恢复标准化后端
+→ 设备页安全识别非 Panel 托管 ComfyUI 并显示“强制关闭”
+→ 现场确认 Codex 手动重启 ComfyUI 导致 PID/启动参数变化，Panel 未误认成受管进程
+```
+
+Qwen 标准化 Prompt 的 history fallback 与 SageAttention 状态探测由自动化回归覆盖；真实 GPU / Custom Node 的极端显存和硬卡死行为仍属于现场继续观察项，不阻塞 v0.4.6 收尾。
+
+---
+
 ## Later / separate design tracks
 
-这些方向可以继续研究，但不自动并入 Recovery Lite / v0.4.4：
+这些方向可以继续研究，但不自动并入 Recovery Lite / v0.4.6：
 
-- Ref2VA grouped workflow：沿用 v0.4.2 的产品级模式路由，把三个 H3 Ref2VA 物理工作流收敛成一个用户入口；建议作为后续独立 feature branch，不与本次环境自愈修复混合。
+- Ref2VA grouped workflow：沿用 v0.4.2 的产品级模式路由，把三个 H3 Ref2VA 物理工作流收敛成一个用户入口；建议作为后续独立 feature branch。
 - Full Reliability / Watchdog：自动拉起、重试退避、crash-loop、防断线误判、任务最终状态 reconciliation 等完整无人值守恢复能力。
 - Multi-host：家里 / 公司 / 其他主机的 Host Registry、selector、routing。
 - Wake-on-LAN / external watchdog：依赖局域网或机外常驻设备的电源恢复。

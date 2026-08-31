@@ -31,6 +31,11 @@ jobs:
       - run: node --check src/comfyui_remote_panel/static/v042_patch.js
       - run: node --check src/comfyui_remote_panel/static/v045_ollama_ui.js
       - run: node --check src/comfyui_remote_panel/static/v045_generation_sync.js
+      - run: node --check src/comfyui_remote_panel/static/v046_fl2va_ui.js
+      - run: node --check src/comfyui_remote_panel/static/v046_job_runtime_ui.js
+      - run: node --check src/comfyui_remote_panel/static/v046_workflow_selection_guard.js
+      - run: node --check src/comfyui_remote_panel/static/v046_force_stop_ui.js
+      - run: node --check src/comfyui_remote_panel/static/v046_sage_attention_status.js
       - run: node --check src/comfyui_remote_panel/static/ux_refinements.js
       - run: node --check src/comfyui_remote_panel/static/recovery_lite.js
       - run: python scripts/check_repository.py
