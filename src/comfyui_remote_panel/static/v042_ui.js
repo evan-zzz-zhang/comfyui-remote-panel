@@ -10,6 +10,10 @@
     lightx2v: { label: "LightX2V", preset_id: "h3-fl2va-lightx2v" },
     original: { label: "原版", preset_id: ORIGINAL_ID },
   };
+  const LEGACY_PHYSICAL_IDS = new Set([
+    "h3-fl2va", "h3-fl2va-lightx2v", "h3-fl2va-v4step600",
+    "h3-fl2va-qwen35-4b", "h3-fl2va-lightx2v-qwen35-4b", "h3-fl2va-v4step600-qwen35-4b",
+  ]);
   const MODE_TUNING = {
     v4_600step: { scheduler: "beta", sampler: "euler", steps: 8 },
     lightx2v: { scheduler: "simple", sampler: "euler", steps: 8 },
@@ -47,7 +51,10 @@
   }
 
   function physicalPresetIds() {
-    return new Set(Object.values(modeDefinitions()).map(item => item?.preset_id).filter(Boolean));
+    return new Set([
+      ...LEGACY_PHYSICAL_IDS,
+      ...Object.values(modeDefinitions()).map(item => item?.preset_id).filter(Boolean),
+    ]);
   }
 
   function modeForPreset(presetId) {

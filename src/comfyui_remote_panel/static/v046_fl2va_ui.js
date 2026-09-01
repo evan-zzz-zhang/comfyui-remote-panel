@@ -3,13 +3,18 @@
   const STORAGE_KEY = "comfy-remote.fl2va.prompt-standardization-mode";
   const DEFAULT_MODE = "ollama";
   const DEFAULT_ASPECT = "9:16";
-  const STANDARDIZATION_MODES = new Set(["off", "ollama", "comfyui"]);
+  const STANDARDIZATION_MODES = new Set(["raw", "ollama", "qwen35", "off", "comfyui"]);
   const QWEN_PRESETS = {
-    original: "h3-fl2va-qwen35-4b",
-    lightx2v: "h3-fl2va-lightx2v-qwen35-4b",
-    v4_600step: "h3-fl2va-v4step600-qwen35-4b",
+    original: "fl2va_original_qwen35",
+    lightx2v: "fl2va_lightx2v_qwen35",
+    v4_600step: "fl2va_v4step600_qwen35",
   };
-  const QWEN_PRESET_IDS = new Set(Object.values(QWEN_PRESETS));
+  const QWEN_PRESET_IDS = new Set([
+    ...Object.values(QWEN_PRESETS),
+    "h3-fl2va-qwen35-4b",
+    "h3-fl2va-lightx2v-qwen35-4b",
+    "h3-fl2va-v4step600-qwen35-4b",
+  ]);
 
   const baseApplyPresetV046 = applyPreset;
   const baseUploadFormV046 = uploadForm;
@@ -21,10 +26,15 @@
     return STANDARDIZATION_MODES.has(String(value || "").toLowerCase());
   }
 
+  function canonicalMode(value) {
+    return { off: "raw", comfyui: "qwen35" }[String(value || "").toLowerCase()]
+      || String(value || "").toLowerCase();
+  }
+
   function rememberedMode() {
     try {
       const value = window.localStorage.getItem(STORAGE_KEY);
-      return validMode(value) ? value : "";
+      return validMode(value) ? canonicalMode(value) : "";
     } catch (_) {
       return "";
     }
@@ -32,11 +42,12 @@
 
   function preferredMode(candidate) {
     const explicit = String(candidate || "").toLowerCase();
-    if (validMode(explicit)) return explicit;
+    if (validMode(explicit)) return canonicalMode(explicit);
     return rememberedMode() || DEFAULT_MODE;
   }
 
   function rememberMode(mode) {
+    mode = canonicalMode(mode);
     if (!validMode(mode)) return;
     try { window.localStorage.setItem(STORAGE_KEY, mode); } catch (_) {}
   }
@@ -45,11 +56,13 @@
     const values = overrides?.values && typeof overrides.values === "object"
       ? overrides.values
       : {};
-    const explicit = overrides?.prompt_standardization_mode
+    const explicit = overrides?.prompt_backend
+      ?? values.prompt_backend
+      ?? overrides?.prompt_standardization_mode
       ?? values.prompt_standardization_mode;
-    if (validMode(explicit)) return String(explicit).toLowerCase();
+    if (validMode(explicit)) return canonicalMode(explicit);
     const legacy = overrides?.prompt_standardization ?? values.prompt_standardization;
-    if (legacy === false) return "off";
+    if (legacy === false) return "raw";
     if (legacy === true) return "ollama";
     return null;
   }
@@ -118,7 +131,7 @@
   function syncCompatibilityCheckbox(mode) {
     const checkbox = document.querySelector("[data-v042-prompt-standardization]");
     if (!checkbox) return;
-    const next = mode !== "off";
+    const next = canonicalMode(mode) !== "raw";
     if (checkbox.checked !== next) checkbox.checked = next;
     checkbox.dispatchEvent(new Event("change", { bubbles: true }));
   }
@@ -126,7 +139,7 @@
   function syncOllamaField(mode) {
     const field = document.querySelector("[data-v045-ollama-model-field]");
     if (!field) return;
-    field.style.display = mode === "ollama" ? "" : "none";
+    field.style.display = canonicalMode(mode) === "ollama" ? "" : "none";
   }
 
   function ensureFl2vaReferenceAspectOption() {
@@ -173,7 +186,11 @@
     if (!select) {
       select = document.createElement("select");
       select.dataset.v046PromptStandardizationMode = "true";
-      select.append(option("off", "关闭"), option("ollama", "Ollama"), option("comfyui", "ComfyUI"));
+      select.append(
+        option("raw", "原始提示词"),
+        option("ollama", "Ollama 标准化"),
+        option("qwen35", "Qwen3.5 标准化"),
+      );
       field.append(select);
       select.addEventListener("change", () => {
         const mode = preferredMode(select.value);
@@ -181,6 +198,7 @@
         rememberMode(mode);
         syncCompatibilityCheckbox(mode);
         syncOllamaField(mode);
+        syncInferenceProfileAvailability();
         updateSubmitAvailability();
       });
     }
@@ -189,7 +207,7 @@
     // later MutationObserver passes must preserve the live selector value
     // instead of restoring the last localStorage preference over the retry.
     const mode = preferredMode(candidate ?? existingMode);
-    select.value = mode;
+    select.value = canonicalMode(mode);
     syncCompatibilityCheckbox(mode);
     normalizeLegacyStandardizerControls();
     syncOllamaField(mode);
@@ -219,12 +237,75 @@
     return values;
   }
 
+  function ensureInferenceProfileSelector() {
+    if (selectedPreset()?.id !== ENTRY_ID) return;
+    const grid = document.querySelector("#advanced-settings .advanced-grid");
+    if (!grid || grid.querySelector("[data-v047-inference-profile]")) return;
+    const label = document.createElement("label");
+    label.className = "field";
+    label.dataset.v047InferenceProfile = "true";
+    label.innerHTML = "<span>模型配置</span>";
+    const select = document.createElement("select");
+    select.name = "inference_profile";
+    select.dataset.v047InferenceProfile = "true";
+    select.append(
+      option("auto", "自动"),
+      option("int8", "INT8"),
+      option("fp16_bf16", "FP16/BF16"),
+    );
+    label.append(select);
+    grid.append(label);
+    select.addEventListener("change", () => {
+      try { window.localStorage.setItem("comfy-remote.fl2va.inference-profile", select.value); } catch (_) {}
+    });
+    try {
+      const remembered = window.localStorage.getItem("comfy-remote.fl2va.inference-profile");
+      if (["auto", "int8", "fp16_bf16"].includes(remembered)) select.value = remembered;
+    } catch (_) {}
+    syncInferenceProfileAvailability(select);
+  }
+
+  function syncInferenceProfileAvailability(select = document.querySelector("[data-v047-inference-profile]")) {
+    if (!select) return;
+    const generation = document.querySelector("[data-v042-generation-mode]")?.value;
+    const backend = canonicalMode(document.querySelector("[data-v046-prompt-standardization-mode]")?.value);
+    const qwenId = QWEN_PRESETS[generation];
+    const original = state.workflowItems?.get?.("h3-fl2va")?.manifest;
+    const modeId = original?.generation_modes?.values?.[generation]?.preset_id;
+    const target = state.workflowItems?.get?.(backend === "qwen35" ? qwenId : modeId)?.manifest;
+    const main = target?.model_profile?.main_model;
+    const variants = main?.variants && typeof main.variants === "object" ? main.variants : {};
+    const fp16 = select.querySelector('option[value="fp16_bf16"]');
+    if (fp16) {
+      fp16.disabled = !Object.prototype.hasOwnProperty.call(variants, "fp16_bf16");
+      fp16.title = fp16.disabled ? "当前内置资产未声明 FP16/BF16 变体" : "";
+    }
+    if (select.selectedOptions[0]?.disabled) select.value = "auto";
+  }
+
+  function syncInferenceProfile(candidate = null) {
+    const select = document.querySelector("[data-v047-inference-profile]");
+    if (!select) return;
+    if (["auto", "int8", "fp16_bf16"].includes(String(candidate || ""))) {
+      select.value = candidate;
+      return;
+    }
+    try {
+      const remembered = window.localStorage.getItem("comfy-remote.fl2va.inference-profile");
+      if (["auto", "int8", "fp16_bf16"].includes(remembered)) select.value = remembered;
+    } catch (_) {}
+  }
+
   function addStandardizationMode(formData) {
     if (String(formData.get("preset_id") || "") !== ENTRY_ID) return formData;
     const select = document.querySelector("[data-v046-prompt-standardization-mode]");
     const mode = preferredMode(select?.value);
     const values = valuesFromFormData(formData);
-    values.prompt_standardization_mode = mode;
+    const backend = canonicalMode(mode);
+    values.prompt_backend = backend;
+    values.prompt_standardization_mode = backend === "raw" ? "off" : backend === "qwen35" ? "comfyui" : "ollama";
+    const profile = document.querySelector("[data-v047-inference-profile]")?.value;
+    if (profile) values.inference_profile = profile;
     formData.delete("values_json");
     formData.set("values_json", JSON.stringify(values));
     return formData;
@@ -236,10 +317,10 @@
     if (!targetId) return false;
     const item = state.workflowItems?.get?.(targetId);
     if (item && item.status !== "enabled") return false;
-    const target = state.presets.get(targetId);
+    const target = state.presets.get(targetId) || item?.manifest;
     if (!target) return false;
     const runtime = state.metrics?.presets?.[targetId];
-    return runtime ? Boolean(runtime.available) : Boolean(target.available);
+    return runtime ? Boolean(runtime.available) : target.available !== false;
   }
 
   applyPreset = function(presetId, overrides = {}) {
@@ -253,6 +334,9 @@
       removeQwenCreationChoices();
       syncFl2vaAspectValue(explicitAspect, previousAspect, preservePreviousAspect);
       ensureStandardizationSelector(candidate);
+      ensureInferenceProfileSelector();
+      syncInferenceProfile(overrides?.inference_profile ?? overrides?.values?.inference_profile);
+      syncInferenceProfileAvailability();
     });
     return result;
   };
@@ -268,6 +352,8 @@
     const aspect = document.querySelector('select[name="aspect_ratio"]');
     syncFl2vaAspectValue(null, aspect?.value || "", aspect?.dataset.v046AspectExplicit === "true");
     ensureStandardizationSelector();
+    ensureInferenceProfileSelector();
+    syncInferenceProfileAvailability();
     return result;
   };
 
@@ -277,6 +363,8 @@
     const aspect = document.querySelector('select[name="aspect_ratio"]');
     syncFl2vaAspectValue(null, aspect?.value || "", aspect?.dataset.v046AspectExplicit === "true");
     ensureStandardizationSelector();
+    ensureInferenceProfileSelector();
+    syncInferenceProfileAvailability();
     return result;
   };
 
@@ -284,14 +372,14 @@
     baseUpdateSubmitAvailabilityV046();
     if (selectedPreset()?.id !== ENTRY_ID) return;
     const select = document.querySelector("[data-v046-prompt-standardization-mode]");
-    if (preferredMode(select?.value) !== "comfyui") return;
+    if (preferredMode(select?.value) !== "qwen35") return;
     const button = document.querySelector("#submit-button");
     if (!button) return;
     const available = qwenRouteAvailable();
     if (!available) {
       button.disabled = true;
-      button.title = "当前 ComfyUI 标准化工作流不可用";
-    } else if (button.title === "当前 ComfyUI 标准化工作流不可用") {
+      button.title = "当前 Qwen3.5 标准化工作流不可用";
+    } else if (button.title === "当前 Qwen3.5 标准化工作流不可用") {
       button.removeAttribute("title");
     }
   };
@@ -319,7 +407,11 @@
     });
     const advanced = document.querySelector("#advanced-settings");
     if (advanced) {
-      new MutationObserver(() => queueMicrotask(() => ensureStandardizationSelector()))
+      new MutationObserver(() => queueMicrotask(() => {
+        ensureStandardizationSelector();
+        ensureInferenceProfileSelector();
+        syncInferenceProfileAvailability();
+      }))
         .observe(advanced, { childList: true, subtree: true });
     }
     queueMicrotask(() => {
@@ -327,6 +419,8 @@
       const aspect = document.querySelector('select[name="aspect_ratio"]');
       syncFl2vaAspectValue(null, aspect?.value || "", aspect?.dataset.v046AspectExplicit === "true");
       ensureStandardizationSelector();
+      ensureInferenceProfileSelector();
+      syncInferenceProfileAvailability();
     });
   });
 })();

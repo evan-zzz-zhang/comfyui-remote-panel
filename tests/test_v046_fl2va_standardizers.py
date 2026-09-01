@@ -125,10 +125,15 @@ async def test_all_nine_fl2va_routes_select_the_expected_physical_workflow(
     )
     assert response.status == 201, await response.text()
     job = await response.json()
-    expected_preset = QWEN_PRESETS[mode] if standardization == "comfyui" else OLD_PRESETS[mode]
+    expected_preset = (
+        f"fl2va_{'v4step600' if mode == 'v4_600step' else mode}_qwen35"
+        if standardization == "comfyui"
+        else f"fl2va_{'v4step600' if mode == 'v4_600step' else mode}_{'raw' if standardization == 'off' else 'ollama'}"
+    )
     assert job["preset_id"] == expected_preset
     assert job["generation_mode"] == mode
-    assert job["prompt_standardization_mode"] == standardization
+    expected_mode = "off" if standardization == "off" else "qwen35" if standardization == "comfyui" else "ollama"
+    assert job["prompt_standardization_mode"] == expected_mode
 
     graph = comfy_server_v046.app["submitted"][-1]["prompt"]
     classes = {node["class_type"] for node in graph.values()}
@@ -144,6 +149,9 @@ async def test_all_nine_fl2va_routes_select_the_expected_physical_workflow(
     else:
         standardizer = "124" if mode == "original" else "152"
         switch = "126" if mode == "original" else "154"
+        if standardization == "off":
+            assert "H3PromptStandardizer" not in classes
+            return
         assert "H3PromptStandardizer" in classes
         assert graph[switch]["inputs"]["switch"] is (standardization == "ollama")
         if standardization == "ollama":
@@ -176,7 +184,35 @@ async def test_qwen_standardized_prompt_uses_existing_public_field(
     public = panel_client_v046.app["jobs"].public_job(stored)
     assert public["prompt"].startswith("测试 v4_600step")
     assert public["standardized_prompt"] == "Qwen3.5 标准化后的 H3 Prompt"
-    assert public["prompt_standardization_mode"] == "comfyui"
+    assert public["prompt_standardization_mode"] == "qwen35"
+
+
+@pytest.mark.asyncio
+async def test_qwen_prompt_recovery_backfills_delayed_preview_history(
+    panel_client_v046, comfy_server_v046
+):
+    response = await panel_client_v046.post(
+        "/api/jobs", data=_form("original", "comfyui"), headers=LOGIN
+    )
+    assert response.status == 201, await response.text()
+    created = await response.json()
+    job_id = created["id"]
+    await panel_client_v046.app["db"].update_job(job_id, status="succeeded")
+    output = panel_client_v046.app["files"].output_root / f"{job_id}.mp4"
+    output.write_bytes(b"placeholder")
+    await panel_client_v046.app["db"].add_file(job_id, "output", output, output.stat().st_size)
+    comfy_server_v046.app["history"][job_id] = {
+        "status": {"completed": True, "status_str": "success", "messages": []},
+        "outputs": {"177": {"text": ["延迟写入的 Qwen3.5 Prompt"]}},
+    }
+
+    panel_client_v046.app["jobs"]._last_standardized_prompt_recovery = 0
+    await panel_client_v046.app["jobs"]._recover_standardized_prompts_v046()
+
+    stored = await panel_client_v046.app["db"].get_job(job_id)
+    public = panel_client_v046.app["jobs"].public_job(stored)
+    assert public["standardized_prompt"] == "延迟写入的 Qwen3.5 Prompt"
+    assert public["prompt_backend"] == "qwen35"
 
 
 @pytest.mark.asyncio
@@ -206,7 +242,7 @@ async def test_disabling_qwen_route_does_not_disable_same_generation_mode_off_ro
     panel_client_v046, comfy_server_v046
 ):
     status = await panel_client_v046.post(
-        "/api/workflows/h3-fl2va-lightx2v-qwen35-4b/status",
+        "/api/workflows/fl2va_lightx2v_qwen35/status",
         json={"status": "disabled"},
         headers=LOGIN,
     )
@@ -216,13 +252,13 @@ async def test_disabling_qwen_route_does_not_disable_same_generation_mode_off_ro
         "/api/jobs", data=_form("lightx2v", "comfyui"), headers=LOGIN
     )
     assert blocked.status == 400
-    assert "ComfyUI 标准化" in (await blocked.json())["error"]["message"]
+    assert "Qwen3.5 标准化" in (await blocked.json())["error"]["message"]
 
     allowed = await panel_client_v046.post(
         "/api/jobs", data=_form("lightx2v", "off"), headers=LOGIN
     )
     assert allowed.status == 201, await allowed.text()
-    assert (await allowed.json())["preset_id"] == "h3-fl2va-lightx2v"
+    assert (await allowed.json())["preset_id"] == "fl2va_lightx2v_raw"
     assert len(comfy_server_v046.app["submitted"]) == 1
 
 

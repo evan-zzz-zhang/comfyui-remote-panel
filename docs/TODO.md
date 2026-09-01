@@ -1,8 +1,18 @@
 # Comfy Remote Roadmap / TODO
 
-当前稳定开发基线：**v0.4.6 FL2VA Multi-Backend Prompt Standardization（Completed）**。
+当前稳定开发基线：**v0.4.7 FL2VA Workflow Family & Inference Profile（In progress）**。
 
 `v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；`v0.4 Creation Experience`、`v0.4 Recovery Lite`、`v0.4.1 Media Continuity`、`v0.4.2 H3 FL2VA Unified Modes`、`v0.4.3 Task Reconciliation Hardening`、`v0.4.4 Windows Environment Self-Healing`、`v0.4.5 Artifact History Sync & Ollama Model Setting` 与 `v0.4.6 FL2VA Multi-Backend Prompt Standardization` 均已完成当前范围收尾。
+
+## v0.4.7 FL2VA Workflow Family & Inference Profile — In progress
+
+- [x] 建立 9 个 canonical FL2VA asset 及中英文 Workflow Asset Inventory。
+- [x] 用 manifest-backed resolver 解析 `3 generation modes × 3 prompt backends`，保留旧 ID 作为兼容资产。
+- [x] 将 raw / Ollama / Qwen3.5 的输入、输出和 Prompt 捕获契约写入 manifest。
+- [x] Qwen3.5 完成任务后延迟补抓标准化 Prompt，并支持历史成功任务扫描。
+- [x] 推理配置保存到既有 `input_values_json`；当前 `auto` 解析到真实 INT8 资产，未声明的 FP16/BF16 变体拒绝执行。
+- [ ] 完成全量 pytest、构建、仓库检查和 Windows + ComfyUI 真机 3 × 3 验收。
+- [ ] 完成 v0.4.7 分支提交、CI 和 PR 合并收尾。
 
 ---
 

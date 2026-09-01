@@ -38,7 +38,7 @@ async def test_root_injects_v046_frontend_once(tmp_path, aiohttp_client):
     response = await client.get("/", headers=LOGIN)
     assert response.status == 200
     html = await response.text()
-    fl2va_tag = '<script src="/static/v046_fl2va_ui.js?v=0.4.6.7" defer></script>'
+    fl2va_tag = '<script src="/static/v046_fl2va_ui.js?v=0.4.7.1" defer></script>'
     runtime_tag = '<script src="/static/v046_job_runtime_ui.js?v=0.4.6.3" defer></script>'
     assert html.count(fl2va_tag) == 1
     assert html.count(runtime_tag) == 1
@@ -49,9 +49,9 @@ async def test_root_injects_v046_frontend_once(tmp_path, aiohttp_client):
 
 def test_v046_frontend_replaces_visible_boolean_with_three_state_selector():
     assert 'data-v046-prompt-standardization-mode' in JS
-    assert 'option("off", "关闭")' in JS
-    assert 'option("ollama", "Ollama")' in JS
-    assert 'option("comfyui", "ComfyUI")' in JS
+    assert 'option("raw", "原始提示词")' in JS
+    assert 'option("ollama", "Ollama 标准化")' in JS
+    assert 'option("qwen35", "Qwen3.5 标准化")' in JS
     assert 'label.textContent = "标准化提示词"' in JS
     assert 'normalizeLegacyStandardizerControls' in JS
     assert 'advanced.querySelectorAll(".v042-switch").forEach(node => node.remove())' in JS
@@ -100,7 +100,7 @@ def test_v046_frontend_defaults_unselected_fl2va_aspect_to_9_16():
 
 
 def test_v046_frontend_keeps_ollama_selector_only_for_ollama_and_hides_qwen_presets():
-    assert 'field.style.display = mode === "ollama" ? "" : "none"' in JS
+    assert 'field.style.display = canonicalMode(mode) === "ollama" ? "" : "none"' in JS
     assert 'h3-fl2va-qwen35-4b' in JS
     assert 'h3-fl2va-lightx2v-qwen35-4b' in JS
     assert 'h3-fl2va-v4step600-qwen35-4b' in JS
@@ -109,10 +109,12 @@ def test_v046_frontend_keeps_ollama_selector_only_for_ollama_and_hides_qwen_pres
 
 
 def test_v046_frontend_persists_backend_in_values_json_and_checks_qwen_route_availability():
-    assert 'values.prompt_standardization_mode = mode' in JS
+    assert 'values.prompt_backend = backend' in JS
+    assert 'values.prompt_standardization_mode = backend === "raw" ? "off" : backend === "qwen35" ? "comfyui" : "ollama"' in JS
+    assert 'data-v047-inference-profile' in JS
     assert 'if (path === "/api/jobs") addStandardizationMode(formData)' in JS
-    assert 'runtime ? Boolean(runtime.available) : Boolean(target.available)' in JS
-    assert 'button.title = "当前 ComfyUI 标准化工作流不可用"' in JS
+    assert 'runtime ? Boolean(runtime.available) : target.available !== false' in JS
+    assert 'button.title = "当前 Qwen3.5 标准化工作流不可用"' in JS
     assert 'setInterval' not in JS
 
 

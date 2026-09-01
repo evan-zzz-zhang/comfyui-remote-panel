@@ -510,6 +510,27 @@ class Database:
                         )
         return [self._job_from_row(row, files_by_job[row["id"]]) for row in rows]
 
+    async def succeeded_jobs(self) -> list[dict[str, Any]]:
+        """Return completed jobs for bounded metadata/artifact recovery scans."""
+
+        async with self._lock:
+            with self._connect() as db:
+                rows = db.execute(
+                    "SELECT * FROM jobs WHERE status = 'succeeded' ORDER BY finished_at DESC"
+                ).fetchall()
+                job_ids = [row["id"] for row in rows]
+                files_by_job: dict[str, list[dict[str, Any]]] = {job_id: [] for job_id in job_ids}
+                if job_ids:
+                    marks = ",".join("?" for _ in job_ids)
+                    for file in db.execute(
+                        f"SELECT job_id, role, path, size_bytes FROM job_files WHERE job_id IN ({marks}) ORDER BY id",
+                        job_ids,
+                    ):
+                        files_by_job[file["job_id"]].append(
+                            {key: file[key] for key in ("role", "path", "size_bytes")}
+                        )
+        return [self._job_from_row(row, files_by_job[row["id"]]) for row in rows]
+
     async def succeeded_without_output(self, now: float | None = None) -> list[dict[str, Any]]:
         now = time.time() if now is None else now
         async with self._lock:

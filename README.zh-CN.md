@@ -4,13 +4,13 @@
 
 **从手机运行你本地的 ComfyUI 工作流。**
 
-> **当前状态：v0.4.6 Public Beta。**
+> **当前状态：v0.4.7 Public Beta。**
 >
 > 通用 ComfyUI API Workflow、手机创作、历史素材 Retry、H3 FL2VA 统一生成模式、已登记生成产物与历史同步、关闭/Ollama/ComfyUI 三态提示词标准化、受控强制关闭、SageAttention 运行状态、任务状态 reconciliation 加固、Windows 环境自愈安装、Windows Setup、Tailscale 远程访问、Doctor 诊断和 Recovery Lite 已可用。完整自动 watchdog、多主机和 Wake-on-LAN 尚未实现。
 
 Comfy Remote 是一个手机优先的 ComfyUI 远程创作面板。它运行在 ComfyUI 所在的 Windows 电脑上，把已经在本机验证过的 **ComfyUI API Workflow** 转成适合手机使用的创作界面：选择工作流、添加素材、填写提示词、提交任务、查看结果。
 
-当前 v0.4.6 基线在 **Public Readiness + Configurator 2.0** 之上补齐了 Specialized / Generic 创作边界、Seed Policy、参考图分辨率预处理、受控人工恢复、历史参考素材 Retry 连续性、H3 FL2VA 产品级模式路由、更稳健的任务最终状态 reconciliation、Windows 环境自愈、生成产物与历史记录同步，以及 H3 FL2VA 多后端提示词标准化能力，同时继续避免静默改写陌生工作流，也不把 ComfyUI 本身直接暴露到网络。
+当前 v0.4.7 基线在 **Public Readiness + Configurator 2.0** 之上补齐了 Specialized / Generic 创作边界、Seed Policy、参考图分辨率预处理、受控人工恢复、历史参考素材 Retry 连续性、manifest 驱动的 FL2VA 3 × 3 工作流家族、推理配置元数据、H3 FL2VA 产品级模式路由、更稳健的任务最终状态 reconciliation、Windows 环境自愈、生成产物与历史记录同步，以及 H3 FL2VA 多后端提示词标准化能力，同时继续避免静默改写陌生工作流，也不把 ComfyUI 本身直接暴露到网络。
 
 ## 能做什么
 
@@ -95,6 +95,9 @@ Configurator 2.0 的兼容性分析不是“找几个固定节点”，而是组
 因此一个合法的 img2img 工作流可以没有 `EmptyLatentImage`，一个工作流也可以完全没有远程可调的 `width / height / batch_size`。Comfy Remote 会暴露它实际具有、且能够安全识别或由用户明确映射的创作输入。
 
 详见 [Workflow / Configurator 2.0 说明](docs/WORKFLOWS.zh-CN.md)。
+
+FL2VA canonical 3 × 3 资产矩阵和 Manifest 契约见
+[FL2VA 工作流资产清单](docs/FL2VA_WORKFLOW_ASSET_INVENTORY.zh-CN.md)。
 
 ## Doctor / Feedback
 

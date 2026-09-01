@@ -293,7 +293,10 @@ BUILTIN_WORKFLOW_DIR = Path(__file__).with_name("workflows")
 
 def _load_presets_from(root: Path) -> dict[str, Preset]:
     presets: dict[str, Preset] = {}
-    for manifest_path in sorted(root.glob("*/manifest.json")):
+    # Built-in workflow assets may be grouped by family/generation/backend.
+    # External flat directories remain supported because rglob also includes
+    # the established ``workflows/*/manifest.json`` layout.
+    for manifest_path in sorted(root.rglob("manifest.json")):
         manifest = _normalize_manifest(json.loads(manifest_path.read_text(encoding="utf-8")))
         directory = manifest_path.parent
         template_path = directory / manifest["workflow"]

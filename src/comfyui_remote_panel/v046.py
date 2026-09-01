@@ -4,6 +4,17 @@ import asyncio
 import time
 from typing import Any
 
+from .workflow_registry import (
+    CANONICAL_FL2VA_ASSET_IDS,
+    FL2VA_GENERATION_MODES,
+    asset_key,
+    resolve_fl2va_asset,
+)
+from .inference_profile import (
+    InferenceProfileError,
+    resolve_inference_profile,
+)
+
 
 DEFAULT_STANDARDIZATION_MODE = "ollama"
 STANDARDIZATION_MODES = frozenset({"off", "ollama", "comfyui"})
@@ -12,9 +23,17 @@ QWEN_GENERATION_MODES = {
     "lightx2v": "h3-fl2va-lightx2v-qwen35-4b",
     "v4_600step": "h3-fl2va-v4step600-qwen35-4b",
 }
+CANONICAL_FL2VA_PRESET_IDS = CANONICAL_FL2VA_ASSET_IDS
+CANONICAL_QWEN_PRESET_IDS = frozenset(
+    f"fl2va_{generation_mode}_qwen35" for generation_mode in FL2VA_GENERATION_MODES
+)
 QWEN_PRESET_TO_GENERATION_MODE = {
     preset_id: mode for mode, preset_id in QWEN_GENERATION_MODES.items()
 }
+QWEN_PRESET_TO_GENERATION_MODE.update({
+    preset_id: preset_id.removeprefix("fl2va_").removesuffix("_qwen35")
+    for preset_id in CANONICAL_QWEN_PRESET_IDS
+})
 QWEN_FL2VA_PRESET_IDS = frozenset(QWEN_PRESET_TO_GENERATION_MODE)
 
 _FL2VA_PROGRESS_OFF = {
@@ -37,6 +56,10 @@ _OFFLINE_CONFIRMATIONS = 3
 
 def _normalize_standardization_mode(value: Any) -> str:
     mode = str(value or DEFAULT_STANDARDIZATION_MODE).strip().lower()
+    mode = {
+        "raw": "off",
+        "qwen35": "comfyui",
+    }.get(mode, mode)
     if mode not in STANDARDIZATION_MODES:
         raise ValueError("标准化提示词必须是 off / ollama / comfyui")
     return mode
@@ -188,6 +211,7 @@ def _install_job_service() -> None:
     original_retry = jobs_module.JobService.retry
     original_public_job = jobs_module.JobService.public_job
     original_apply_history = jobs_module.JobService._apply_history
+    original_reconcile_once = jobs_module.JobService.reconcile_once
 
     def normalize_generation_mode(value: Any) -> str:
         mode = str(value or "v4_600step").strip().lower()
@@ -215,9 +239,28 @@ def _install_job_service() -> None:
     ) -> dict[str, Any]:
         routed = dict(fields)
         preset_id = str(routed.get("preset_id") or "")
+
+        async def resolve_profile(preset: Any) -> None:
+            try:
+                requested, effective = resolve_inference_profile(
+                    preset, routed.get("inference_profile")
+                )
+            except InferenceProfileError as exc:
+                raise preset_module.PresetError(str(exc)) from exc
+            routed["_v047_inference_profile"] = requested
+            routed["_v047_effective_inference_profile"] = effective
+
         if preset_id == FL2VA_ENTRY_ID:
             mode = normalize_generation_mode(routed.get("generation_mode"))
-            raw_standardization_mode = routed.get("prompt_standardization_mode")
+            raw_backend = routed.get("prompt_backend")
+            if raw_backend is not None:
+                raw_standardization_mode = {
+                    "raw": "off",
+                    "ollama": "ollama",
+                    "qwen35": "comfyui",
+                }.get(str(raw_backend).strip().lower(), raw_backend)
+            else:
+                raw_standardization_mode = routed.get("prompt_standardization_mode")
             if raw_standardization_mode is None and "prompt_standardization" in routed:
                 legacy = routed.get("prompt_standardization")
                 if legacy is False:
@@ -231,11 +274,29 @@ def _install_job_service() -> None:
             except ValueError as exc:
                 raise preset_module.PresetError(str(exc)) from exc
 
-            if standardization_mode == "comfyui":
-                target_id = QWEN_GENERATION_MODES[mode]
-                await require_enabled(
-                    self, target_id, f"{mode} + ComfyUI 标准化"
+            backend = {
+                "off": "raw",
+                "ollama": "ollama",
+                "comfyui": "qwen35",
+            }[standardization_mode]
+            try:
+                target = resolve_fl2va_asset(
+                    self.presets,
+                    family="fl2va",
+                    generation_mode=mode,
+                    prompt_backend=backend,
                 )
+            except ValueError as exc:
+                raise preset_module.PresetError(str(exc)) from exc
+
+            target_id = target.id
+            await require_enabled(
+                self, target_id,
+                f"{mode} + Qwen3.5 标准化" if backend == "qwen35" else f"{mode} + {backend} 标准化",
+            )
+            await resolve_profile(target)
+            routed["_v047_prompt_backend"] = backend
+            if standardization_mode == "comfyui":
                 routed["preset_id"] = target_id
                 routed.pop("generation_mode", None)
                 routed.pop("prompt_standardization_mode", None)
@@ -245,19 +306,32 @@ def _install_job_service() -> None:
                     self, routed, uploaded, job_id, is_test=is_test
                 )
 
+            routed["preset_id"] = target_id
+            routed.pop("generation_mode", None)
             routed.pop("prompt_standardization_mode", None)
-            routed["prompt_standardization"] = standardization_mode == "ollama"
+            routed.pop("prompt_standardization", None)
+            if standardization_mode == "off":
+                routed.pop("ollama_model", None)
             return await original_create(
                 self, routed, uploaded, job_id, is_test=is_test
             )
 
         if preset_id in QWEN_FL2VA_PRESET_IDS:
             mode = QWEN_PRESET_TO_GENERATION_MODE[preset_id]
-            await require_enabled(self, preset_id, f"{mode} + ComfyUI 标准化")
+            await require_enabled(self, preset_id, f"{mode} + Qwen3.5 标准化")
             routed.pop("generation_mode", None)
             routed.pop("prompt_standardization_mode", None)
             routed.pop("prompt_standardization", None)
             routed.pop("ollama_model", None)
+            preset = self.presets.get(preset_id)
+            if preset is not None:
+                await resolve_profile(preset)
+            routed["_v047_prompt_backend"] = "qwen35"
+        elif preset_id in CANONICAL_FL2VA_PRESET_IDS:
+            preset = self.presets.get(preset_id)
+            if preset is not None:
+                await resolve_profile(preset)
+            routed["_v047_prompt_backend"] = preset.manifest.get("prompt_backend", "raw") if preset else "raw"
         return await original_create(
             self, routed, uploaded, job_id, is_test=is_test
         )
@@ -272,10 +346,29 @@ def _install_job_service() -> None:
 
         qwen_mode = QWEN_PRESET_TO_GENERATION_MODE.get(preset_id)
         if qwen_mode is not None:
+            display_mode = "v4_600step" if qwen_mode == "v4step600" else qwen_mode
             draft["preset_id"] = FL2VA_ENTRY_ID
-            draft["generation_mode"] = qwen_mode
+            draft["generation_mode"] = display_mode
             draft["prompt_standardization_mode"] = "comfyui"
+            draft["prompt_backend"] = "qwen35"
             values["prompt_standardization_mode"] = "comfyui"
+            values["prompt_backend"] = "qwen35"
+            return draft
+
+        presets = getattr(self, "presets", {})
+        preset = presets.get(preset_id) if isinstance(presets, dict) else None
+        canonical = asset_key(preset) if preset is not None else None
+        if canonical is not None:
+            draft["preset_id"] = FL2VA_ENTRY_ID
+            draft["generation_mode"] = (
+                "v4_600step" if canonical.generation_mode == "v4step600" else canonical.generation_mode
+            )
+            draft["prompt_backend"] = canonical.prompt_backend
+            draft["prompt_standardization_mode"] = (
+                "off" if canonical.prompt_backend == "raw" else "comfyui" if canonical.prompt_backend == "qwen35" else "ollama"
+            )
+            values["prompt_backend"] = canonical.prompt_backend
+            values["prompt_standardization_mode"] = draft["prompt_standardization_mode"]
             return draft
 
         mode = draft.get("generation_mode")
@@ -284,7 +377,9 @@ def _install_job_service() -> None:
                 "off" if values.get("prompt_standardization") is False else "ollama"
             )
             draft["prompt_standardization_mode"] = standardization_mode
+            draft["prompt_backend"] = "raw" if standardization_mode == "off" else "ollama"
             values["prompt_standardization_mode"] = standardization_mode
+            values["prompt_backend"] = draft["prompt_backend"]
         return draft
 
     async def apply_history_v046(
@@ -300,18 +395,109 @@ def _install_job_service() -> None:
                     result = refreshed
         return result
 
+    async def recover_standardized_prompts_v046(self) -> None:
+        """Backfill Qwen prompt text after ComfyUI history becomes complete."""
+
+        now = time.time()
+        last_run = float(getattr(self, "_last_standardized_prompt_recovery", 0) or 0)
+        if now - last_run < 30:
+            return
+        self._last_standardized_prompt_recovery = now
+
+        list_succeeded = getattr(self.db, "succeeded_jobs", None)
+        if not callable(list_succeeded):
+            return
+        setter = getattr(self.db, "set_standardized_prompt_v042", None)
+        if not callable(setter):
+            return
+
+        found = recovered = failed = 0
+        for job in await list_succeeded():
+            if str(job.get("preset_id") or "") not in QWEN_FL2VA_PRESET_IDS:
+                continue
+            if not any(file.get("role") == "output" for file in job.get("files", [])):
+                continue
+            values = job.get("input_values")
+            if isinstance(values, dict) and str(values.get("_v042_standardized_prompt") or "").strip():
+                continue
+            found += 1
+            try:
+                history = await self.comfy.history(str(job["id"]))
+                entry = history.get(str(job["id"])) if isinstance(history, dict) else None
+                text = _qwen_standardized_prompt(self, job, entry) if isinstance(entry, dict) else None
+                if text:
+                    refreshed = await setter(str(job["id"]), text)
+                    if refreshed is not None:
+                        recovered += 1
+                        self.events.publish("job", self.public_job(refreshed))
+                    else:
+                        failed += 1
+                else:
+                    failed += 1
+            except Exception:
+                failed += 1
+                jobs_module.log.exception(
+                    "standardized prompt recovery failed for job %s", job.get("id")
+                )
+        if found:
+            jobs_module.log.info(
+                "standardized prompt recovery: found=%d recovered=%d failed=%d",
+                found, recovered, failed,
+            )
+
+    async def reconcile_once_v046(self) -> None:
+        await original_reconcile_once(self)
+        await recover_standardized_prompts_v046(self)
+
     def public_job_v046(self, job: dict[str, Any] | None):
         result = original_public_job(self, job)
         if result is None or job is None:
             return result
         preset_id = str(job.get("preset_id") or "")
+        values = result.get("input_values")
+        if not isinstance(values, dict):
+            values = {}
+        stored_backend = values.get("_v047_prompt_backend")
+        stored_profile = values.get("_v047_inference_profile")
+        effective_profile = values.get("_v047_effective_inference_profile")
+        if stored_backend:
+            result["prompt_backend"] = stored_backend
+        if stored_profile:
+            result["inference_profile"] = stored_profile
+        if effective_profile:
+            result["effective_inference_profile"] = effective_profile
+        for key in (
+            "_v047_prompt_backend",
+            "_v047_inference_profile",
+            "_v047_effective_inference_profile",
+        ):
+            values.pop(key, None)
+        result["input_values"] = values
         standardization_mode: str | None = None
-        qwen_mode = QWEN_PRESET_TO_GENERATION_MODE.get(preset_id)
-        if qwen_mode is not None:
+        preset = self.presets.get(preset_id)
+        canonical = asset_key(preset) if preset is not None else None
+        if canonical is not None:
+            display_mode = (
+                "v4_600step"
+                if canonical.generation_mode == "v4step600"
+                else canonical.generation_mode
+            )
+            result["generation_mode"] = display_mode
+            result["prompt_backend"] = canonical.prompt_backend
+            result["prompt_standardization_mode"] = (
+                "off" if canonical.prompt_backend == "raw" else canonical.prompt_backend
+            )
+            standardization_mode = (
+                "off" if canonical.prompt_backend == "raw" else canonical.prompt_backend
+            )
+        else:
+            qwen_mode = QWEN_PRESET_TO_GENERATION_MODE.get(preset_id)
+        if canonical is None and qwen_mode is not None:
             result["generation_mode"] = qwen_mode
+            result["prompt_backend"] = "qwen35"
             result["prompt_standardization_mode"] = "comfyui"
             standardization_mode = "comfyui"
-        elif preset_id in FL2VA_PRESET_IDS:
+        elif canonical is None and preset_id in FL2VA_PRESET_IDS:
             values = result.get("input_values")
             if not isinstance(values, dict):
                 values = {}
@@ -319,6 +505,9 @@ def _install_job_service() -> None:
                 "off" if values.get("prompt_standardization") is False else "ollama"
             )
             result["prompt_standardization_mode"] = standardization_mode
+            result["prompt_backend"] = (
+                "raw" if standardization_mode == "off" else "ollama"
+            )
 
         if standardization_mode is not None:
             _apply_fl2va_progress(result, job, standardization_mode)
@@ -328,10 +517,13 @@ def _install_job_service() -> None:
     retry_v046._v046_standardizer_modes = True  # type: ignore[attr-defined]
     apply_history_v046._v046_standardizer_modes = True  # type: ignore[attr-defined]
     public_job_v046._v046_standardizer_modes = True  # type: ignore[attr-defined]
+    reconcile_once_v046._v046_standardizer_modes = True  # type: ignore[attr-defined]
     jobs_module.JobService.create = create_v046
     jobs_module.JobService.retry = retry_v046
     jobs_module.JobService._apply_history = apply_history_v046
     jobs_module.JobService.public_job = public_job_v046
+    jobs_module.JobService._recover_standardized_prompts_v046 = recover_standardized_prompts_v046
+    jobs_module.JobService.reconcile_once = reconcile_once_v046
 
 
 def _install_offline_reconciliation() -> None:
