@@ -20,7 +20,7 @@ $launcher = if (Test-Path -LiteralPath $pythonw) { $pythonw } else { $python }
 
 $action = New-ScheduledTaskAction `
     -Execute $launcher `
-    -Argument ('-m comfyui_remote_panel start --config \"{0}\"' -f $config) `
+    -Argument ('-m comfyui_remote_panel start --config "{0}"' -f $config) `
     -WorkingDirectory $root
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
 $settings = New-ScheduledTaskSettingsSet `

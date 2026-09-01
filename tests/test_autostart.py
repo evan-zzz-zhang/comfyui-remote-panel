@@ -104,6 +104,22 @@ def test_install_passes_external_python_as_absolute_path(tmp_path: Path, monkeyp
     assert captured[python_index] == str(external_python.resolve())
 
 
+def test_register_task_script_quotes_config_without_escaped_backslashes():
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "windows"
+        / "Register-RemotePanelTask.ps1"
+    )
+    source = script.read_text(encoding="utf-8")
+
+    # A literal \" inside the single-quoted PowerShell string reaches Task
+    # Scheduler verbatim, so the CLI receives a config path still wrapped in real
+    # quote characters and exits with code 2 instead of starting the panel.
+    assert '\\"{0}\\"' not in source
+    assert '-m comfyui_remote_panel start --config "{0}"' in source
+
+
 def test_register_task_script_handles_rooted_python_and_config_paths():
     script = (
         Path(__file__).resolve().parents[1]
