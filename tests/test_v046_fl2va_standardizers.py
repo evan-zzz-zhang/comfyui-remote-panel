@@ -100,14 +100,22 @@ async def panel_client_v046(tmp_path, comfy_server_v046, aiohttp_client):
     return await aiohttp_client(create_app(config))
 
 
-def _form(mode: str, standardization: str, *, ollama_model: str = "gemma4:e4b") -> FormData:
+def _form(
+    mode: str,
+    standardization: str,
+    *,
+    ollama_model: str = "gemma4:e4b",
+    inference_profile: str = "auto",
+    preset_id: str = "h3-fl2va-group",
+) -> FormData:
     form = FormData(default_to_multipart=True)
-    form.add_field("preset_id", "h3-fl2va-group")
+    form.add_field("preset_id", preset_id)
     form.add_field("prompt", f"测试 {mode} {standardization}")
     form.add_field("values_json", json.dumps({
         "generation_mode": mode,
         "prompt_standardization_mode": standardization,
         "ollama_model": ollama_model,
+        "inference_profile": inference_profile,
     }))
     return form
 
@@ -134,6 +142,9 @@ async def test_all_nine_fl2va_routes_select_the_expected_physical_workflow(
     assert job["generation_mode"] == mode
     expected_mode = "off" if standardization == "off" else "qwen35" if standardization == "comfyui" else "ollama"
     assert job["prompt_standardization_mode"] == expected_mode
+    assert job["inference_profile"] == "auto"
+    assert job["effective_inference_profile"] == "int8"
+    assert "inference_profile" not in job["input_values"]
 
     graph = comfy_server_v046.app["submitted"][-1]["prompt"]
     classes = {node["class_type"] for node in graph.values()}
@@ -156,6 +167,41 @@ async def test_all_nine_fl2va_routes_select_the_expected_physical_workflow(
         assert graph[switch]["inputs"]["switch"] is (standardization == "ollama")
         if standardization == "ollama":
             assert graph[standardizer]["inputs"]["ollama_model"] == "qwen3:8b"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("preset_id", [
+    "fl2va_original_raw",
+    "h3-fl2va-qwen35-4b",
+])
+async def test_physical_and_legacy_qwen_routes_strip_inference_profile_before_validation(
+    panel_client_v046, comfy_server_v046, preset_id
+):
+    response = await panel_client_v046.post(
+        "/api/jobs",
+        data=_form("original", "off", preset_id=preset_id, inference_profile="int8"),
+        headers=LOGIN,
+    )
+    assert response.status == 201, await response.text()
+    job = await response.json()
+    assert job["inference_profile"] == "int8"
+    assert job["effective_inference_profile"] == "int8"
+    assert "inference_profile" not in job["input_values"]
+
+
+@pytest.mark.asyncio
+async def test_unavailable_inference_profile_is_reported_as_model_error_not_unknown_field(
+    panel_client_v046,
+):
+    response = await panel_client_v046.post(
+        "/api/jobs",
+        data=_form("original", "off", inference_profile="fp16_bf16"),
+        headers=LOGIN,
+    )
+    assert response.status == 400
+    message = (await response.json())["error"]["message"]
+    assert "模型配置 fp16_bf16 当前不可用" in message
+    assert "不支持的字段：inference_profile" not in message
 
 
 @pytest.mark.asyncio
@@ -235,6 +281,37 @@ async def test_retry_restores_standardization_backend(
     assert draft["generation_mode"] == "lightx2v"
     assert draft["prompt_standardization_mode"] == expected
     assert draft["values"]["prompt_standardization_mode"] == expected
+
+
+@pytest.mark.asyncio
+async def test_retry_restores_inference_profile_and_can_submit_again(
+    panel_client_v046, comfy_server_v046
+):
+    response = await panel_client_v046.post(
+        "/api/jobs",
+        data=_form("lightx2v", "off", inference_profile="int8"),
+        headers=LOGIN,
+    )
+    assert response.status == 201, await response.text()
+    created = await response.json()
+    await panel_client_v046.app["db"].update_job(created["id"], status="succeeded")
+
+    draft = await panel_client_v046.app["jobs"].retry(created["id"])
+    assert draft["inference_profile"] == "int8"
+    assert draft["values"]["inference_profile"] == "int8"
+
+    retry_form = _form(
+        draft["generation_mode"],
+        draft["prompt_standardization_mode"],
+        inference_profile=draft["inference_profile"],
+    )
+    retry_form.add_field("retry_source_id", draft["retry_source_id"])
+    retry_form.add_field("retry_keep_roles", json.dumps(draft["retry_keep_roles"]))
+    retried = await panel_client_v046.post("/api/jobs", data=retry_form, headers=LOGIN)
+    assert retried.status == 201, await retried.text()
+    retried_job = await retried.json()
+    assert retried_job["inference_profile"] == "int8"
+    assert "inference_profile" not in retried_job["input_values"]
 
 
 @pytest.mark.asyncio

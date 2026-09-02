@@ -259,6 +259,10 @@ def _install_job_service() -> None:
                     raise preset_module.PresetError("；".join(diagnostics[:3]))
             routed["_v047_inference_profile"] = requested
             routed["_v047_effective_inference_profile"] = effective
+            # This is Workflow Family routing metadata, not a manifest
+            # parameter.  Keep only the internal values that JobService
+            # persists after Preset.validate_parameters() has run.
+            routed.pop("inference_profile", None)
 
         if preset_id == FL2VA_ENTRY_ID:
             mode = normalize_generation_mode(routed.get("generation_mode"))
@@ -353,6 +357,13 @@ def _install_job_service() -> None:
         if not isinstance(values, dict):
             values = {}
             draft["values"] = values
+
+        # Retry restores the user-facing selector from the metadata persisted
+        # with the original job.  The create route will resolve it again and
+        # remove the routing-only field before parameter validation.
+        requested_profile = values.get("_v047_inference_profile", "auto")
+        draft["inference_profile"] = requested_profile
+        values["inference_profile"] = requested_profile
 
         qwen_mode = QWEN_PRESET_TO_GENERATION_MODE.get(preset_id)
         if qwen_mode is not None:
