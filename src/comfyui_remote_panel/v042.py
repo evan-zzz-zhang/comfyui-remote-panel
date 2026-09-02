@@ -154,11 +154,12 @@ def _install_preset_behavior() -> None:
         values: dict[str, Any],
         job_id: str,
         media: dict[str, str],
+        variant_model_overrides: dict[str, dict[str, str]] | None = None,
     ) -> dict[str, Any]:
         router = self.manifest.get("h3_aspect_router")
         standardizer = self.manifest.get("h3_prompt_standardizer")
         if not isinstance(router, dict) and not isinstance(standardizer, dict):
-            return original_build_prompt(self, values, job_id, media)
+            return original_build_prompt(self, values, job_id, media, variant_model_overrides)
 
         if isinstance(router, dict):
             reference_parameter = router.get("reference_parameter", "reference")
@@ -178,7 +179,7 @@ def _install_preset_behavior() -> None:
             "legacy_parameter_value": "__v042_disabled_legacy__",
             "video_parameter_value": "__v042_disabled_video__",
         }
-        prompt = original_build_prompt(temporary, values, job_id, media)
+        prompt = original_build_prompt(temporary, values, job_id, media, variant_model_overrides)
 
         if isinstance(router, dict):
             node_id = str(router["node"])

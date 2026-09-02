@@ -12,6 +12,7 @@ from .workflow_registry import (
 )
 from .inference_profile import (
     InferenceProfileError,
+    normalize_inference_profile,
     resolve_inference_profile,
 )
 
@@ -249,18 +250,26 @@ def _install_job_service() -> None:
                 )
             except InferenceProfileError as exc:
                 raise preset_module.PresetError(str(exc)) from exc
-            current_profile = str(
+            current_profile = normalize_inference_profile(
                 preset.manifest.get("model_profile", {})
                 .get("main_model", {})
                 .get("current", "int8")
-            ).strip().lower()
+            )
+            resolve_variant = getattr(self.comfy, "resolve_preset_variant", None)
             validate_variant = getattr(self.comfy, "validate_preset_variant", None)
-            if effective != current_profile and callable(validate_variant):
+            variant_overrides: dict[str, dict[str, str]] = {}
+            if effective != current_profile and callable(resolve_variant):
+                diagnostics, variant_overrides = await resolve_variant(preset, effective)
+                if diagnostics:
+                    raise preset_module.PresetError("；".join(diagnostics[:3]))
+            elif effective != current_profile and callable(validate_variant):
                 diagnostics = await validate_variant(preset, effective)
                 if diagnostics:
                     raise preset_module.PresetError("；".join(diagnostics[:3]))
             routed["_v047_inference_profile"] = requested
             routed["_v047_effective_inference_profile"] = effective
+            if variant_overrides:
+                routed["_v047_variant_model_overrides"] = variant_overrides
             # This is Workflow Family routing metadata, not a manifest
             # parameter.  Keep only the internal values that JobService
             # persists after Preset.validate_parameters() has run.

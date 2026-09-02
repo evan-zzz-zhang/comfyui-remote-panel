@@ -31,6 +31,12 @@ def _version_tuple(value: str) -> tuple[int, ...]:
     return tuple((parts + [0, 0, 0])[:3])
 
 
+def _normalized_model_selector(value: Any) -> str:
+    """Normalize separators only for comparing model selectors."""
+
+    return str(value).replace("\\", "/")
+
+
 class ComfyClient:
     def __init__(self, base_url: str, minimum_version: str, client_id: str):
         self.base_url = base_url.rstrip("/")
@@ -103,10 +109,24 @@ class ComfyClient:
         availability or model overrides.
         """
 
+        diagnostics, _ = await self.resolve_preset_variant(preset, profile)
+        return diagnostics
+
+    async def resolve_preset_variant(
+        self, preset: Preset, profile: str
+    ) -> tuple[list[str], dict[str, dict[str, str]]]:
+        """Validate a variant and return exact runtime model bindings.
+
+        Manifest selectors are normalized only for lookup.  The returned
+        overrides preserve the exact selector spelling supplied by ComfyUI so
+        they can be written back to the prompt without changing separators.
+        """
+
         dependencies = model_variant_dependencies(preset, profile)
         if not dependencies:
-            return []
+            return [], {}
         diagnostics: list[str] = []
+        overrides: dict[str, dict[str, str]] = {}
         model_cache: dict[str, dict[str, str] | ComfyError] = {}
         async with self._validation_lock:
             for dependency in dependencies:
@@ -119,7 +139,7 @@ class ComfyClient:
                     try:
                         models = await self._json("GET", f"/models/{category}")
                         model_cache[category] = {
-                            str(value).replace("\\", "/"): str(value) for value in models
+                            _normalized_model_selector(value): str(value) for value in models
                         }
                     except ComfyError as exc:
                         model_cache[category] = exc
@@ -127,9 +147,14 @@ class ComfyClient:
                 if isinstance(models, ComfyError):
                     diagnostics.append(str(models))
                     continue
-                if name.replace("\\", "/") not in models:
+                runtime_name = models.get(_normalized_model_selector(name))
+                if runtime_name is None:
                     diagnostics.append(f"缺少模型：{name}")
-        return diagnostics
+                elif dependency.get("node") and dependency.get("input"):
+                    overrides.setdefault(str(dependency["node"]), {})[
+                        str(dependency["input"])
+                    ] = runtime_name
+        return diagnostics, overrides
 
     async def validate_presets(
         self, presets: list[Preset], stats: dict[str, Any] | None = None
@@ -227,14 +252,14 @@ class ComfyClient:
                                 try:
                                     models = await self._json("GET", f"/models/{category}")
                                     model_cache[category] = {
-                                        str(value).replace("\\", "/"): str(value) for value in models
+                                        _normalized_model_selector(value): str(value) for value in models
                                     }
                                 except ComfyError as exc:
                                     model_cache[category] = exc
                             models = model_cache[category]
                             if isinstance(models, ComfyError):
                                 raise models
-                            expected_name = dependency["name"].replace("\\", "/")
+                            expected_name = _normalized_model_selector(dependency["name"])
                             if expected_name not in models:
                                 diagnostics.append(f"缺少模型：{dependency['name']}")
                             elif dependency.get("node") and dependency.get("input"):

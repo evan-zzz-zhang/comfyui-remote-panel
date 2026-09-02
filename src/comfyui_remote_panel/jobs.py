@@ -141,7 +141,13 @@ class JobService:
             await self.db.create_job(record, effective_uploads)
             persisted = True
             media_names = {file["role"]: self.files.comfy_input_name(Path(file["path"])) for file in effective_uploads}
-            prompt = preset.build_prompt(normalized, job_id, media_names)
+            variant_model_overrides = fields.get("_v047_variant_model_overrides")
+            prompt = preset.build_prompt(
+                normalized,
+                job_id,
+                media_names,
+                variant_model_overrides if isinstance(variant_model_overrides, dict) else None,
+            )
             await self.comfy.submit(job_id, prompt)
             _, job = await self.db.update_job_if_status(
                 job_id, {"submitting"}, status="queued", stage="等待执行", queue_position=None

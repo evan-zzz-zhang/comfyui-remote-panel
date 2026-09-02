@@ -186,7 +186,36 @@ class Preset:
             result[name] = value
         return result
 
-    def build_prompt(self, values: dict[str, Any], job_id: str, media: dict[str, str]) -> dict[str, Any]:
+    def _apply_variant_model_overrides(
+        self,
+        prompt: dict[str, Any],
+        effective_profile: Any,
+        variant_model_overrides: dict[str, dict[str, str]] | None = None,
+    ) -> None:
+        from .inference_profile import model_variant_dependencies, normalize_inference_profile
+
+        profile = normalize_inference_profile(effective_profile)
+        model_profile = self.manifest.get("model_profile", {})
+        main_model = model_profile.get("main_model", {}) if isinstance(model_profile, dict) else {}
+        current = normalize_inference_profile(main_model.get("current", "int8"))
+        if profile == current:
+            return
+        runtime_overrides = variant_model_overrides or {}
+        for dependency in model_variant_dependencies(self, profile):
+            node_id = str(dependency.get("node") or "")
+            input_name = str(dependency.get("input") or "")
+            model_name = dependency.get("name")
+            runtime_name = runtime_overrides.get(node_id, {}).get(input_name, model_name)
+            if node_id and input_name and runtime_name and node_id in prompt:
+                prompt[node_id]["inputs"][input_name] = str(runtime_name)
+
+    def build_prompt(
+        self,
+        values: dict[str, Any],
+        job_id: str,
+        media: dict[str, str],
+        variant_model_overrides: dict[str, dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
         _, allow_empty_prompt = self.validate_media_roles(set(media))
         normalized = self.validate_parameters(values, allow_empty_prompt=allow_empty_prompt)
         reference = self.manifest.get("reference_aspect", {})
@@ -198,14 +227,7 @@ class Preset:
             prompt[node_id]["inputs"].update(inputs)
         effective_profile = values.get("_v047_effective_inference_profile")
         if effective_profile:
-            from .inference_profile import model_variant_dependencies
-
-            for dependency in model_variant_dependencies(self, effective_profile):
-                node_id = dependency.get("node")
-                input_name = dependency.get("input")
-                model_name = dependency.get("name")
-                if node_id and input_name and model_name and str(node_id) in prompt:
-                    prompt[str(node_id)]["inputs"][str(input_name)] = str(model_name).replace("\\", "/")
+            self._apply_variant_model_overrides(prompt, effective_profile, variant_model_overrides)
         for name, spec in self.manifest["parameters"].items():
             value = normalized[name]
             if name == "seed":

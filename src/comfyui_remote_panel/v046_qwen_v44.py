@@ -66,9 +66,10 @@ def _install_prompt_builder() -> None:
         values: dict[str, Any],
         job_id: str,
         media: dict[str, str],
+        variant_model_overrides: dict[str, dict[str, str]] | None = None,
     ) -> dict[str, Any]:
         if self.manifest.get("workflow_variant") != _VARIANT:
-            return original_build_prompt(self, values, job_id, media)
+            return original_build_prompt(self, values, job_id, media, variant_model_overrides)
 
         self.validate_media_roles(set(media))
         normalized = self.validate_parameters(values, allow_empty_prompt=False)
@@ -84,6 +85,9 @@ def _install_prompt_builder() -> None:
         prompt = copy.deepcopy(self.template)
         for node_id, inputs in self.model_overrides.items():
             prompt[node_id]["inputs"].update(inputs)
+        effective_profile = values.get("_v047_effective_inference_profile")
+        if effective_profile:
+            self._apply_variant_model_overrides(prompt, effective_profile, variant_model_overrides)
 
         for name, spec in self.manifest["parameters"].items():
             value = normalized[name]

@@ -14,6 +14,50 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("runtime_selector", [
+    r"MiniMax-H3\model.safetensors",
+    "MiniMax-H3/model.safetensors",
+])
+async def test_variant_validation_matches_separators_but_returns_exact_runtime_selector(runtime_selector):
+    preset = load_presets(ROOT / "workflows")["fl2va_original_raw"]
+    preset.manifest["model_profile"]["main_model"]["variants"]["fp16_bf16"] = {
+        "available": True,
+        "dependencies": [{
+            "category": "diffusion_models",
+            "name": "MiniMax-H3/model.safetensors",
+            "node": "105:6",
+            "input": "unet_name",
+        }],
+    }
+    client = ComfyClient("http://127.0.0.1:8188", "0.26.0", "test")
+
+    async def request(_method, path, **_kwargs):
+        assert path == "/models/diffusion_models"
+        return [runtime_selector]
+
+    client._json = request
+    assert await client.validate_preset_variant(preset, "fp16_bf16") == []
+    diagnostics, overrides = await client.resolve_preset_variant(preset, "fp16_bf16")
+    assert diagnostics == []
+    assert overrides == {"105:6": {"unet_name": runtime_selector}}
+
+    graph = preset.build_prompt(
+        {
+            "prompt": "variant selector",
+            "duration_seconds": 5,
+            "aspect_ratio": "9:16",
+            "megapixels": 0.4,
+            "seed": "1",
+            "_v047_effective_inference_profile": "fp16_bf16",
+        },
+        "variant-selector-job",
+        {},
+        overrides,
+    )
+    assert graph["105:6"]["inputs"]["unet_name"] == runtime_selector
+
+
+@pytest.mark.asyncio
 async def test_batch_preset_validation_deduplicates_requests_and_publishes_atomically():
     presets = list(load_presets(ROOT / "workflows").values())
     client = ComfyClient("http://127.0.0.1:8188", "0.26.0", "test")

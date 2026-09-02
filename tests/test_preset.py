@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from comfyui_remote_panel.inference_profile import resolve_inference_profile
 from comfyui_remote_panel.preset import BUILTIN_WORKFLOW_DIR, PresetError, load_presets
 
 
@@ -44,6 +45,18 @@ def test_mutates_declared_sampling_parameters_and_keeps_model_locked(preset):
     assert graph["145"]["inputs"]["lora_name"] == "minimax_h3_turbo_v4_step600_ema_pruned_comfyui.safetensors"
     assert graph["115"]["inputs"]["aspect_ratio"] == "21:9 (Ultrawide)"
     assert graph["92"]["inputs"]["filename_prefix"] == "h3_remote/id"
+
+
+@pytest.mark.parametrize("requested", ["auto", "int8"])
+def test_current_int8_profile_keeps_the_workflow_model_selector(requested):
+    preset = load_presets(ROOT / "workflows")["fl2va_v4step600_raw"]
+    _, effective = resolve_inference_profile(preset, requested)
+    original_selector = preset.template["127"]["inputs"]["unet_name"]
+    data = values()
+    data["_v047_effective_inference_profile"] = effective
+    graph = preset.build_prompt(data, "current-profile-job", {})
+    assert graph["127"]["inputs"]["unet_name"] == original_selector
+    assert original_selector == r"MiniMax-H3\minimax_h3_fl2va_pruned_int8_convrot.safetensors"
 
 
 @pytest.mark.parametrize("field,value", [("duration_seconds", 4), ("duration_seconds", 16), ("megapixels", 0.1), ("megapixels", 0.3), ("megapixels", 1.1), ("seed", -1), ("seed", 2**64)])
