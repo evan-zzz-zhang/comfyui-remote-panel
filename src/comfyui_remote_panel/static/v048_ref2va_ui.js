@@ -80,7 +80,10 @@
     return select;
   }
   function ensureRef2vaFields(overrides = {}) {
-    if (!selectedRef2va()) return;
+    if (!selectedRef2va()) {
+      removeRef2vaFields();
+      return;
+    }
     const grid = document.querySelector("#advanced-settings .advanced-grid");
     if (!grid) return;
     const mode = ensureField(grid, "generation-mode", "Generation Mode", MODES,
@@ -96,6 +99,13 @@
     backend.dataset.v048Ref2vaPromptBackend = "true";
     profile.dataset.v048Ref2vaInferenceProfile = "true";
     updateSubmitAvailability();
+  }
+  function removeRef2vaFields() {
+    document.querySelectorAll(
+      "[data-v048-ref2va-generation-mode-field], "
+      + "[data-v048-ref2va-prompt-backend-field], "
+      + "[data-v048-ref2va-inference-profile-field]"
+    ).forEach(field => field.remove());
   }
   function currentRef2vaValues() {
     return {

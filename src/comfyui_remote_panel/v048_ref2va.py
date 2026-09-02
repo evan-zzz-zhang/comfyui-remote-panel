@@ -57,7 +57,7 @@ def _backend(value: Any) -> str:
 
 
 def _display_mode(mode: str) -> str:
-    return "v4_600step" if mode == "v4step600" else mode
+    return mode
 
 
 def _legacy_key(preset_id: str) -> WorkflowAssetKey | None:

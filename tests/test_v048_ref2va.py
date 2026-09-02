@@ -290,3 +290,30 @@ async def test_new_canonical_ref2va_retry_restores_virtual_routing_and_media(
     assert draft["inference_profile"] == "int8"
     assert draft["retained_media"]
     assert draft["retained_media"][0]["role"] == "image_0"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("preset_id", ["h3-ref2va-v4step600", "ref2va_v4step600_raw"])
+async def test_ref2va_v4step600_retry_exposes_public_mode_contract(
+    panel_client_v048, preset_id
+):
+    image_data = io.BytesIO()
+    Image.new("RGB", (24, 12), "orange").save(image_data, format="PNG")
+    form = FormData(default_to_multipart=True)
+    form.add_field("preset_id", preset_id)
+    form.add_field("prompt", "v4step600 retry")
+    form.add_field(
+        "ref_images", image_data.getvalue(), filename="reference.png", content_type="image/png"
+    )
+    response = await panel_client_v048.post("/api/jobs", data=form, headers=LOGIN)
+    assert response.status == 201, await response.text()
+    created = await response.json()
+    await panel_client_v048.app["db"].update_job(created["id"], status="failed")
+
+    retry_response = await panel_client_v048.post(
+        f"/api/jobs/{created['id']}/retry", headers=LOGIN
+    )
+    assert retry_response.status == 200, await retry_response.text()
+    draft = await retry_response.json()
+    assert draft["preset_id"] == "h3-ref2va-group"
+    assert draft["generation_mode"] == "v4step600"
