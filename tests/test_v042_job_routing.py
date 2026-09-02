@@ -179,7 +179,7 @@ async def test_standardized_prompt_is_not_saved_when_standardization_is_off(
 @pytest.mark.asyncio
 async def test_disabled_generation_mode_is_rejected_by_backend(panel_client_v042, comfy_server_v042):
     status = await panel_client_v042.post(
-        "/api/workflows/h3-fl2va-lightx2v/status",
+        "/api/workflows/fl2va_lightx2v_ollama/status",
         json={"status": "disabled"},
         headers=LOGIN,
     )

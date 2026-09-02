@@ -228,3 +228,43 @@ CI release gates：minimum-dependencies、Windows/Linux、Python 3.11/3.13、tes
 - 最终发布 gate 要求版本、文档和代码位于同一提交链，并再次通过上述完整 CI 后合并；不以真实 GPU 卡死作为发布阻塞项。
 
 **结论：v0.4.1 真机功能验收通过；卡死防抖由自动化覆盖并通过。满足最终发布 gate，合并仅在完整 CI 全绿后执行。**
+
+---
+
+## 2026-09-02 至 2026-09-03 v0.4.7 FL2VA Workflow Family 3 × 3 真机基线
+
+本轮在目标 Windows / RTX 4080 SUPER / 手机远程环境，通过手机面板完成 9 个
+canonical FL2VA 工作流的全量实测。最终一轮 9/9 任务均成功完成，并登记了
+`video/mp4` 输出。本轮统一使用首帧输入、5 秒、0.4 MP、INT8 推理配置。
+
+### 最终通过矩阵
+
+| 生成模式 | Raw | Ollama | Qwen3.5 4B |
+| --- | --- | --- | --- |
+| `v4step600` | 通过（1:14） | 通过（2:04） | 通过（2:13） |
+| `LightX2V` | 通过（1:08） | 通过（2:13） | 通过（1:59） |
+| `original` | 通过（2:09） | 通过（3:24） | 通过（2:44） |
+
+耗时为任务记录中的实际执行耗时，用于后续定位性能或阶段回归；不作为固定性能
+承诺。最终 9 个 canonical preset 为：
+
+```text
+fl2va_v4step600_raw / fl2va_v4step600_ollama / fl2va_v4step600_qwen35
+fl2va_lightx2v_raw / fl2va_lightx2v_ollama / fl2va_lightx2v_qwen35
+fl2va_original_raw / fl2va_original_ollama / fl2va_original_qwen35
+```
+
+### 前置现场观察
+
+在形成最终通过矩阵前，同一测试窗口曾出现三次前置异常：
+
+- `v4step600 + Raw`：提交确认超时（`submission_unconfirmed`）；
+- `v4step600 + Ollama`：任务结束后暂未找到输出（`output_missing`）；
+- `v4step600 + Qwen3.5`：ComfyUI 执行期间离线，任务进入历史隐藏状态。
+
+三项随后均重新提交并成功完成，因此不计入最终 3 × 3 失败项，但保留为真实现场
+回归观察。后续代码、UI、任务状态、输出登记和 Retry 改动，都应以本节的 9/9
+成功矩阵及上述异常恢复行为作为基线。
+
+**结论：v0.4.7 FL2VA canonical 3 × 3 手机面板实机验收通过；全量自动化检查与
+分支/CI 收尾仍未完成。**

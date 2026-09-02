@@ -1,8 +1,37 @@
 # Comfy Remote Roadmap / TODO
 
-当前稳定开发基线：**v0.4.6 FL2VA Multi-Backend Prompt Standardization（Completed）**。
+当前稳定开发基线：**v0.4.7 FL2VA Workflow Family & Inference Profile（In progress）**。
 
 `v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；`v0.4 Creation Experience`、`v0.4 Recovery Lite`、`v0.4.1 Media Continuity`、`v0.4.2 H3 FL2VA Unified Modes`、`v0.4.3 Task Reconciliation Hardening`、`v0.4.4 Windows Environment Self-Healing`、`v0.4.5 Artifact History Sync & Ollama Model Setting` 与 `v0.4.6 FL2VA Multi-Backend Prompt Standardization` 均已完成当前范围收尾。
+
+## v0.4.7 FL2VA Workflow Family & Inference Profile — In progress
+
+- [x] 建立 9 个 canonical FL2VA asset 及中英文 Workflow Asset Inventory。
+- [x] 用 manifest-backed resolver 解析 `3 generation modes × 3 prompt backends`，保留旧 ID 作为兼容资产。
+- [x] 将 raw / Ollama / Qwen3.5 的输入、输出和 Prompt 捕获契约写入 manifest。
+- [x] Qwen3.5 完成任务后延迟补抓标准化 Prompt，并支持历史成功任务扫描。
+- [x] 推理配置保存到既有 `input_values_json`；当前 `auto` 解析到真实 INT8 资产，未声明的 FP16/BF16 变体拒绝执行。
+- [x] 完成 Windows + ComfyUI + 手机面板真机 3 × 3 验收。
+- [ ] 完成全量 pytest、构建和仓库检查。
+- [ ] 完成 v0.4.7 分支提交、CI 和 PR 合并收尾。
+
+### v0.4.7 真机验收记录
+
+2026-09-02 至 2026-09-03，在目标 Windows / RTX 4080 SUPER / 手机远程环境，
+通过手机面板完成 9 个 canonical FL2VA 工作流的全量 3 × 3 实测。最终一轮
+9/9 任务均为 `succeeded`，并登记了 `video/mp4` 输出；本轮统一使用首帧输入、
+5 秒、0.4 MP、INT8 推理配置。
+
+| 生成模式 | Raw | Ollama | Qwen3.5 4B |
+| --- | --- | --- | --- |
+| `v4step600` | 通过（1:14） | 通过（2:04） | 通过（2:13） |
+| `LightX2V` | 通过（1:08） | 通过（2:13） | 通过（1:59） |
+| `original` | 通过（2:09） | 通过（3:24） | 通过（2:44） |
+
+同一测试窗口的前置尝试曾分别出现 `submission_unconfirmed`、`output_missing` 和
+ComfyUI 离线导致的 `hidden`；对应工作流随后重新提交并纳入上面的最终 3 × 3
+通过矩阵。后续回归以最终 9 个 `succeeded` 任务的行为和输出链路为基线，不把这些
+前置异常误记为 3 × 3 失败。
 
 ---
 

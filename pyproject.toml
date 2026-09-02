@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "comfyui-remote-panel"
-version = "0.4.6"
+version = "0.4.7"
 description = "Comfy Remote: a mobile-first remote creation panel for trusted ComfyUI workflows."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -37,7 +37,7 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-comfyui_remote_panel = ["static/*", "workflows/*/*.json"]
+comfyui_remote_panel = ["static/*", "workflows/**/*.json"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

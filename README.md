@@ -4,13 +4,13 @@
 
 **Run your local ComfyUI workflows from your phone.**
 
-> **Current status: v0.4.6 Public Beta.**
+> **Current status: v0.4.7 Public Beta.**
 >
 > Generic ComfyUI API Workflow support, mobile creation, retained-media Retry, H3 FL2VA unified generation modes, registered-output history sync, Off/Ollama/ComfyUI prompt standardization, guarded force-stop recovery, SageAttention runtime status, task reconciliation hardening, self-healing Windows installation, Windows Setup, Tailscale remote access, Doctor diagnostics, and Recovery Lite controls are available. Full automatic watchdog recovery, multi-host support, and Wake-on-LAN are not implemented.
 
 Comfy Remote is a mobile-first remote creation panel for ComfyUI. It runs on the Windows computer that hosts ComfyUI and turns locally verified **ComfyUI API Workflows** into a phone-friendly interface for selecting workflows, adding media, editing prompts, submitting jobs, and reviewing results.
 
-The current v0.4.6 baseline builds on **Public Readiness + Configurator 2.0** with a clearer Specialized / Generic creation boundary, explicit Seed Policy, reference-image resolution preprocessing, guarded manual ComfyUI recovery, reliable historical-media Retry, H3 FL2VA product-level mode routing, safer final-state reconciliation, Windows environment self-healing, output-artifact/history synchronization, and multi-backend FL2VA prompt standardization. It still avoids silently rewriting arbitrary workflows or exposing ComfyUI directly to the network.
+The current v0.4.7 baseline builds on **Public Readiness + Configurator 2.0** with a clearer Specialized / Generic creation boundary, explicit Seed Policy, reference-image resolution preprocessing, guarded manual ComfyUI recovery, reliable historical-media Retry, a manifest-backed FL2VA 3 × 3 workflow family, inference-profile metadata, safer final-state reconciliation, Windows environment self-healing, output-artifact/history synchronization, and multi-backend FL2VA prompt standardization. It still avoids silently rewriting arbitrary workflows or exposing ComfyUI directly to the network.
 
 ## What it does
 
@@ -95,6 +95,9 @@ Configurator 2.0 does not simply search for a few fixed nodes. Its compatibility
 A valid img2img workflow therefore does not need an `EmptyLatentImage`, and a workflow may have no remotely editable `width / height / batch_size` at all. Comfy Remote exposes the creation inputs the workflow actually has and that can be safely identified or explicitly mapped by the user.
 
 See [Workflow / Configurator 2.0 guide](docs/WORKFLOWS.md).
+
+The canonical FL2VA 3 × 3 asset matrix and manifest contract are documented
+in the [FL2VA Workflow Asset Inventory](docs/FL2VA_WORKFLOW_ASSET_INVENTORY.md).
 
 ## Doctor / Feedback
 

@@ -497,6 +497,16 @@ def install() -> None:
             normalized = preset.validate_parameters(
                 parameter_fields, allow_empty_prompt=allow_empty_prompt
             )
+            # Family routing and inference selection are persisted in the
+            # existing JSON input payload; they are metadata, not workflow
+            # parameters and therefore must survive the v0.4 seed layer.
+            for metadata_key in (
+                "_v047_prompt_backend",
+                "_v047_inference_profile",
+                "_v047_effective_inference_profile",
+            ):
+                if metadata_key in fields:
+                    normalized[metadata_key] = fields[metadata_key]
             if has_seed:
                 if policy in {"fixed", "increment"}:
                     seed_base = normalized.get("seed")

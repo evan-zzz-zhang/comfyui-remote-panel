@@ -109,6 +109,16 @@ class JobService:
             roles = {file["role"] for file in effective_uploads}
             mode, allow_empty_prompt = preset.validate_media_roles(roles)
             normalized = preset.validate_parameters(fields, allow_empty_prompt=allow_empty_prompt)
+            # Workflow-family selectors are routing metadata rather than
+            # workflow parameters.  Preserve the resolved values in the
+            # existing JSON payload without changing the jobs table schema.
+            for metadata_key in (
+                "_v047_prompt_backend",
+                "_v047_inference_profile",
+                "_v047_effective_inference_profile",
+            ):
+                if metadata_key in fields:
+                    normalized[metadata_key] = fields[metadata_key]
             seed = normalized.get("seed")
             if seed is None:
                 seed = str(secrets.randbits(64))
@@ -131,7 +141,13 @@ class JobService:
             await self.db.create_job(record, effective_uploads)
             persisted = True
             media_names = {file["role"]: self.files.comfy_input_name(Path(file["path"])) for file in effective_uploads}
-            prompt = preset.build_prompt(normalized, job_id, media_names)
+            variant_model_overrides = fields.get("_v047_variant_model_overrides")
+            prompt = preset.build_prompt(
+                normalized,
+                job_id,
+                media_names,
+                variant_model_overrides if isinstance(variant_model_overrides, dict) else None,
+            )
             await self.comfy.submit(job_id, prompt)
             _, job = await self.db.update_job_if_status(
                 job_id, {"submitting"}, status="queued", stage="等待执行", queue_position=None

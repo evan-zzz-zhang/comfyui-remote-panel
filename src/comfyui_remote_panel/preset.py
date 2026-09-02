@@ -186,7 +186,36 @@ class Preset:
             result[name] = value
         return result
 
-    def build_prompt(self, values: dict[str, Any], job_id: str, media: dict[str, str]) -> dict[str, Any]:
+    def _apply_variant_model_overrides(
+        self,
+        prompt: dict[str, Any],
+        effective_profile: Any,
+        variant_model_overrides: dict[str, dict[str, str]] | None = None,
+    ) -> None:
+        from .inference_profile import model_variant_dependencies, normalize_inference_profile
+
+        profile = normalize_inference_profile(effective_profile)
+        model_profile = self.manifest.get("model_profile", {})
+        main_model = model_profile.get("main_model", {}) if isinstance(model_profile, dict) else {}
+        current = normalize_inference_profile(main_model.get("current", "int8"))
+        if profile == current:
+            return
+        runtime_overrides = variant_model_overrides or {}
+        for dependency in model_variant_dependencies(self, profile):
+            node_id = str(dependency.get("node") or "")
+            input_name = str(dependency.get("input") or "")
+            model_name = dependency.get("name")
+            runtime_name = runtime_overrides.get(node_id, {}).get(input_name, model_name)
+            if node_id and input_name and runtime_name and node_id in prompt:
+                prompt[node_id]["inputs"][input_name] = str(runtime_name)
+
+    def build_prompt(
+        self,
+        values: dict[str, Any],
+        job_id: str,
+        media: dict[str, str],
+        variant_model_overrides: dict[str, dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
         _, allow_empty_prompt = self.validate_media_roles(set(media))
         normalized = self.validate_parameters(values, allow_empty_prompt=allow_empty_prompt)
         reference = self.manifest.get("reference_aspect", {})
@@ -196,6 +225,9 @@ class Preset:
         prompt = copy.deepcopy(self.template)
         for node_id, inputs in self.model_overrides.items():
             prompt[node_id]["inputs"].update(inputs)
+        effective_profile = values.get("_v047_effective_inference_profile")
+        if effective_profile:
+            self._apply_variant_model_overrides(prompt, effective_profile, variant_model_overrides)
         for name, spec in self.manifest["parameters"].items():
             value = normalized[name]
             if name == "seed":
@@ -293,7 +325,10 @@ BUILTIN_WORKFLOW_DIR = Path(__file__).with_name("workflows")
 
 def _load_presets_from(root: Path) -> dict[str, Preset]:
     presets: dict[str, Preset] = {}
-    for manifest_path in sorted(root.glob("*/manifest.json")):
+    # Built-in workflow assets may be grouped by family/generation/backend.
+    # External flat directories remain supported because rglob also includes
+    # the established ``workflows/*/manifest.json`` layout.
+    for manifest_path in sorted(root.rglob("manifest.json")):
         manifest = _normalize_manifest(json.loads(manifest_path.read_text(encoding="utf-8")))
         directory = manifest_path.parent
         template_path = directory / manifest["workflow"]
@@ -360,6 +395,32 @@ def _validate_manifest(preset: Preset) -> None:
         for key, value in assertion.get("inputs", {}).items():
             if node["inputs"].get(key) != value:
                 raise PresetError(f"locked input mismatch: {assertion['node']}.{key}")
+    model_profile = manifest.get("model_profile", {})
+    main_model = model_profile.get("main_model", {}) if isinstance(model_profile, dict) else {}
+    variants = main_model.get("variants", {}) if isinstance(main_model, dict) else {}
+    if isinstance(variants, dict):
+        for profile, variant in variants.items():
+            if not isinstance(variant, dict):
+                raise PresetError(f"模型配置变体无效：{profile}")
+            dependencies = variant.get("dependencies", [])
+            if variant.get("available") is True and not variant.get("inherits_current") and not dependencies:
+                raise PresetError(f"模型配置变体缺少模型绑定：{profile}")
+            if not isinstance(dependencies, list):
+                raise PresetError(f"模型配置变体依赖无效：{profile}")
+            for dependency in dependencies:
+                if not isinstance(dependency, dict):
+                    raise PresetError(f"模型配置变体依赖无效：{profile}")
+                node_id = str(dependency.get("node") or "")
+                input_name = str(dependency.get("input") or "")
+                if (
+                    not dependency.get("category")
+                    or not dependency.get("name")
+                    or not node_id
+                    or not input_name
+                    or node_id not in template
+                    or input_name not in template[node_id].get("inputs", {})
+                ):
+                    raise PresetError(f"模型配置变体绑定无效：{profile}")
     reference = manifest.get("reference_aspect")
     if "aspect_ratio" in manifest["parameters"]:
         if not isinstance(reference, dict) or reference.get("parameter_value") not in manifest["parameters"]["aspect_ratio"]["values"]:

@@ -43,16 +43,16 @@ def test_unified_fl2va_exposes_v4_as_default_generation_mode():
     assert metadata["generation_modes"]["default"] == "v4_600step"
     assert metadata["generation_modes"]["values"] == {
         "v4_600step": {
-            "label": "v4_600step",
-            "preset_id": "h3-fl2va-v4step600",
+                "label": "v4_600step",
+                "preset_id": "fl2va_v4step600_ollama",
         },
         "lightx2v": {
             "label": "LightX2V",
-            "preset_id": "h3-fl2va-lightx2v",
+                "preset_id": "fl2va_lightx2v_ollama",
         },
         "original": {
             "label": "原版",
-            "preset_id": "h3-fl2va",
+                "preset_id": "fl2va_original_ollama",
         },
     }
 

@@ -10,6 +10,13 @@
     lightx2v: { label: "LightX2V", preset_id: "h3-fl2va-lightx2v" },
     original: { label: "原版", preset_id: ORIGINAL_ID },
   };
+  const LEGACY_PHYSICAL_IDS = new Set([
+    "h3-fl2va", "h3-fl2va-lightx2v", "h3-fl2va-v4step600",
+    "h3-fl2va-qwen35-4b", "h3-fl2va-lightx2v-qwen35-4b", "h3-fl2va-v4step600-qwen35-4b",
+    "fl2va_original_raw", "fl2va_original_ollama", "fl2va_original_qwen35",
+    "fl2va_v4step600_raw", "fl2va_v4step600_ollama", "fl2va_v4step600_qwen35",
+    "fl2va_lightx2v_raw", "fl2va_lightx2v_ollama", "fl2va_lightx2v_qwen35",
+  ]);
   const MODE_TUNING = {
     v4_600step: { scheduler: "beta", sampler: "euler", steps: 8 },
     lightx2v: { scheduler: "simple", sampler: "euler", steps: 8 },
@@ -47,7 +54,10 @@
   }
 
   function physicalPresetIds() {
-    return new Set(Object.values(modeDefinitions()).map(item => item?.preset_id).filter(Boolean));
+    return new Set([
+      ...LEGACY_PHYSICAL_IDS,
+      ...Object.values(modeDefinitions()).map(item => item?.preset_id).filter(Boolean),
+    ]);
   }
 
   function modeForPreset(presetId) {
@@ -62,8 +72,7 @@
     const definition = modeDefinitions()[mode];
     if (!definition?.preset_id) return false;
     const item = state.workflowItems?.get?.(definition.preset_id);
-    if (item) return item.status === "enabled";
-    return state.presets.has(definition.preset_id);
+    return item?.status === "enabled";
   }
 
   function enabledModes() {
@@ -87,9 +96,20 @@
     try { window.localStorage.setItem(MODE_STORAGE_KEY, mode); } catch (_) {}
   }
 
-  function targetPreset(mode) {
+  function targetWorkflowItem(mode) {
     const definition = modeDefinitions()[mode];
-    return definition ? state.presets.get(definition.preset_id) : null;
+    return definition?.preset_id ? state.workflowItems?.get?.(definition.preset_id) || null : null;
+  }
+
+  function targetPreset(mode) {
+    const item = targetWorkflowItem(mode);
+    return item ? state.presets.get(item.id) || item.manifest || null : null;
+  }
+
+  function targetAvailable(mode) {
+    const item = targetWorkflowItem(mode);
+    if (!item || item.status !== "enabled") return false;
+    return state.metrics?.presets?.[item.id]?.available === true;
   }
 
   function defaultOllamaModel(mode) {
@@ -195,7 +215,7 @@
 
   function hidePhysicalWorkflowChoices() {
     const physical = physicalPresetIds();
-    document.querySelectorAll("[data-pick-workflow]").forEach(button => {
+    document.querySelectorAll("#sheet-body [data-pick-workflow]").forEach(button => {
       if (physical.has(button.dataset.pickWorkflow)) button.remove();
     });
   }
@@ -505,9 +525,7 @@
     if (preset?.id !== ENTRY_ID) return;
     const button = document.querySelector("#submit-button");
     const mode = preferredMode(document.querySelector("[data-v042-generation-mode]")?.value);
-    const target = mode ? targetPreset(mode) : null;
-    const runtime = state.metrics?.presets?.[target?.id];
-    const available = Boolean(mode && modeEnabled(mode) && target && (runtime ? runtime.available : target.available));
+    const available = Boolean(mode && modeEnabled(mode) && targetAvailable(mode));
     if (button && !available) button.disabled = true;
   };
 
@@ -521,6 +539,6 @@
       if (event.target?.matches?.("#first-frame, #last-frame")) syncPromptRequired();
     });
     const sheet = document.querySelector("#sheet-body");
-    if (sheet) new MutationObserver(() => queueMicrotask(hidePhysicalWorkflowChoices)).observe(sheet, { childList: true, subtree: true });
+    if (sheet) new MutationObserver(() => queueMicrotask(hidePhysicalWorkflowChoices)).observe(sheet, { childList: true });
   });
 })();

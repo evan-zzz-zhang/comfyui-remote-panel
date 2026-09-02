@@ -38,7 +38,7 @@ async def test_root_injects_v046_frontend_once(tmp_path, aiohttp_client):
     response = await client.get("/", headers=LOGIN)
     assert response.status == 200
     html = await response.text()
-    fl2va_tag = '<script src="/static/v046_fl2va_ui.js?v=0.4.6.7" defer></script>'
+    fl2va_tag = '<script src="/static/v046_fl2va_ui.js?v=0.4.7.1" defer></script>'
     runtime_tag = '<script src="/static/v046_job_runtime_ui.js?v=0.4.6.3" defer></script>'
     assert html.count(fl2va_tag) == 1
     assert html.count(runtime_tag) == 1
@@ -49,9 +49,9 @@ async def test_root_injects_v046_frontend_once(tmp_path, aiohttp_client):
 
 def test_v046_frontend_replaces_visible_boolean_with_three_state_selector():
     assert 'data-v046-prompt-standardization-mode' in JS
-    assert 'option("off", "关闭")' in JS
-    assert 'option("ollama", "Ollama")' in JS
-    assert 'option("comfyui", "ComfyUI")' in JS
+    assert 'option("raw", "原始提示词")' in JS
+    assert 'option("ollama", "Ollama 标准化")' in JS
+    assert 'option("qwen35", "Qwen3.5 标准化")' in JS
     assert 'label.textContent = "标准化提示词"' in JS
     assert 'normalizeLegacyStandardizerControls' in JS
     assert 'advanced.querySelectorAll(".v042-switch").forEach(node => node.remove())' in JS
@@ -64,6 +64,24 @@ def test_v046_frontend_replaces_visible_boolean_with_three_state_selector():
     assert '#advanced-settings [data-v042-standardizer-switch]' in JS
     assert 'comfy-remote.fl2va.prompt-standardization-mode' in JS
     assert 'const DEFAULT_MODE = "ollama"' in JS
+
+
+def test_inference_profile_uses_a_select_only_selector_and_hides_all_physical_assets():
+    assert 'data-v047-inference-profile-field' in JS
+    assert 'label.dataset.v047InferenceProfileField = "true"' in JS
+    assert 'select.dataset.v047InferenceProfile = "true"' in JS
+    assert 'select.name = "inference_profile"' not in JS
+    assert 'values.inference_profile = profile' in JS
+    assert 'function removeInferenceProfileSelector()' in JS
+    assert 'removeInferenceProfileSelector();' in JS
+    assert 'document.querySelector("select[data-v047-inference-profile]")' in JS
+    assert 'const CANONICAL_FL2VA_PRESET_IDS = new Set([' in JS
+    for preset_id in (
+        "fl2va_original_raw", "fl2va_original_ollama", "fl2va_original_qwen35",
+        "fl2va_v4step600_raw", "fl2va_v4step600_ollama", "fl2va_v4step600_qwen35",
+        "fl2va_lightx2v_raw", "fl2va_lightx2v_ollama", "fl2va_lightx2v_qwen35",
+    ):
+        assert f'"{preset_id}"' in JS
 
 
 def test_v046_retry_preserves_explicit_standardizer_mode_after_observer_sync():
@@ -99,20 +117,35 @@ def test_v046_frontend_defaults_unselected_fl2va_aspect_to_9_16():
     assert 'select.dataset.v046AspectExplicit = "true"' in JS
 
 
-def test_v046_frontend_keeps_ollama_selector_only_for_ollama_and_hides_qwen_presets():
-    assert 'field.style.display = mode === "ollama" ? "" : "none"' in JS
+def test_v046_frontend_keeps_ollama_selector_only_for_ollama_and_hides_physical_presets():
+    assert 'field.style.display = canonicalMode(mode) === "ollama" ? "" : "none"' in JS
     assert 'h3-fl2va-qwen35-4b' in JS
     assert 'h3-fl2va-lightx2v-qwen35-4b' in JS
     assert 'h3-fl2va-v4step600-qwen35-4b' in JS
-    assert 'QWEN_PRESET_IDS.has(item.value)' in JS
-    assert 'QWEN_PRESET_IDS.has(button.dataset.pickWorkflow)' in JS
+    assert 'removePhysicalCreationChoices' in JS
+    assert 'PHYSICAL_FL2VA_PRESET_IDS.has(item.value)' in JS
+    assert 'PHYSICAL_FL2VA_PRESET_IDS.has(button.dataset.pickWorkflow)' in JS
+
+
+def test_fl2va_observers_are_scoped_away_from_reference_media_updates():
+    v042 = (ROOT / "src" / "comfyui_remote_panel" / "static" / "v042_ui.js").read_text(encoding="utf-8")
+    assert '.observe(sheet, { childList: true })' in v042
+    assert '.observe(sheet, { childList: true, subtree: true })' not in v042
+    assert '.observe(advancedGrid, { childList: true })' in JS
+    assert '.observe(advanced, { childList: true, subtree: true })' not in JS
+    assert '"#sheet-body [data-pick-workflow]"' in JS
+    assert '"#sheet-body [data-pick-workflow]"' in v042
 
 
 def test_v046_frontend_persists_backend_in_values_json_and_checks_qwen_route_availability():
-    assert 'values.prompt_standardization_mode = mode' in JS
+    assert 'values.prompt_backend = backend' in JS
+    assert 'values.prompt_standardization_mode = backend === "raw" ? "off" : backend === "qwen35" ? "comfyui" : "ollama"' in JS
+    assert 'data-v047-inference-profile' in JS
     assert 'if (path === "/api/jobs") addStandardizationMode(formData)' in JS
-    assert 'runtime ? Boolean(runtime.available) : Boolean(target.available)' in JS
-    assert 'button.title = "当前 ComfyUI 标准化工作流不可用"' in JS
+    assert 'if (!item || item.status !== "enabled") return false' in JS
+    assert 'state.metrics?.presets?.[targetId]?.available === true' in JS
+    assert 'runtime ? Boolean(runtime.available) : target.available !== false' not in JS
+    assert 'button.title = "当前 Qwen3.5 标准化工作流不可用"' in JS
     assert 'setInterval' not in JS
 
 
