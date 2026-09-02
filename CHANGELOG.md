@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.8 — Ref2VA Workflow Family (implementation in progress)
+
+### Highlights
+
+- Adds one `MiniMax H3 Ref2VA` virtual creation entry backed by nine canonical `3 generation modes × 3 prompt backends` workflows.
+- Preserves the Ref2VA collection contract: up to 9 images, 3 videos, and 3 audios remain independently bound to `MiniMaxH3ReferenceToVideo`.
+- Adds Raw, Ollama, and Qwen3.5 4B prompt routes with representative-image/video-first-frame capture and standardized-prompt history recovery.
+- Adds Auto, INT8, and FP16/BF16 model-profile metadata while retaining exact ComfyUI runtime selectors for variant lookup.
+- Keeps the three legacy Ref2VA workflow IDs, history snapshots, retained media, and Retry mapping intact. The new routes are not yet declared GPU-field-tested.
+
 ## v0.4.6 — FL2VA Multi-Backend Prompt Standardization
 
 Comfy Remote v0.4.6 keeps one H3 FL2VA creation entry while adding Off / Ollama / ComfyUI prompt-standardization routing and tightening FL2VA runtime progress, timing, retry, and recovery behavior.

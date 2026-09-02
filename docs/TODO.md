@@ -1,10 +1,22 @@
 # Comfy Remote Roadmap / TODO
 
-当前稳定开发基线：**v0.4.7 FL2VA Workflow Family & Inference Profile（In progress）**。
+当前稳定开发基线：**v0.4.8 Ref2VA Workflow Family（In progress）**。
 
 `v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；`v0.4 Creation Experience`、`v0.4 Recovery Lite`、`v0.4.1 Media Continuity`、`v0.4.2 H3 FL2VA Unified Modes`、`v0.4.3 Task Reconciliation Hardening`、`v0.4.4 Windows Environment Self-Healing`、`v0.4.5 Artifact History Sync & Ollama Model Setting` 与 `v0.4.6 FL2VA Multi-Backend Prompt Standardization` 均已完成当前范围收尾。
 
-## v0.4.7 FL2VA Workflow Family & Inference Profile — In progress
+## v0.4.8 Ref2VA Workflow Family — In progress
+
+- [x] 建立 Ref2VA `original / lightx2v / v4step600 × raw / ollama / qwen35` 九个 canonical asset。
+- [x] 增加 Ref2VA family resolver、virtual entry、legacy 映射与一次性 enabled/disabled 状态继承。
+- [x] 保留 9 图、3 视频、3 音频 collection 绑定，并加入图片优先、视频首帧 fallback 的代表视觉路径。
+- [x] 增加 Raw、Ollama、Qwen3.5 4B 路由、标准化提示词捕获与延迟恢复骨架。
+- [x] 增加 Auto / INT8 / FP16-BF16 profile metadata 与精确 runtime selector 比较路径。
+- [x] 增加 Ref2VA 独立前端 selector、localStorage key 与 `values_json` 表单提交路径。
+- [ ] 完成目标 Windows / ComfyUI / RTX 4080 SUPER 的 Ref2VA 9/9 INT8 真机验收。
+- [ ] 完成 BF16 代表性真机验收，或根据现场结果标记不可用原因。
+- [ ] 完成全量 pytest、构建、仓库检查、CI 与 PR 收尾。
+
+## v0.4.7 FL2VA Workflow Family & Inference Profile — Completed
 
 - [x] 建立 9 个 canonical FL2VA asset 及中英文 Workflow Asset Inventory。
 - [x] 用 manifest-backed resolver 解析 `3 generation modes × 3 prompt backends`，保留旧 ID 作为兼容资产。
@@ -12,8 +24,8 @@
 - [x] Qwen3.5 完成任务后延迟补抓标准化 Prompt，并支持历史成功任务扫描。
 - [x] 推理配置保存到既有 `input_values_json`；当前 `auto` 解析到真实 INT8 资产，未声明的 FP16/BF16 变体拒绝执行。
 - [x] 完成 Windows + ComfyUI + 手机面板真机 3 × 3 验收。
-- [ ] 完成全量 pytest、构建和仓库检查。
-- [ ] 完成 v0.4.7 分支提交、CI 和 PR 合并收尾。
+- [x] 完成全量 pytest、构建和仓库检查。
+- [x] 完成 v0.4.7 分支提交、CI 和 PR 合并收尾。
 
 ### v0.4.7 真机验收记录
 

@@ -4,13 +4,13 @@
 
 **Run your local ComfyUI workflows from your phone.**
 
-> **Current status: v0.4.7 Public Beta.**
+> **Current status: v0.4.8 Public Beta (Ref2VA family implementation in progress).**
 >
 > Generic ComfyUI API Workflow support, mobile creation, retained-media Retry, H3 FL2VA unified generation modes, registered-output history sync, Off/Ollama/ComfyUI prompt standardization, guarded force-stop recovery, SageAttention runtime status, task reconciliation hardening, self-healing Windows installation, Windows Setup, Tailscale remote access, Doctor diagnostics, and Recovery Lite controls are available. Full automatic watchdog recovery, multi-host support, and Wake-on-LAN are not implemented.
 
 Comfy Remote is a mobile-first remote creation panel for ComfyUI. It runs on the Windows computer that hosts ComfyUI and turns locally verified **ComfyUI API Workflows** into a phone-friendly interface for selecting workflows, adding media, editing prompts, submitting jobs, and reviewing results.
 
-The current v0.4.7 baseline builds on **Public Readiness + Configurator 2.0** with a clearer Specialized / Generic creation boundary, explicit Seed Policy, reference-image resolution preprocessing, guarded manual ComfyUI recovery, reliable historical-media Retry, a manifest-backed FL2VA 3 × 3 workflow family, inference-profile metadata, safer final-state reconciliation, Windows environment self-healing, output-artifact/history synchronization, and multi-backend FL2VA prompt standardization. It still avoids silently rewriting arbitrary workflows or exposing ComfyUI directly to the network.
+The current v0.4.8 baseline builds on the accepted v0.4.7 FL2VA family with one Ref2VA creation entry, three generation modes, three prompt backends, Auto/INT8/FP16-BF16 profile routing, representative-image prompt standardization, and legacy workflow compatibility. It still avoids silently rewriting arbitrary workflows or exposing ComfyUI directly to the network. Real GPU acceptance for the new Ref2VA routes remains pending.
 
 ## What it does
 

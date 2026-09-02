@@ -116,6 +116,11 @@ class JobService:
                 "_v047_prompt_backend",
                 "_v047_inference_profile",
                 "_v047_effective_inference_profile",
+                "_v048_generation_mode",
+                "_v048_prompt_backend",
+                "_v048_inference_profile",
+                "_v048_effective_inference_profile",
+                "_v048_variant_model_overrides",
             ):
                 if metadata_key in fields:
                     normalized[metadata_key] = fields[metadata_key]

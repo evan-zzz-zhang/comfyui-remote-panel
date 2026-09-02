@@ -268,3 +268,16 @@ fl2va_original_raw / fl2va_original_ollama / fl2va_original_qwen35
 
 **结论：v0.4.7 FL2VA canonical 3 × 3 手机面板实机验收通过；全量自动化检查与
 分支/CI 收尾仍未完成。**
+
+## v0.4.8 Ref2VA Workflow Family — automated baseline
+
+The v0.4.8 implementation adds nine Ref2VA canonical assets and keeps the three
+legacy Ref2VA IDs available to the workflow manager and historical Retry path.
+Automated/static checks cover the resolver, legacy mapping, one-time status
+inheritance, sampling contracts, collection bindings, representative image and
+video-first-frame selection, Qwen metadata wiring, inference-profile variants,
+and the isolated browser `values_json` routing controls.
+
+The target Windows / ComfyUI / RTX 4080 SUPER 9/9 INT8 matrix and the BF16
+representative runs remain pending. No real-GPU success is claimed by this
+baseline.
