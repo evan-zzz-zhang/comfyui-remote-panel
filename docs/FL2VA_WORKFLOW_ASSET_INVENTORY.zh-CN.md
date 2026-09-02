@@ -20,7 +20,12 @@ Manifest 明确声明 `family`、`generation_mode`、`prompt_backend`、
 `input_mode`、参数绑定、输出节点、Prompt 捕获信息和推理配置契约。当前
 内置主模型资产是真实可用的 INT8；`auto` 会解析到该资产。显式选择
 FP16/BF16 前必须先由 manifest 声明对应变体，否则直接拒绝，不会静默改跑
-INT8。
+INT8。2026-09-02 本机盘点结果是：存在
+`MiniMax-H3/minimax_h3_fl2va_pruned_int8_convrot.safetensors`，但没有
+FL2VA 对应的 FP16/BF16 主模型；存在的
+`minimax_h3_ref2va_pruned_bf16.safetensors` 属于 Ref2VA，不能绑定到
+`MiniMaxH3ImageToVideo`。因此当前 FP16/BF16 选项会明确禁用，待安装正确
+的 FL2VA 权重后再启用真实变体映射。
 
 Prompt 捕获契约：
 

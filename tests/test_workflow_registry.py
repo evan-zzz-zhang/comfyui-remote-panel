@@ -50,9 +50,37 @@ def test_auto_profile_resolves_to_current_int8_without_changing_graph():
     preset = load_presets(ROOT / "workflows")["fl2va_original_raw"]
     assert resolve_inference_profile(preset, "auto") == ("auto", "int8")
     assert resolve_inference_profile(preset, "int8") == ("int8", "int8")
+    assert preset.manifest["model_profile"]["main_model"]["variants"]["int8"]["dependencies"][0]["name"].endswith(
+        "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+    )
 
 
 def test_unavailable_explicit_profile_is_rejected_instead_of_falling_back():
     preset = load_presets(ROOT / "workflows")["fl2va_original_raw"]
-    with pytest.raises(InferenceProfileError, match="未声明可用"):
+    with pytest.raises(InferenceProfileError, match="当前不可用"):
         resolve_inference_profile(preset, "fp16_bf16")
+
+
+def test_declared_variant_changes_the_bound_model_node():
+    """The graph binding path is covered independently of local model availability."""
+    preset = load_presets(ROOT / "workflows")["fl2va_original_raw"]
+    preset.manifest["model_profile"]["main_model"]["variants"]["fp16_bf16"] = {
+        "available": True,
+        "dependencies": [{
+            "category": "diffusion_models",
+            "name": "MiniMax-H3/test_fl2va_variant.safetensors",
+            "node": "105:6",
+            "input": "unet_name",
+        }],
+    }
+    values = {
+        name: spec.get("default")
+        for name, spec in preset.manifest["parameters"].items()
+    }
+    values.update({
+        "prompt": "A test shot",
+        "seed": "1",
+        "_v047_effective_inference_profile": "fp16_bf16",
+    })
+    graph = preset.build_prompt(values, "variant-job", {})
+    assert graph["105:6"]["inputs"]["unet_name"] == "MiniMax-H3/test_fl2va_variant.safetensors"

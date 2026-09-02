@@ -55,3 +55,22 @@ def resolve_inference_profile(preset: Any, requested: Any = None) -> tuple[str, 
     raise InferenceProfileError(
         f"工作流 {preset.id} 未声明可用的模型配置 {requested_profile}"
     )
+
+
+def model_variant(preset: Any, profile: Any) -> dict[str, Any] | None:
+    """Return the manifest-declared main-model variant for an effective profile."""
+
+    effective = normalize_inference_profile(profile)
+    model_profile = preset.manifest.get("model_profile", {})
+    main_model = model_profile.get("main_model", {}) if isinstance(model_profile, dict) else {}
+    variants = main_model.get("variants", {}) if isinstance(main_model, dict) else {}
+    variant = variants.get(effective) if isinstance(variants, dict) else None
+    return variant if isinstance(variant, dict) else None
+
+
+def model_variant_dependencies(preset: Any, profile: Any) -> list[dict[str, Any]]:
+    """Return model dependencies for a selected variant, if the manifest declares them."""
+
+    variant = model_variant(preset, profile)
+    dependencies = variant.get("dependencies", []) if variant else []
+    return [item for item in dependencies if isinstance(item, dict)]

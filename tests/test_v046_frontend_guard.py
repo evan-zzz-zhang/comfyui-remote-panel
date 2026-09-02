@@ -66,6 +66,20 @@ def test_v046_frontend_replaces_visible_boolean_with_three_state_selector():
     assert 'const DEFAULT_MODE = "ollama"' in JS
 
 
+def test_inference_profile_uses_a_select_only_selector_and_hides_all_physical_assets():
+    assert 'data-v047-inference-profile-field' in JS
+    assert 'label.dataset.v047InferenceProfileField = "true"' in JS
+    assert 'select.dataset.v047InferenceProfile = "true"' in JS
+    assert 'document.querySelector("select[data-v047-inference-profile]")' in JS
+    assert 'const CANONICAL_FL2VA_PRESET_IDS = new Set([' in JS
+    for preset_id in (
+        "fl2va_original_raw", "fl2va_original_ollama", "fl2va_original_qwen35",
+        "fl2va_v4step600_raw", "fl2va_v4step600_ollama", "fl2va_v4step600_qwen35",
+        "fl2va_lightx2v_raw", "fl2va_lightx2v_ollama", "fl2va_lightx2v_qwen35",
+    ):
+        assert f'"{preset_id}"' in JS
+
+
 def test_v046_retry_preserves_explicit_standardizer_mode_after_observer_sync():
     assert 'const candidate = modeFromOverrides(overrides)' in JS
     assert 'const existingMode = validMode(select?.value) ? String(select.value).toLowerCase() : null' in JS
@@ -99,13 +113,14 @@ def test_v046_frontend_defaults_unselected_fl2va_aspect_to_9_16():
     assert 'select.dataset.v046AspectExplicit = "true"' in JS
 
 
-def test_v046_frontend_keeps_ollama_selector_only_for_ollama_and_hides_qwen_presets():
+def test_v046_frontend_keeps_ollama_selector_only_for_ollama_and_hides_physical_presets():
     assert 'field.style.display = canonicalMode(mode) === "ollama" ? "" : "none"' in JS
     assert 'h3-fl2va-qwen35-4b' in JS
     assert 'h3-fl2va-lightx2v-qwen35-4b' in JS
     assert 'h3-fl2va-v4step600-qwen35-4b' in JS
-    assert 'QWEN_PRESET_IDS.has(item.value)' in JS
-    assert 'QWEN_PRESET_IDS.has(button.dataset.pickWorkflow)' in JS
+    assert 'removePhysicalCreationChoices' in JS
+    assert 'PHYSICAL_FL2VA_PRESET_IDS.has(item.value)' in JS
+    assert 'PHYSICAL_FL2VA_PRESET_IDS.has(button.dataset.pickWorkflow)' in JS
 
 
 def test_v046_frontend_persists_backend_in_values_json_and_checks_qwen_route_availability():

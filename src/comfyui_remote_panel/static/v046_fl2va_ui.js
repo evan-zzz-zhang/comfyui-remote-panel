@@ -9,11 +9,28 @@
     lightx2v: "fl2va_lightx2v_qwen35",
     v4_600step: "fl2va_v4step600_qwen35",
   };
-  const QWEN_PRESET_IDS = new Set([
-    ...Object.values(QWEN_PRESETS),
+  const CANONICAL_FL2VA_PRESET_IDS = new Set([
+    "fl2va_original_raw",
+    "fl2va_original_ollama",
+    "fl2va_original_qwen35",
+    "fl2va_v4step600_raw",
+    "fl2va_v4step600_ollama",
+    "fl2va_v4step600_qwen35",
+    "fl2va_lightx2v_raw",
+    "fl2va_lightx2v_ollama",
+    "fl2va_lightx2v_qwen35",
+  ]);
+  const LEGACY_FL2VA_PRESET_IDS = new Set([
     "h3-fl2va-qwen35-4b",
     "h3-fl2va-lightx2v-qwen35-4b",
     "h3-fl2va-v4step600-qwen35-4b",
+    "h3-fl2va",
+    "h3-fl2va-lightx2v",
+    "h3-fl2va-v4step600",
+  ]);
+  const PHYSICAL_FL2VA_PRESET_IDS = new Set([
+    ...CANONICAL_FL2VA_PRESET_IDS,
+    ...LEGACY_FL2VA_PRESET_IDS,
   ]);
 
   const baseApplyPresetV046 = applyPreset;
@@ -213,15 +230,15 @@
     syncOllamaField(mode);
   }
 
-  function removeQwenCreationChoices() {
+  function removePhysicalCreationChoices() {
     const native = document.querySelector("#preset-select");
     if (native) {
       for (const item of [...native.options]) {
-        if (QWEN_PRESET_IDS.has(item.value)) item.remove();
+        if (PHYSICAL_FL2VA_PRESET_IDS.has(item.value)) item.remove();
       }
     }
     document.querySelectorAll("[data-pick-workflow]").forEach(button => {
-      if (QWEN_PRESET_IDS.has(button.dataset.pickWorkflow)) button.remove();
+      if (PHYSICAL_FL2VA_PRESET_IDS.has(button.dataset.pickWorkflow)) button.remove();
     });
   }
 
@@ -240,10 +257,10 @@
   function ensureInferenceProfileSelector() {
     if (selectedPreset()?.id !== ENTRY_ID) return;
     const grid = document.querySelector("#advanced-settings .advanced-grid");
-    if (!grid || grid.querySelector("[data-v047-inference-profile]")) return;
+    if (!grid || grid.querySelector("[data-v047-inference-profile-field]")) return;
     const label = document.createElement("label");
     label.className = "field";
-    label.dataset.v047InferenceProfile = "true";
+    label.dataset.v047InferenceProfileField = "true";
     label.innerHTML = "<span>模型配置</span>";
     const select = document.createElement("select");
     select.name = "inference_profile";
@@ -265,7 +282,7 @@
     syncInferenceProfileAvailability(select);
   }
 
-  function syncInferenceProfileAvailability(select = document.querySelector("[data-v047-inference-profile]")) {
+  function syncInferenceProfileAvailability(select = document.querySelector("select[data-v047-inference-profile]")) {
     if (!select) return;
     const generation = document.querySelector("[data-v042-generation-mode]")?.value;
     const backend = canonicalMode(document.querySelector("[data-v046-prompt-standardization-mode]")?.value);
@@ -275,16 +292,20 @@
     const target = state.workflowItems?.get?.(backend === "qwen35" ? qwenId : modeId)?.manifest;
     const main = target?.model_profile?.main_model;
     const variants = main?.variants && typeof main.variants === "object" ? main.variants : {};
+    const fp16Variant = variants.fp16_bf16;
     const fp16 = select.querySelector('option[value="fp16_bf16"]');
     if (fp16) {
-      fp16.disabled = !Object.prototype.hasOwnProperty.call(variants, "fp16_bf16");
-      fp16.title = fp16.disabled ? "当前内置资产未声明 FP16/BF16 变体" : "";
+      const available = fp16Variant && typeof fp16Variant === "object" && fp16Variant.available !== false;
+      fp16.disabled = !available;
+      fp16.title = fp16.disabled
+        ? (fp16Variant?.reason || "当前内置资产未声明可用的 FP16/BF16 变体")
+        : "";
     }
     if (select.selectedOptions[0]?.disabled) select.value = "auto";
   }
 
   function syncInferenceProfile(candidate = null) {
-    const select = document.querySelector("[data-v047-inference-profile]");
+    const select = document.querySelector("select[data-v047-inference-profile]");
     if (!select) return;
     if (["auto", "int8", "fp16_bf16"].includes(String(candidate || ""))) {
       select.value = candidate;
@@ -304,7 +325,7 @@
     const backend = canonicalMode(mode);
     values.prompt_backend = backend;
     values.prompt_standardization_mode = backend === "raw" ? "off" : backend === "qwen35" ? "comfyui" : "ollama";
-    const profile = document.querySelector("[data-v047-inference-profile]")?.value;
+    const profile = document.querySelector("select[data-v047-inference-profile]")?.value;
     if (profile) values.inference_profile = profile;
     formData.delete("values_json");
     formData.set("values_json", JSON.stringify(values));
@@ -331,7 +352,7 @@
     const result = baseApplyPresetV046(presetId, overrides);
     const candidate = modeFromOverrides(overrides);
     queueMicrotask(() => {
-      removeQwenCreationChoices();
+      removePhysicalCreationChoices();
       syncFl2vaAspectValue(explicitAspect, previousAspect, preservePreviousAspect);
       ensureStandardizationSelector(candidate);
       ensureInferenceProfileSelector();
@@ -348,7 +369,7 @@
 
   loadPresets = async function(...args) {
     const result = await baseLoadPresetsV046(...args);
-    removeQwenCreationChoices();
+    removePhysicalCreationChoices();
     const aspect = document.querySelector('select[name="aspect_ratio"]');
     syncFl2vaAspectValue(null, aspect?.value || "", aspect?.dataset.v046AspectExplicit === "true");
     ensureStandardizationSelector();
@@ -359,7 +380,7 @@
 
   loadWorkflows = async function(...args) {
     const result = await baseLoadWorkflowsV046(...args);
-    removeQwenCreationChoices();
+    removePhysicalCreationChoices();
     const aspect = document.querySelector('select[name="aspect_ratio"]');
     syncFl2vaAspectValue(null, aspect?.value || "", aspect?.dataset.v046AspectExplicit === "true");
     ensureStandardizationSelector();
@@ -403,7 +424,7 @@
       }
     });
     document.querySelector("#workflow-picker-button")?.addEventListener("click", () => {
-      window.setTimeout(removeQwenCreationChoices, 0);
+      window.setTimeout(removePhysicalCreationChoices, 0);
     });
     const advanced = document.querySelector("#advanced-settings");
     if (advanced) {
@@ -415,7 +436,7 @@
         .observe(advanced, { childList: true, subtree: true });
     }
     queueMicrotask(() => {
-      removeQwenCreationChoices();
+      removePhysicalCreationChoices();
       const aspect = document.querySelector('select[name="aspect_ratio"]');
       syncFl2vaAspectValue(null, aspect?.value || "", aspect?.dataset.v046AspectExplicit === "true");
       ensureStandardizationSelector();

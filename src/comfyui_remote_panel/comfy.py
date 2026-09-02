@@ -10,6 +10,7 @@ from urllib.parse import urlsplit, urlunsplit
 import aiohttp
 
 from .preset import Preset
+from .inference_profile import model_variant_dependencies
 from .workflow_analysis import Severity, advertised_inputs, classify_unknown_input, connection
 
 
@@ -92,6 +93,43 @@ class ComfyClient:
 
     async def validate_preset(self, preset: Preset) -> list[str]:
         return (await self.validate_presets([preset]))[preset.id]
+
+    async def validate_preset_variant(self, preset: Preset, profile: str) -> list[str]:
+        """Check the model files declared by an optional inference variant.
+
+        The normal preset preflight validates the default/current graph. Variant
+        models are selected per submission, so they must be checked at the same
+        point as the user's profile choice without changing the preset's global
+        availability or model overrides.
+        """
+
+        dependencies = model_variant_dependencies(preset, profile)
+        if not dependencies:
+            return []
+        diagnostics: list[str] = []
+        model_cache: dict[str, dict[str, str] | ComfyError] = {}
+        async with self._validation_lock:
+            for dependency in dependencies:
+                category = str(dependency.get("category") or "")
+                name = str(dependency.get("name") or "")
+                if not category or not name:
+                    diagnostics.append(f"模型配置 {profile} 的模型绑定不完整")
+                    continue
+                if category not in model_cache:
+                    try:
+                        models = await self._json("GET", f"/models/{category}")
+                        model_cache[category] = {
+                            str(value).replace("\\", "/"): str(value) for value in models
+                        }
+                    except ComfyError as exc:
+                        model_cache[category] = exc
+                models = model_cache[category]
+                if isinstance(models, ComfyError):
+                    diagnostics.append(str(models))
+                    continue
+                if name.replace("\\", "/") not in models:
+                    diagnostics.append(f"缺少模型：{name}")
+        return diagnostics
 
     async def validate_presets(
         self, presets: list[Preset], stats: dict[str, Any] | None = None

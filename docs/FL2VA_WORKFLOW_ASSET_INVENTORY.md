@@ -20,8 +20,13 @@ manifest.json
 The manifest declares `family`, `generation_mode`, `prompt_backend`,
 `input_mode`, parameter bindings, output node, prompt capture metadata, and
 the inference profile contract. The current bundled main-model asset is INT8;
-`auto` resolves to that asset. An explicit FP16/BF16 request is rejected until
-a manifest declares a compatible variant, so it cannot silently run INT8.
+`auto` resolves to that asset. The 2026-09-02 local inventory contains
+`MiniMax-H3/minimax_h3_fl2va_pruned_int8_convrot.safetensors`, but no matching
+FL2VA FP16/BF16 main model. The available
+`minimax_h3_ref2va_pruned_bf16.safetensors` is a Ref2VA weight and cannot be
+bound to `MiniMaxH3ImageToVideo`. Therefore FP16/BF16 is explicitly disabled
+until the compatible FL2VA weight is installed; a request cannot silently run
+INT8.
 
 Prompt capture contracts:
 

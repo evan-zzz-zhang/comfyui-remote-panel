@@ -247,6 +247,16 @@ def _install_job_service() -> None:
                 )
             except InferenceProfileError as exc:
                 raise preset_module.PresetError(str(exc)) from exc
+            current_profile = str(
+                preset.manifest.get("model_profile", {})
+                .get("main_model", {})
+                .get("current", "int8")
+            ).strip().lower()
+            validate_variant = getattr(self.comfy, "validate_preset_variant", None)
+            if effective != current_profile and callable(validate_variant):
+                diagnostics = await validate_variant(preset, effective)
+                if diagnostics:
+                    raise preset_module.PresetError("；".join(diagnostics[:3]))
             routed["_v047_inference_profile"] = requested
             routed["_v047_effective_inference_profile"] = effective
 

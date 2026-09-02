@@ -13,6 +13,9 @@
   const LEGACY_PHYSICAL_IDS = new Set([
     "h3-fl2va", "h3-fl2va-lightx2v", "h3-fl2va-v4step600",
     "h3-fl2va-qwen35-4b", "h3-fl2va-lightx2v-qwen35-4b", "h3-fl2va-v4step600-qwen35-4b",
+    "fl2va_original_raw", "fl2va_original_ollama", "fl2va_original_qwen35",
+    "fl2va_v4step600_raw", "fl2va_v4step600_ollama", "fl2va_v4step600_qwen35",
+    "fl2va_lightx2v_raw", "fl2va_lightx2v_ollama", "fl2va_lightx2v_qwen35",
   ]);
   const MODE_TUNING = {
     v4_600step: { scheduler: "beta", sampler: "euler", steps: 8 },

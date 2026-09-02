@@ -134,6 +134,12 @@ def test_physical_fl2va_presets_are_hidden_from_creation_picker_but_keep_mode_st
     assert 'function modeEnabled(mode)' in JS
     assert 'item.status === "enabled"' in JS
     assert 'new MutationObserver(() => queueMicrotask(hidePhysicalWorkflowChoices))' in JS
+    for preset_id in (
+        "fl2va_original_raw", "fl2va_original_ollama", "fl2va_original_qwen35",
+        "fl2va_v4step600_raw", "fl2va_v4step600_ollama", "fl2va_v4step600_qwen35",
+        "fl2va_lightx2v_raw", "fl2va_lightx2v_ollama", "fl2va_lightx2v_qwen35",
+    ):
+        assert f'"{preset_id}"' in JS
 
 
 @pytest.mark.asyncio
