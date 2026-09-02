@@ -510,14 +510,17 @@ class Database:
                         )
         return [self._job_from_row(row, files_by_job[row["id"]]) for row in rows]
 
-    async def succeeded_jobs(self) -> list[dict[str, Any]]:
-        """Return completed jobs for bounded metadata/artifact recovery scans."""
+    async def succeeded_jobs(self, *, limit: int | None = None, offset: int = 0) -> list[dict[str, Any]]:
+        """Return a bounded page of completed jobs for recovery scans."""
 
         async with self._lock:
             with self._connect() as db:
-                rows = db.execute(
-                    "SELECT * FROM jobs WHERE status = 'succeeded' ORDER BY finished_at DESC"
-                ).fetchall()
+                query = "SELECT * FROM jobs WHERE status = 'succeeded' ORDER BY finished_at DESC"
+                params: list[Any] = []
+                if limit is not None:
+                    query += " LIMIT ? OFFSET ?"
+                    params.extend([max(0, int(limit)), max(0, int(offset))])
+                rows = db.execute(query, params).fetchall()
                 job_ids = [row["id"] for row in rows]
                 files_by_job: dict[str, list[dict[str, Any]]] = {job_id: [] for job_id in job_ids}
                 if job_ids:

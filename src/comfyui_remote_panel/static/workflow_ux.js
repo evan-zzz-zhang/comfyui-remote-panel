@@ -266,7 +266,12 @@
   }
 
   function openWorkflowPicker() {
-    const items = [...state.presets.values()];
+    // FL2VA physical assets are resolver targets.  The creation picker owns
+    // only the virtual entry; the workflow manager still reads all assets
+    // from /api/workflows.
+    const items = [...state.presets.values()].filter(preset =>
+      preset?.id === "h3-fl2va-group" || preset?.family !== "fl2va"
+    );
     const current = selectedPreset()?.id;
     const grouped = { video: [], image: [], other: [] };
     for (const preset of items) {

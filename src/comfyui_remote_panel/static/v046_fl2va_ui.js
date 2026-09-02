@@ -237,7 +237,7 @@
         if (PHYSICAL_FL2VA_PRESET_IDS.has(item.value)) item.remove();
       }
     }
-    document.querySelectorAll("[data-pick-workflow]").forEach(button => {
+    document.querySelectorAll("#sheet-body [data-pick-workflow]").forEach(button => {
       if (PHYSICAL_FL2VA_PRESET_IDS.has(button.dataset.pickWorkflow)) button.remove();
     });
   }
@@ -255,7 +255,10 @@
   }
 
   function ensureInferenceProfileSelector() {
-    if (selectedPreset()?.id !== ENTRY_ID) return;
+    if (selectedPreset()?.id !== ENTRY_ID) {
+      removeInferenceProfileSelector();
+      return;
+    }
     const grid = document.querySelector("#advanced-settings .advanced-grid");
     if (!grid || grid.querySelector("[data-v047-inference-profile-field]")) return;
     const label = document.createElement("label");
@@ -263,7 +266,6 @@
     label.dataset.v047InferenceProfileField = "true";
     label.innerHTML = "<span>模型配置</span>";
     const select = document.createElement("select");
-    select.name = "inference_profile";
     select.dataset.v047InferenceProfile = "true";
     select.append(
       option("auto", "自动"),
@@ -280,6 +282,10 @@
       if (["auto", "int8", "fp16_bf16"].includes(remembered)) select.value = remembered;
     } catch (_) {}
     syncInferenceProfileAvailability(select);
+  }
+
+  function removeInferenceProfileSelector() {
+    document.querySelectorAll("[data-v047-inference-profile-field]").forEach(field => field.remove());
   }
 
   function syncInferenceProfileAvailability(select = document.querySelector("select[data-v047-inference-profile]")) {
@@ -427,13 +433,14 @@
       window.setTimeout(removePhysicalCreationChoices, 0);
     });
     const advanced = document.querySelector("#advanced-settings");
-    if (advanced) {
+    const advancedGrid = advanced?.querySelector(".advanced-grid");
+    if (advancedGrid) {
       new MutationObserver(() => queueMicrotask(() => {
         ensureStandardizationSelector();
         ensureInferenceProfileSelector();
         syncInferenceProfileAvailability();
       }))
-        .observe(advanced, { childList: true, subtree: true });
+        .observe(advancedGrid, { childList: true });
     }
     queueMicrotask(() => {
       removePhysicalCreationChoices();

@@ -18,6 +18,8 @@ from .inference_profile import (
 
 DEFAULT_STANDARDIZATION_MODE = "ollama"
 STANDARDIZATION_MODES = frozenset({"off", "ollama", "comfyui"})
+_QWEN_RECOVERY_BATCH_SIZE = 25
+_QWEN_RECOVERY_MAX_ATTEMPTS = 3
 QWEN_GENERATION_MODES = {
     "original": "h3-fl2va-qwen35-4b",
     "lightx2v": "h3-fl2va-lightx2v-qwen35-4b",
@@ -433,15 +435,39 @@ def _install_job_service() -> None:
             return
 
         found = recovered = failed = 0
-        for job in await list_succeeded():
+        offset = int(getattr(self, "_standardized_prompt_recovery_offset", 0) or 0)
+        try:
+            jobs = await list_succeeded(limit=_QWEN_RECOVERY_BATCH_SIZE, offset=offset)
+        except TypeError:
+            # Keep compatibility with test doubles and older database adapters.
+            jobs = await list_succeeded()
+            offset = 0
+        if not jobs and offset:
+            offset = 0
+            try:
+                jobs = await list_succeeded(limit=_QWEN_RECOVERY_BATCH_SIZE, offset=0)
+            except TypeError:
+                jobs = await list_succeeded()
+        self._standardized_prompt_recovery_offset = offset + len(jobs)
+        attempts = getattr(self, "_standardized_prompt_recovery_attempts", None)
+        if not isinstance(attempts, dict):
+            attempts = {}
+            self._standardized_prompt_recovery_attempts = attempts
+
+        for job in jobs:
             if str(job.get("preset_id") or "") not in QWEN_FL2VA_PRESET_IDS:
                 continue
             if not any(file.get("role") == "output" for file in job.get("files", [])):
                 continue
             values = job.get("input_values")
             if isinstance(values, dict) and str(values.get("_v042_standardized_prompt") or "").strip():
+                attempts.pop(str(job.get("id") or ""), None)
+                continue
+            job_key = str(job.get("id") or "")
+            if attempts.get(job_key, 0) >= _QWEN_RECOVERY_MAX_ATTEMPTS:
                 continue
             found += 1
+            attempts[job_key] = attempts.get(job_key, 0) + 1
             try:
                 history = await self.comfy.history(str(job["id"]))
                 entry = history.get(str(job["id"])) if isinstance(history, dict) else None
@@ -450,6 +476,7 @@ def _install_job_service() -> None:
                     refreshed = await setter(str(job["id"]), text)
                     if refreshed is not None:
                         recovered += 1
+                        attempts.pop(job_key, None)
                         self.events.publish("job", self.public_job(refreshed))
                     else:
                         failed += 1

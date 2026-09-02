@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 from aiohttp import FormData, web
@@ -205,6 +206,17 @@ async def test_unavailable_inference_profile_is_reported_as_model_error_not_unkn
 
 
 @pytest.mark.asyncio
+async def test_top_level_inference_profile_remains_rejected_by_multipart_whitelist(
+    panel_client_v046,
+):
+    form = _form("original", "off")
+    form.add_field("inference_profile", "int8")
+    response = await panel_client_v046.post("/api/jobs", data=form, headers=LOGIN)
+    assert response.status == 400
+    assert "不支持的字段：inference_profile" in (await response.json())["error"]["message"]
+
+
+@pytest.mark.asyncio
 async def test_qwen_standardized_prompt_uses_existing_public_field(
     panel_client_v046, comfy_server_v046
 ):
@@ -312,6 +324,30 @@ async def test_retry_restores_inference_profile_and_can_submit_again(
     retried_job = await retried.json()
     assert retried_job["inference_profile"] == "int8"
     assert "inference_profile" not in retried_job["input_values"]
+
+
+@pytest.mark.asyncio
+async def test_qwen_prompt_recovery_is_bounded_to_three_attempts(
+    panel_client_v046, comfy_server_v046
+):
+    response = await panel_client_v046.post(
+        "/api/jobs", data=_form("original", "comfyui"), headers=LOGIN
+    )
+    assert response.status == 201, await response.text()
+    created = await response.json()
+    await panel_client_v046.app["db"].update_job(created["id"], status="succeeded")
+    output = panel_client_v046.app["files"].output_root / f"{created['id']}.mp4"
+    output.write_bytes(b"placeholder")
+    await panel_client_v046.app["db"].add_file(created["id"], "output", output, output.stat().st_size)
+
+    history = AsyncMock(return_value={})
+    panel_client_v046.app["comfy"].history = history
+    jobs = panel_client_v046.app["jobs"]
+    for _ in range(4):
+        jobs._last_standardized_prompt_recovery = 0
+        await jobs._recover_standardized_prompts_v046()
+
+    assert history.await_count == 3
 
 
 @pytest.mark.asyncio

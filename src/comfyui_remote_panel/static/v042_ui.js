@@ -205,7 +205,7 @@
 
   function hidePhysicalWorkflowChoices() {
     const physical = physicalPresetIds();
-    document.querySelectorAll("[data-pick-workflow]").forEach(button => {
+    document.querySelectorAll("#sheet-body [data-pick-workflow]").forEach(button => {
       if (physical.has(button.dataset.pickWorkflow)) button.remove();
     });
   }
@@ -531,6 +531,6 @@
       if (event.target?.matches?.("#first-frame, #last-frame")) syncPromptRequired();
     });
     const sheet = document.querySelector("#sheet-body");
-    if (sheet) new MutationObserver(() => queueMicrotask(hidePhysicalWorkflowChoices)).observe(sheet, { childList: true, subtree: true });
+    if (sheet) new MutationObserver(() => queueMicrotask(hidePhysicalWorkflowChoices)).observe(sheet, { childList: true });
   });
 })();

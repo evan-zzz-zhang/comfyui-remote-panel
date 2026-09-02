@@ -224,7 +224,9 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
     async def list_presets(_: web.Request) -> web.Response:
         enabled = {item["id"] for item in await app["db"].list_workflows() if item["status"] == "enabled"}
         return web.json_response({"items": [
-            preset.public_metadata() for preset in app["presets"].values() if preset.id in enabled
+            preset.public_metadata()
+            for preset in app["presets"].values()
+            if preset.id in enabled and str(preset.manifest.get("family", "")).lower() != "fl2va"
         ]})
 
     async def delete_job(request: web.Request) -> web.Response:

@@ -70,6 +70,10 @@ def test_inference_profile_uses_a_select_only_selector_and_hides_all_physical_as
     assert 'data-v047-inference-profile-field' in JS
     assert 'label.dataset.v047InferenceProfileField = "true"' in JS
     assert 'select.dataset.v047InferenceProfile = "true"' in JS
+    assert 'select.name = "inference_profile"' not in JS
+    assert 'values.inference_profile = profile' in JS
+    assert 'function removeInferenceProfileSelector()' in JS
+    assert 'removeInferenceProfileSelector();' in JS
     assert 'document.querySelector("select[data-v047-inference-profile]")' in JS
     assert 'const CANONICAL_FL2VA_PRESET_IDS = new Set([' in JS
     for preset_id in (
@@ -121,6 +125,16 @@ def test_v046_frontend_keeps_ollama_selector_only_for_ollama_and_hides_physical_
     assert 'removePhysicalCreationChoices' in JS
     assert 'PHYSICAL_FL2VA_PRESET_IDS.has(item.value)' in JS
     assert 'PHYSICAL_FL2VA_PRESET_IDS.has(button.dataset.pickWorkflow)' in JS
+
+
+def test_fl2va_observers_are_scoped_away_from_reference_media_updates():
+    v042 = (ROOT / "src" / "comfyui_remote_panel" / "static" / "v042_ui.js").read_text(encoding="utf-8")
+    assert '.observe(sheet, { childList: true })' in v042
+    assert '.observe(sheet, { childList: true, subtree: true })' not in v042
+    assert '.observe(advancedGrid, { childList: true })' in JS
+    assert '.observe(advanced, { childList: true, subtree: true })' not in JS
+    assert '"#sheet-body [data-pick-workflow]"' in JS
+    assert '"#sheet-body [data-pick-workflow]"' in v042
 
 
 def test_v046_frontend_persists_backend_in_values_json_and_checks_qwen_route_availability():
