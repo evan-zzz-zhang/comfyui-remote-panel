@@ -72,8 +72,7 @@
     const definition = modeDefinitions()[mode];
     if (!definition?.preset_id) return false;
     const item = state.workflowItems?.get?.(definition.preset_id);
-    if (item) return item.status === "enabled";
-    return state.presets.has(definition.preset_id);
+    return item?.status === "enabled";
   }
 
   function enabledModes() {
@@ -97,9 +96,20 @@
     try { window.localStorage.setItem(MODE_STORAGE_KEY, mode); } catch (_) {}
   }
 
-  function targetPreset(mode) {
+  function targetWorkflowItem(mode) {
     const definition = modeDefinitions()[mode];
-    return definition ? state.presets.get(definition.preset_id) : null;
+    return definition?.preset_id ? state.workflowItems?.get?.(definition.preset_id) || null : null;
+  }
+
+  function targetPreset(mode) {
+    const item = targetWorkflowItem(mode);
+    return item ? state.presets.get(item.id) || item.manifest || null : null;
+  }
+
+  function targetAvailable(mode) {
+    const item = targetWorkflowItem(mode);
+    if (!item || item.status !== "enabled") return false;
+    return state.metrics?.presets?.[item.id]?.available === true;
   }
 
   function defaultOllamaModel(mode) {
@@ -515,9 +525,7 @@
     if (preset?.id !== ENTRY_ID) return;
     const button = document.querySelector("#submit-button");
     const mode = preferredMode(document.querySelector("[data-v042-generation-mode]")?.value);
-    const target = mode ? targetPreset(mode) : null;
-    const runtime = state.metrics?.presets?.[target?.id];
-    const available = Boolean(mode && modeEnabled(mode) && target && (runtime ? runtime.available : target.available));
+    const available = Boolean(mode && modeEnabled(mode) && targetAvailable(mode));
     if (button && !available) button.disabled = true;
   };
 

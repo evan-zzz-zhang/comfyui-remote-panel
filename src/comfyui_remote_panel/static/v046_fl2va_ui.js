@@ -343,11 +343,8 @@
     const targetId = QWEN_PRESETS[generation];
     if (!targetId) return false;
     const item = state.workflowItems?.get?.(targetId);
-    if (item && item.status !== "enabled") return false;
-    const target = state.presets.get(targetId) || item?.manifest;
-    if (!target) return false;
-    const runtime = state.metrics?.presets?.[targetId];
-    return runtime ? Boolean(runtime.available) : target.available !== false;
+    if (!item || item.status !== "enabled") return false;
+    return state.metrics?.presets?.[targetId]?.available === true;
   }
 
   applyPreset = function(presetId, overrides = {}) {

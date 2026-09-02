@@ -142,7 +142,9 @@ def test_v046_frontend_persists_backend_in_values_json_and_checks_qwen_route_ava
     assert 'values.prompt_standardization_mode = backend === "raw" ? "off" : backend === "qwen35" ? "comfyui" : "ollama"' in JS
     assert 'data-v047-inference-profile' in JS
     assert 'if (path === "/api/jobs") addStandardizationMode(formData)' in JS
-    assert 'runtime ? Boolean(runtime.available) : target.available !== false' in JS
+    assert 'if (!item || item.status !== "enabled") return false' in JS
+    assert 'state.metrics?.presets?.[targetId]?.available === true' in JS
+    assert 'runtime ? Boolean(runtime.available) : target.available !== false' not in JS
     assert 'button.title = "当前 Qwen3.5 标准化工作流不可用"' in JS
     assert 'setInterval' not in JS
 

@@ -122,6 +122,29 @@ def _form(
 
 
 @pytest.mark.asyncio
+async def test_fl2va_creation_and_management_apis_keep_physical_assets_separate(
+    panel_client_v046,
+):
+    presets_response = await panel_client_v046.get("/api/presets", headers=LOGIN)
+    assert presets_response.status == 200
+    public_presets = (await presets_response.json())["items"]
+    assert not any(item.get("family") == "fl2va" for item in public_presets)
+
+    workflows_response = await panel_client_v046.get("/api/workflows", headers=LOGIN)
+    assert workflows_response.status == 200
+    workflows = (await workflows_response.json())["items"]
+    physical_ids = {
+        "fl2va_original_raw", "fl2va_original_ollama", "fl2va_original_qwen35",
+        "fl2va_v4step600_raw", "fl2va_v4step600_ollama", "fl2va_v4step600_qwen35",
+        "fl2va_lightx2v_raw", "fl2va_lightx2v_ollama", "fl2va_lightx2v_qwen35",
+    }
+    by_id = {item["id"]: item for item in workflows}
+    assert physical_ids <= by_id.keys()
+    assert all(by_id[item_id]["status"] == "enabled" for item_id in physical_ids)
+    assert all(by_id[item_id]["manifest"]["family"] == "fl2va" for item_id in physical_ids)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["original", "lightx2v", "v4_600step"])
 @pytest.mark.parametrize("standardization", ["off", "ollama", "comfyui"])
 async def test_all_nine_fl2va_routes_select_the_expected_physical_workflow(

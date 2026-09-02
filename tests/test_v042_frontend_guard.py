@@ -142,6 +142,17 @@ def test_physical_fl2va_presets_are_hidden_from_creation_picker_but_keep_mode_st
         assert f'"{preset_id}"' in JS
 
 
+def test_fl2va_mode_targets_use_workflow_items_when_presets_hide_physical_assets():
+    assert 'function targetWorkflowItem(mode)' in JS
+    assert 'state.workflowItems?.get?.(definition.preset_id)' in JS
+    assert 'return item ? state.presets.get(item.id) || item.manifest || null : null' in JS
+    assert 'function targetAvailable(mode)' in JS
+    assert 'item.status !== "enabled"' in JS
+    assert 'state.metrics?.presets?.[item.id]?.available === true' in JS
+    assert 'return state.presets.get(definition.preset_id)' not in JS
+    assert 'const available = Boolean(mode && modeEnabled(mode) && targetAvailable(mode))' in JS
+
+
 @pytest.mark.asyncio
 async def test_root_loads_v042_scripts_after_existing_frontend_layers(tmp_path, aiohttp_client):
     client = await aiohttp_client(create_app(_config(tmp_path)))
