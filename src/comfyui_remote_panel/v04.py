@@ -504,6 +504,11 @@ def install() -> None:
                 "_v047_prompt_backend",
                 "_v047_inference_profile",
                 "_v047_effective_inference_profile",
+                "_v048_generation_mode",
+                "_v048_prompt_backend",
+                "_v048_inference_profile",
+                "_v048_effective_inference_profile",
+                "_v048_variant_model_overrides",
             ):
                 if metadata_key in fields:
                     normalized[metadata_key] = fields[metadata_key]
@@ -560,7 +565,13 @@ def install() -> None:
                 file["role"]: self.files.comfy_input_name(Path(file["path"]))
                 for file in effective_uploads
             }
-            prompt = preset.build_prompt(normalized, job_id, media_names)
+            variant_model_overrides = fields.get("_v048_variant_model_overrides")
+            prompt = preset.build_prompt(
+                normalized,
+                job_id,
+                media_names,
+                variant_model_overrides if isinstance(variant_model_overrides, dict) else None,
+            )
             await self.comfy.submit(job_id, prompt)
             _, job = await self.db.update_job_if_status(
                 job_id, {"submitting"}, status="queued", stage="等待执行", queue_position=None

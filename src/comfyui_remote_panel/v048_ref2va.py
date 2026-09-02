@@ -21,7 +21,8 @@ from .workflow_registry import (
     REF2VA_GENERATION_MODES,
     REF2VA_LEGACY_TO_KEY,
     REF2VA_PROMPT_BACKENDS,
-    asset_key,
+    WorkflowAssetKey,
+    ref2va_asset_key,
     resolve_ref2va_asset,
 )
 
@@ -59,17 +60,13 @@ def _display_mode(mode: str) -> str:
     return "v4_600step" if mode == "v4step600" else mode
 
 
-def _legacy_key(preset_id: str) -> tuple[str, str] | None:
-    return REF2VA_LEGACY_TO_KEY.get(preset_id)
+def _legacy_key(preset_id: str) -> WorkflowAssetKey | None:
+    value = REF2VA_LEGACY_TO_KEY.get(preset_id)
+    return WorkflowAssetKey(REF2VA_FAMILY, *value) if value is not None else None
 
 
-def _canonical_key(preset: Any) -> tuple[str, str] | None:
-    if preset is None or preset.manifest.get("asset_role") != "canonical":
-        return None
-    if preset.manifest.get("family") != REF2VA_FAMILY:
-        return None
-    key = asset_key(preset)
-    return (key.generation_mode, key.prompt_backend) if key is not None else None
+def _canonical_key(preset: Any) -> WorkflowAssetKey | None:
+    return ref2va_asset_key(preset)
 
 
 def _history_text(value: Any, preferred: tuple[str, ...] = ()) -> str | None:
@@ -297,7 +294,8 @@ def _install_jobs() -> None:
             routed["_v048_prompt_backend"] = key.prompt_backend
             await resolve_profile(self, routed, preset)
         elif legacy is not None:
-            routed["_v048_generation_mode"], routed["_v048_prompt_backend"] = legacy
+            routed["_v048_generation_mode"] = legacy.generation_mode
+            routed["_v048_prompt_backend"] = legacy.prompt_backend
             routed["_v048_inference_profile"] = "auto"
             routed["_v048_effective_inference_profile"] = "int8"
         return await original_create(self, routed, uploaded, job_id, is_test=is_test)
@@ -313,7 +311,7 @@ def _install_jobs() -> None:
         values = draft.setdefault("values", {})
         requested = values.get("_v048_inference_profile", "auto")
         effective = values.get("_v048_effective_inference_profile", "int8")
-        mode, backend = key
+        mode, backend = key.generation_mode, key.prompt_backend
         draft.update({
             "preset_id": REF2VA_ENTRY_ID,
             "generation_mode": _display_mode(mode),
@@ -387,7 +385,7 @@ def _install_jobs() -> None:
         key = _canonical_key(preset) or _legacy_key(preset_id)
         if key is None:
             return result
-        mode, backend = key
+        mode, backend = key.generation_mode, key.prompt_backend
         values = result.get("input_values") if isinstance(result.get("input_values"), dict) else {}
         result["generation_mode"] = _display_mode(mode)
         result["prompt_backend"] = backend

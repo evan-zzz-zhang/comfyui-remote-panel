@@ -36,6 +36,7 @@ jobs:
       - run: node --check src/comfyui_remote_panel/static/v046_workflow_selection_guard.js
       - run: node --check src/comfyui_remote_panel/static/v046_force_stop_ui.js
       - run: node --check src/comfyui_remote_panel/static/v046_sage_attention_status.js
+      - run: node --check src/comfyui_remote_panel/static/v048_ref2va_ui.js
       - run: node --check src/comfyui_remote_panel/static/ux_refinements.js
       - run: node --check src/comfyui_remote_panel/static/recovery_lite.js
       - run: python scripts/check_repository.py

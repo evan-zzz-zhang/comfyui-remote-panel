@@ -226,6 +226,8 @@ class Preset:
         for node_id, inputs in self.model_overrides.items():
             prompt[node_id]["inputs"].update(inputs)
         effective_profile = values.get("_v047_effective_inference_profile")
+        if not effective_profile:
+            effective_profile = values.get("_v048_effective_inference_profile")
         if effective_profile:
             self._apply_variant_model_overrides(prompt, effective_profile, variant_model_overrides)
         for name, spec in self.manifest["parameters"].items():

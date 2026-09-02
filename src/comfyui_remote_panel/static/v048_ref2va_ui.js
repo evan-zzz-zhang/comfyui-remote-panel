@@ -20,6 +20,8 @@
   const baseUpload = uploadForm;
   const baseLoadPresets = loadPresets;
   const baseLoadWorkflows = loadWorkflows;
+  const baseUpdateSubmitAvailability = updateSubmitAvailability;
+  const REF2VA_UNAVAILABLE_TITLE = "当前 Ref2VA 工作流不可用";
 
   function valid(value, values) { return values.includes(String(value || "").toLowerCase()); }
   function remembered(key, values, fallback) {
@@ -70,7 +72,7 @@
       grid.append(field);
       select.addEventListener("change", () => {
         if (valid(select.value, values)) remember(storageKey, select.value);
-        updateRef2vaAvailability();
+        updateSubmitAvailability();
       });
     }
     const next = valid(explicit, values) ? String(explicit).toLowerCase() : remembered(storageKey, values, fallback);
@@ -93,7 +95,7 @@
     mode.dataset.v048Ref2vaGenerationMode = "true";
     backend.dataset.v048Ref2vaPromptBackend = "true";
     profile.dataset.v048Ref2vaInferenceProfile = "true";
-    updateRef2vaAvailability();
+    updateSubmitAvailability();
   }
   function currentRef2vaValues() {
     return {
@@ -115,14 +117,32 @@
     }
     if (profileSelect?.selectedOptions[0]?.disabled) profileSelect.value = DEFAULT_PROFILE;
     const submit = document.querySelector("#submit-button");
-    const unavailable = backend === "qwen35" && (!target || target.status !== "enabled" || state.metrics?.presets?.[target.id]?.available !== true);
-    if (submit && unavailable) {
+    if (!submit) return;
+    const baseDisabled = submit.disabled;
+    const baseTitle = submit.getAttribute("title");
+    const available = Boolean(
+      target
+      && target.status === "enabled"
+      && state.metrics?.presets?.[target.id]?.available === true
+    );
+    if (!available) {
       submit.disabled = true;
-      submit.title = "当前 Ref2VA Qwen3.5 4B 工作流不可用";
-    } else if (submit?.title === "当前 Ref2VA Qwen3.5 4B 工作流不可用") {
-      submit.removeAttribute("title");
+      submit.title = REF2VA_UNAVAILABLE_TITLE;
+      submit.dataset.v048Ref2vaAvailability = "unavailable";
+    } else if (submit.dataset.v048Ref2vaAvailability === "unavailable") {
+      // Restore the base state so isSubmitting and other workflow guards keep
+      // their authority when the Ref2VA target becomes available again.
+      submit.disabled = baseDisabled;
+      if (baseTitle) submit.title = baseTitle;
+      else submit.removeAttribute("title");
+      delete submit.dataset.v048Ref2vaAvailability;
     }
   }
+
+  updateSubmitAvailability = function(...args) {
+    baseUpdateSubmitAvailability(...args);
+    updateRef2vaAvailability();
+  };
   function valuesFromFormData(formData) {
     const values = {};
     for (const raw of formData.getAll("values_json")) {
@@ -162,12 +182,14 @@
     const result = await baseLoadPresets(...args);
     removePhysicalCreationChoices();
     ensureRef2vaFields();
+    updateSubmitAvailability();
     return result;
   };
   loadWorkflows = async function(...args) {
     const result = await baseLoadWorkflows(...args);
     removePhysicalCreationChoices();
     ensureRef2vaFields();
+    updateSubmitAvailability();
     return result;
   };
 

@@ -162,12 +162,24 @@ def asset_key(preset: Any) -> WorkflowAssetKey | None:
     if not _canonical(preset):
         return None
     family = preset.manifest.get("family")
-    if str(family or "").strip().lower() == REF2VA_FAMILY:
-        return _normalize_ref2va_key(
-            family, preset.manifest.get("generation_mode"), preset.manifest.get("prompt_backend")
-        )
     return _normalize_key(
         family,
         preset.manifest.get("generation_mode"),
         preset.manifest.get("prompt_backend"),
+    )
+
+
+def ref2va_asset_key(preset: Any) -> WorkflowAssetKey | None:
+    """Read a canonical Ref2VA asset key without changing FL2VA routing."""
+
+    manifest = getattr(preset, "manifest", {})
+    if (
+        manifest.get("asset_role") != "canonical"
+        or str(manifest.get("family", "")).strip().lower() != REF2VA_FAMILY
+    ):
+        return None
+    return _normalize_ref2va_key(
+        manifest.get("family"),
+        manifest.get("generation_mode"),
+        manifest.get("prompt_backend"),
     )

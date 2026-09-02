@@ -9,7 +9,11 @@ from comfyui_remote_panel.inference_profile import (
 from comfyui_remote_panel.preset import load_presets
 from comfyui_remote_panel.workflow_registry import (
     CANONICAL_FL2VA_ASSET_IDS,
+    CANONICAL_REF2VA_ASSET_IDS,
+    WorkflowAssetKey,
+    asset_key,
     list_fl2va_assets,
+    ref2va_asset_key,
     resolve_fl2va_asset,
 )
 
@@ -84,3 +88,20 @@ def test_declared_variant_changes_the_bound_model_node():
     })
     graph = preset.build_prompt(values, "variant-job", {})
     assert graph["105:6"]["inputs"]["unet_name"] == "MiniMax-H3/test_fl2va_variant.safetensors"
+
+
+def test_ref2va_asset_key_reads_all_nine_canonical_assets_without_changing_fl2va_key():
+    presets = load_presets(ROOT / "workflows")
+    ref2va_assets = {
+        preset.id: ref2va_asset_key(preset)
+        for preset in presets.values()
+        if preset.id in CANONICAL_REF2VA_ASSET_IDS
+    }
+    assert len(ref2va_assets) == 9
+    for preset_id, key in ref2va_assets.items():
+        mode, backend = preset_id.removeprefix("ref2va_").split("_", 1)
+        assert key == WorkflowAssetKey("ref2va", mode, backend)
+
+    fl2va = presets["fl2va_original_raw"]
+    assert asset_key(fl2va) == WorkflowAssetKey("fl2va", "original", "raw")
+    assert asset_key(presets["h3-ref2va"]) is None
