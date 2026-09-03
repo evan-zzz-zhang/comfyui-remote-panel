@@ -348,13 +348,16 @@
     const fields = [...grid.children].filter(field => field.matches?.("label.field"));
     const managed = fields.filter(field => h3AdvancedRole(field));
     if (!managed.length) return;
+    const currentRoles = managed.map(field => h3AdvancedRole(field));
     for (const field of managed) {
       const role = h3AdvancedRole(field);
       field.dataset.h3AdvancedRole = role;
     }
-    const first = managed[0];
     const ordered = order.flatMap(role => managed.filter(field => field.dataset.h3AdvancedRole === role));
     if (ordered.length !== managed.length) return;
+    const desiredRoles = ordered.map(field => field.dataset.h3AdvancedRole);
+    if (currentRoles.every((role, index) => role === desiredRoles[index])) return;
+    const first = managed[0];
     const marker = document.createElement("span");
     marker.hidden = true;
     grid.insertBefore(marker, first);

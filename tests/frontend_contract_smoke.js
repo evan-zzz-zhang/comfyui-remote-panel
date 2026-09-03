@@ -29,6 +29,11 @@ class Element {
     this.hidden = false;
     this.name = "";
     this.textContent = "";
+    this.mutationCount = 0;
+  }
+  recordMutation() {
+    if (this.parentElement) this.parentElement.mutationCount += 1;
+    else this.mutationCount += 1;
   }
   append(...nodes) {
     for (const node of nodes) {
@@ -36,6 +41,7 @@ class Element {
       if (node.parentElement) node.remove();
       node.parentElement = this;
       this.children.push(node);
+      this.recordMutation();
     }
   }
   before(node) {
@@ -46,12 +52,14 @@ class Element {
     const index = this.children.indexOf(reference);
     node.parentElement = this;
     if (index < 0) this.children.push(node); else this.children.splice(index, 0, node);
+    this.recordMutation();
   }
   remove() {
     if (!this.parentElement) return;
     const siblings = this.parentElement.children;
     const index = siblings.indexOf(this);
     if (index >= 0) siblings.splice(index, 1);
+    this.parentElement.recordMutation();
     this.parentElement = null;
   }
   matches(selector) {
@@ -94,6 +102,17 @@ class Element {
       current = current.parentElement;
     }
     return null;
+  }
+}
+
+class MutationObserverHarness {
+  constructor(callback) { this.callback = callback; this.target = null; this.lastDelivered = 0; }
+  observe(target) { this.target = target; this.lastDelivered = target.mutationCount; }
+  deliver() {
+    if (!this.target || this.target.mutationCount === this.lastDelivered) return false;
+    this.lastDelivered = this.target.mutationCount;
+    this.callback();
+    return true;
   }
 }
 
@@ -246,6 +265,31 @@ for (const [name, backend, seedPolicy] of cases) {
   assert.equal(new Set(visibleRoles(fl)).size, visibleRoles(fl).length, `duplicate FL2VA roles: ${name}`);
   assert.equal(new Set(visibleRoles(ref)).size, visibleRoles(ref).length, `duplicate Ref2VA roles: ${name}`);
 }
+
+const idempotentGrid = makeLayout(runtime.document, "fl2va", "ollama", "fixed");
+idempotentGrid.mutationCount = 0;
+normalize(idempotentGrid);
+assert.ok(idempotentGrid.mutationCount > 0, "first normalization must mutate an unordered DOM");
+idempotentGrid.mutationCount = 0;
+normalize(idempotentGrid);
+assert.equal(idempotentGrid.mutationCount, 0, "second normalization must be mutation-free");
+
+const convergenceGrid = makeLayout(runtime.document, "ref2va", "ollama", "randomize");
+convergenceGrid.mutationCount = 0;
+let observerCallbacks = 0;
+const observer = new MutationObserverHarness(() => {
+  observerCallbacks += 1;
+  normalize(convergenceGrid);
+});
+observer.observe(convergenceGrid, { childList: true });
+normalize(convergenceGrid);
+let deliveries = 0;
+while (observer.deliver()) {
+  deliveries += 1;
+  assert.ok(deliveries <= 2, "advanced-grid observer did not converge");
+}
+assert.equal(observerCallbacks, 1, "observer should run once for the corrective mutation");
+assert.equal(observer.deliver(), false, "converged observer should have no follow-up mutation");
 
 const expected = {
   "Raw/randomize": ["generation-mode", "prompt-backend", "main-model", "scheduler", "sampler", "steps", "seed-policy", "reference-resolution"],

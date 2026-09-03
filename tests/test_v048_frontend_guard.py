@@ -35,6 +35,8 @@ def test_ref2va_dom_fields_are_removed_when_leaving_virtual_entry():
     assert "removeRef2vaFields();" in JS
     assert '"[data-v047-inference-profile-field]"' not in JS
     assert '.observe(grid, { childList: true })' in JS
+    assert 'new MutationObserver(() => queueMicrotask(() => ensureRef2vaFields()))' in JS
+    assert 'window.ComfyRemoteCreationControls?.normalize?.(grid)' in JS
     assert '.observe(grid, { childList: true, subtree: true })' not in JS
 
 

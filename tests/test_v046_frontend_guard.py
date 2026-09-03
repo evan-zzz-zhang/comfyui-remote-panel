@@ -139,6 +139,8 @@ def test_fl2va_observers_are_scoped_away_from_reference_media_updates():
     assert '.observe(sheet, { childList: true })' in v042
     assert '.observe(sheet, { childList: true, subtree: true })' not in v042
     assert '.observe(advancedGrid, { childList: true })' in JS
+    assert 'new MutationObserver(() => queueMicrotask(() => {' in JS
+    assert 'window.ComfyRemoteCreationControls?.normalize?.();' in JS
     assert '.observe(advanced, { childList: true, subtree: true })' not in JS
     assert '"#sheet-body [data-pick-workflow]"' in JS
     assert '"#sheet-body [data-pick-workflow]"' in v042
