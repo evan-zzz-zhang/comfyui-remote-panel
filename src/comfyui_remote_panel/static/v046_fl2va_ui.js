@@ -261,25 +261,6 @@
     return profile === "auto" ? "int8" : profile;
   }
 
-  function positionFl2vaFields() {
-    if (selectedPreset()?.id !== ENTRY_ID) return;
-    const grid = document.querySelector("#advanced-settings .advanced-grid");
-    const scheduler = grid?.querySelector('select[name="scheduler"]')?.closest("label.field");
-    if (!grid || !scheduler) return;
-    let anchor = scheduler;
-    for (const selector of [
-      "[data-v045-ollama-model-field]",
-      "[data-v047-inference-profile-field]",
-      "[data-v042-standardizer-field]",
-      "[data-v042-mode-field]",
-    ]) {
-      const field = grid.querySelector(selector);
-      if (!field) continue;
-      if (field.nextElementSibling !== anchor) grid.insertBefore(field, anchor);
-      anchor = field;
-    }
-  }
-
   function ensureInferenceProfileSelector(candidate = null) {
     if (selectedPreset()?.id !== ENTRY_ID) {
       removeInferenceProfileSelector();
@@ -317,7 +298,7 @@
       } catch (_) {}
     }
     select.value = next || DEFAULT_PROFILE;
-    positionFl2vaFields();
+    window.ComfyRemoteCreationControls?.normalize?.();
     syncInferenceProfileAvailability(select);
   }
 
@@ -395,7 +376,7 @@
       ensureStandardizationSelector(candidate);
       ensureInferenceProfileSelector(overrides?.inference_profile ?? overrides?.values?.inference_profile);
       syncInferenceProfile(overrides?.inference_profile ?? overrides?.values?.inference_profile);
-      positionFl2vaFields();
+      window.ComfyRemoteCreationControls?.normalize?.();
       syncInferenceProfileAvailability();
     });
     return result;
@@ -413,7 +394,7 @@
     syncFl2vaAspectValue(null, aspect?.value || "", aspect?.dataset.v046AspectExplicit === "true");
     ensureStandardizationSelector();
     ensureInferenceProfileSelector();
-    positionFl2vaFields();
+    window.ComfyRemoteCreationControls?.normalize?.();
     syncInferenceProfileAvailability();
     return result;
   };
@@ -425,7 +406,7 @@
     syncFl2vaAspectValue(null, aspect?.value || "", aspect?.dataset.v046AspectExplicit === "true");
     ensureStandardizationSelector();
     ensureInferenceProfileSelector();
-    positionFl2vaFields();
+    window.ComfyRemoteCreationControls?.normalize?.();
     syncInferenceProfileAvailability();
     return result;
   };
@@ -473,7 +454,7 @@
       new MutationObserver(() => queueMicrotask(() => {
         ensureStandardizationSelector();
         ensureInferenceProfileSelector();
-        positionFl2vaFields();
+        window.ComfyRemoteCreationControls?.normalize?.();
         syncInferenceProfileAvailability();
       }))
         .observe(advancedGrid, { childList: true });
@@ -484,7 +465,7 @@
       syncFl2vaAspectValue(null, aspect?.value || "", aspect?.dataset.v046AspectExplicit === "true");
       ensureStandardizationSelector();
       ensureInferenceProfileSelector();
-      positionFl2vaFields();
+      window.ComfyRemoteCreationControls?.normalize?.();
       syncInferenceProfileAvailability();
     });
   });

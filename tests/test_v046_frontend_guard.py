@@ -38,7 +38,7 @@ async def test_root_injects_v046_frontend_once(tmp_path, aiohttp_client):
     response = await client.get("/", headers=LOGIN)
     assert response.status == 200
     html = await response.text()
-    fl2va_tag = '<script src="/static/v046_fl2va_ui.js?v=0.4.8.1" defer></script>'
+    fl2va_tag = '<script src="/static/v046_fl2va_ui.js?v=0.4.8.2" defer></script>'
     runtime_tag = '<script src="/static/v046_job_runtime_ui.js?v=0.4.8.1" defer></script>'
     assert html.count(fl2va_tag) == 1
     assert html.count(runtime_tag) == 1
@@ -185,9 +185,24 @@ def test_v046_job_runtime_ui_adds_compact_generation_and_standardizer_tags():
 def test_fl2va_profile_availability_uses_canonical_backend_target_and_field_order():
     assert 'const targetId = `fl2va_${canonicalGeneration}_${backend}`' in JS
     assert 'state.workflowItems?.get?.(targetId)?.manifest' in JS
-    assert 'function positionFl2vaFields()' in JS
+    assert 'window.ComfyRemoteCreationControls?.normalize?.()' in JS
+    creation = (ROOT / "src" / "comfyui_remote_panel" / "static" / "configurator_v2_runtime.js").read_text(encoding="utf-8")
     for selector in (
         '[data-v042-mode-field]', '[data-v042-standardizer-field]',
         '[data-v047-inference-profile-field]', '[data-v045-ollama-model-field]',
     ):
-        assert selector in JS
+        assert selector in creation
+
+
+def test_shared_h3_layout_normalizer_owns_the_golden_role_order():
+    creation = (ROOT / "src" / "comfyui_remote_panel" / "static" / "configurator_v2_runtime.js").read_text(encoding="utf-8")
+    assert "function normalizeH3AdvancedLayout" in creation
+    assert '"generation-mode", "prompt-backend", "main-model", "ollama-model"' in creation
+    assert '"scheduler", "sampler", "steps", "seed-policy", "seed-value"' in creation
+    assert '"reference-resolution"' in creation
+    assert 'function positionFl2vaFields' not in JS
+
+
+def test_ci_runs_executable_shared_h3_frontend_contract_smoke():
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "node tests/frontend_contract_smoke.js" in ci

@@ -135,17 +135,6 @@
     field.hidden = backend !== "ollama";
     return control;
   }
-  function positionRef2vaFields(grid) {
-    const scheduler = grid.querySelector('select[name="scheduler"]')?.closest("label.field");
-    if (!scheduler) return;
-    let anchor = scheduler;
-    for (const key of ["inference-profile", "ollama-model", "prompt-backend", "generation-mode"]) {
-      const field = grid.querySelector(`[data-v048-ref2va-${key}-field]`);
-      if (!field) continue;
-      if (field.nextElementSibling !== anchor) grid.insertBefore(field, anchor);
-      anchor = field;
-    }
-  }
   function applyModeDefaults(mode) {
     const defaults = MODE_TUNING[canonicalMode(mode)];
     if (!defaults) return;
@@ -194,7 +183,7 @@
       ensureOllamaField(grid, backend.value, null);
       updateSubmitAvailability();
     };
-    positionRef2vaFields(grid);
+    window.ComfyRemoteCreationControls?.normalize?.(grid);
     updateSubmitAvailability();
   }
   function removeRef2vaFields() {
@@ -265,7 +254,7 @@
   }
   function addRef2vaRouting(formData) {
     if (String(formData.get("preset_id") || "") !== ENTRY_ID) return formData;
-    const {mode, backend, profile} = currentRef2vaValues();
+    const {mode, backend, profile, ollamaModel} = currentRef2vaValues();
     const values = valuesFromFormData(formData);
     values.generation_mode = mode;
     values.prompt_backend = backend;
@@ -276,6 +265,11 @@
     formData.set("values_json", JSON.stringify(values));
     return formData;
   }
+
+  window.ComfyRemoteRef2vaControls = {
+    addRouting: addRef2vaRouting,
+    currentValues: currentRef2vaValues,
+  };
 
   applyPreset = function(presetId, overrides = {}) {
     const merged = mergedOverrides(overrides);

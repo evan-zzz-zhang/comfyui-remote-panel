@@ -6,7 +6,7 @@ from aiohttp import web
 
 
 _SCRIPT_TAGS = (
-    '<script src="/static/v046_fl2va_ui.js?v=0.4.8.1" defer></script>\n'
+    '<script src="/static/v046_fl2va_ui.js?v=0.4.8.2" defer></script>\n'
     '  <script src="/static/v046_job_runtime_ui.js?v=0.4.8.1" defer></script>\n'
     '  <script src="/static/v046_workflow_selection_guard.js?v=0.4.6.2" defer></script>\n'
     '  <script src="/static/v046_force_stop_ui.js?v=0.4.6.2" defer></script>\n'

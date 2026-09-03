@@ -61,8 +61,9 @@ def test_ref2va_uses_consistent_chinese_labels_two_model_choices_and_field_order
     assert '["pruned_int8", "pruned_bf16"]' in JS
     assert 'const DEFAULT_PROFILE = "int8"' in JS
     assert 'return profile === "auto" ? "int8" : profile' in JS
-    assert 'for (const key of ["inference-profile", "ollama-model", "prompt-backend", "generation-mode"])' in JS
-    assert 'if (field.nextElementSibling !== anchor) grid.insertBefore(field, anchor)' in JS
+    assert 'window.ComfyRemoteCreationControls?.normalize?.(grid)' in JS
+    assert 'CreationControls.normalize = normalizeH3AdvancedLayout' in CREATION_JS
+    assert '"generation-mode", "prompt-backend", "main-model", "ollama-model"' in CREATION_JS
     for stale in ('"Generation Mode"', '"Prompt Backend"', '"Model Configuration"'):
         assert stale not in JS
 
@@ -91,6 +92,11 @@ def test_ref2va_ollama_model_is_scoped_visible_and_submitted_only_for_ollama():
     assert 'name="ollama_model"' not in JS
 
 
+def test_ref2va_routing_reads_ollama_model_and_exposes_executable_hook():
+    assert 'const {mode, backend, profile, ollamaModel} = currentRef2vaValues();' in JS
+    assert 'addRouting: addRef2vaRouting' in JS
+
+
 def test_ref2va_seed_policy_reuses_shared_contract_with_family_isolation_and_retry_priority():
     assert 'window.ComfyRemoteCreationControls?.install?.(group(), overrides)' in JS
     assert 'comfy-remote.ref2va.seed-policy' in CREATION_JS
@@ -107,3 +113,4 @@ def test_ci_checks_v048_frontend_syntax_in_addition_to_existing_checks():
     assert "node --check src/comfyui_remote_panel/static/v048_ref2va_ui.js" in CI
     assert "node --check src/comfyui_remote_panel/static/i18n.js" in CI
     assert "node --check src/comfyui_remote_panel/static/v046_fl2va_ui.js" in CI
+    assert "node tests/frontend_contract_smoke.js" in CI
