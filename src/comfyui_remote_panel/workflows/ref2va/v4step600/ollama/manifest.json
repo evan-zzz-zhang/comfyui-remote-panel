@@ -237,16 +237,9 @@
     },
     {
       "node": "136",
-      "class_type": "MiniMaxH3ReferenceToVideo",
+      "class_type": "H3Ref2VAOllamaConditioning",
       "inputs": {
         "ref_image_size": "max"
-      }
-    },
-    {
-      "node": "152",
-      "class_type": "H3PromptStandardizer",
-      "inputs": {
-        "unload_after": true
       }
     },
     {
@@ -374,7 +367,7 @@
   "prompt_standardizer": {
     "backend": "ollama",
     "model": "gemma4:e4b",
-    "node": "152",
+    "node": "136",
     "history_node": "153",
     "history_field": "text"
   }

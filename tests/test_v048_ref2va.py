@@ -146,18 +146,32 @@ def test_ref2va_collection_media_is_preserved_for_prompt_backends():
         assert target["ref_audios.ref_audio_0"] == ["9400", 0]
 
 
+@pytest.mark.parametrize("mode", ["original", "lightx2v", "v4step600"])
+def test_ref2va_ollama_uses_native_reference_conditioning_contract(mode):
+    preset = load_presets(ROOT / "workflows")[f"ref2va_{mode}_ollama"]
+    graph = preset.build_prompt(values(), f"{mode}-ollama", {"image_0": "image.png"})
+    assert graph["136"]["class_type"] == "H3Ref2VAOllamaConditioning"
+    assert graph["136"]["inputs"]["ollama_model"] == "gemma4:e4b"
+    assert graph["136"]["inputs"]["ref_images.ref_image_0"] == ["9100", 0]
+    assert graph["136"]["inputs"]["creative_brief"] == ["138", 0]
+    assert graph["136"]["inputs"]["prompt_seed"] == 42
+    assert graph["136"]["inputs"]["unload_after"] is True
+    assert graph["153"]["inputs"]["source"] == ["136", 5]
+    assert "H3PromptStandardizer" not in {node["class_type"] for node in graph.values()}
+
+
 def test_ref2va_representative_visual_prefers_image_then_video_first_frame():
     presets = load_presets(ROOT / "workflows")
     image = presets["ref2va_original_ollama"].build_prompt(values(), "image", {"image_0": "image.png", "video_0": "clip.mp4"})
-    assert image["152"]["inputs"]["first_frame"] == ["9100", 0]
-    assert "last_frame" not in image["152"]["inputs"]
+    assert image["136"]["inputs"]["ref_images.ref_image_0"] == ["9100", 0]
+    assert "first_frame" not in image["136"]["inputs"]
 
     video = presets["ref2va_original_ollama"].build_prompt(values(), "video", {"video_0": "clip.mp4"})
-    assert video["152"]["inputs"]["first_frame"] == ["9500", 0]
-    assert video["9500"] == {"class_type": "ImageFromBatch", "inputs": {"images": ["9300", 0], "batch_index": 0, "length": 1}}
+    assert video["136"]["inputs"]["ref_videos.ref_video_0"] == ["9300", 0]
+    assert video["9300"] == {"class_type": "GetVideoComponents", "inputs": {"video": ["9200", 0]}}
 
     text = presets["ref2va_original_ollama"].build_prompt(values(), "text", {})
-    assert "first_frame" not in text["152"]["inputs"]
+    assert "ref_images.ref_image_0" not in text["136"]["inputs"]
 
 
 def test_ref2va_qwen_keeps_h3_encoder_separate_and_captures_metadata():

@@ -160,7 +160,7 @@
     }
   },
   "136": {
-    "class_type": "MiniMaxH3ReferenceToVideo",
+    "class_type": "H3Ref2VAOllamaConditioning",
     "inputs": {
       "clip": [
         "128",
@@ -172,10 +172,6 @@
       ],
       "audio_vae": [
         "120",
-        0
-      ],
-      "prompt": [
-        "152",
         0
       ],
       "width": [
@@ -190,6 +186,14 @@
         "131",
         1
       ],
+      "creative_brief": [
+        "138",
+        0
+      ],
+      "ollama_model": "gemma4:e4b",
+      "prompt_seed": 42,
+      "unload_after": true,
+      "aspect_source": "output",
       "ref_image_size": "max"
     }
   },
@@ -205,32 +209,12 @@
       "sampler_name": "res_multistep"
     }
   },
-  "152": {
-    "class_type": "H3PromptStandardizer",
-    "inputs": {
-      "creative_brief": [
-        "138",
-        0
-      ],
-      "duration_seconds": [
-        "132",
-        0
-      ],
-      "aspect_ratio": [
-        "115",
-        2
-      ],
-      "ollama_model": "gemma4:e4b",
-      "seed": 42,
-      "unload_after": true
-    }
-  },
   "153": {
     "class_type": "PreviewAny",
     "inputs": {
       "source": [
-        "152",
-        0
+        "136",
+        5
       ]
     }
   }

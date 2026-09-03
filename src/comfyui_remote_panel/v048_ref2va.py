@@ -205,6 +205,11 @@ def _install_preset() -> None:
         node_id = str(standardizer.get("node") or "")
         if node_id not in graph:
             return graph
+        # Native Ref2VA standardization consumes the complete collection
+        # binding on its conditioning node. Only the legacy generic node
+        # accepts the representative first-frame input below.
+        if graph[node_id].get("class_type") != "H3PromptStandardizer":
+            return graph
         representative = _representative_source(graph, media)
         inputs = graph[node_id].setdefault("inputs", {})
         inputs.pop("last_frame", None)
