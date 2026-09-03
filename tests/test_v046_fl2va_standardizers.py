@@ -44,7 +44,10 @@ async def comfy_server_v046(aiohttp_server):
         return web.json_response({node: {"input": {}}})
 
     model_values = {
-        "diffusion_models": [r"MiniMax-H3\minimax_h3_fl2va_pruned_int8_convrot.safetensors"],
+        "diffusion_models": [
+            r"MiniMax-H3\minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+            r"MiniMax-H3\minimax_h3_fl2va_pruned_bf16.safetensors",
+        ],
         "text_encoders": [
             r"MiniMax-H3\qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
             "qwen3.5_4b_bf16.safetensors",
@@ -214,18 +217,22 @@ async def test_physical_and_legacy_qwen_routes_strip_inference_profile_before_va
 
 
 @pytest.mark.asyncio
-async def test_unavailable_inference_profile_is_reported_as_model_error_not_unknown_field(
-    panel_client_v046,
+async def test_fl2va_bf16_profile_uses_exact_runtime_selector(
+    panel_client_v046, comfy_server_v046,
 ):
     response = await panel_client_v046.post(
         "/api/jobs",
         data=_form("original", "off", inference_profile="fp16_bf16"),
         headers=LOGIN,
     )
-    assert response.status == 400
-    message = (await response.json())["error"]["message"]
-    assert "模型配置 fp16_bf16 当前不可用" in message
-    assert "不支持的字段：inference_profile" not in message
+    assert response.status == 201, await response.text()
+    job = await response.json()
+    assert job["inference_profile"] == "fp16_bf16"
+    assert job["effective_inference_profile"] == "fp16_bf16"
+    graph = comfy_server_v046.app["submitted"][-1]["prompt"]
+    assert graph["105:6"]["inputs"]["unet_name"] == (
+        r"MiniMax-H3\minimax_h3_fl2va_pruned_bf16.safetensors"
+    )
 
 
 @pytest.mark.asyncio

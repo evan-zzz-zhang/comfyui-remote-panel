@@ -38,8 +38,8 @@ async def test_root_injects_v046_frontend_once(tmp_path, aiohttp_client):
     response = await client.get("/", headers=LOGIN)
     assert response.status == 200
     html = await response.text()
-    fl2va_tag = '<script src="/static/v046_fl2va_ui.js?v=0.4.7.1" defer></script>'
-    runtime_tag = '<script src="/static/v046_job_runtime_ui.js?v=0.4.6.3" defer></script>'
+    fl2va_tag = '<script src="/static/v046_fl2va_ui.js?v=0.4.8.1" defer></script>'
+    runtime_tag = '<script src="/static/v046_job_runtime_ui.js?v=0.4.8.1" defer></script>'
     assert html.count(fl2va_tag) == 1
     assert html.count(runtime_tag) == 1
     assert html.index("v045_ollama_ui.js") < html.index("v046_fl2va_ui.js")
@@ -75,6 +75,12 @@ def test_inference_profile_uses_a_select_only_selector_and_hides_all_physical_as
     assert 'function removeInferenceProfileSelector()' in JS
     assert 'removeInferenceProfileSelector();' in JS
     assert 'document.querySelector("select[data-v047-inference-profile]")' in JS
+    assert 'const PROFILES = ["int8", "fp16_bf16"]' in JS
+    assert 'option("int8", "pruned_int8")' in JS
+    assert 'option("fp16_bf16", "pruned_bf16")' in JS
+    assert 'option("auto", "自动")' not in JS
+    assert 'label.innerHTML = "<span>主模型</span>"' in JS
+    assert 'return profile === "auto" ? "int8" : profile' in JS
     assert 'const CANONICAL_FL2VA_PRESET_IDS = new Set([' in JS
     for preset_id in (
         "fl2va_original_raw", "fl2va_original_ollama", "fl2va_original_qwen35",
@@ -89,6 +95,7 @@ def test_v046_retry_preserves_explicit_standardizer_mode_after_observer_sync():
     assert 'const existingMode = validMode(select?.value) ? String(select.value).toLowerCase() : null' in JS
     assert 'const mode = preferredMode(candidate ?? existingMode)' in JS
     assert 'later MutationObserver passes must preserve the live selector value' in JS
+    assert 'PROFILES.includes(explicit) ? explicit : PROFILES.includes(live) ? live : ""' in JS
 
 
 def test_v042_patch_does_not_recreate_toggle_after_v046_selector_exists():
@@ -164,9 +171,23 @@ def test_v046_job_runtime_ui_shows_total_generation_time_and_sampling_detail():
 
 
 def test_v046_job_runtime_ui_adds_compact_generation_and_standardizer_tags():
-    assert 'if (job.generation_mode === "lightx2v") tags.push("LightX2V")' in RUNTIME_JS
-    assert 'if (job.generation_mode === "v4_600step") tags.push("v4_600step")' in RUNTIME_JS
-    assert 'if (job.prompt_standardization_mode === "ollama") tags.push("Ollama")' in RUNTIME_JS
-    assert 'if (job.prompt_standardization_mode === "comfyui") tags.push("Qwen3.5 4B")' in RUNTIME_JS
+    assert 'job.generation_mode === "v4step600"' in RUNTIME_JS
+    assert 'if (generationMode === "original") tags.push("原版")' in RUNTIME_JS
+    assert 'if (generationMode === "lightx2v") tags.push("LightX2V")' in RUNTIME_JS
+    assert 'if (generationMode === "v4_600step") tags.push("v4_600step")' in RUNTIME_JS
+    assert 'const backend = job.prompt_backend || (' in RUNTIME_JS
+    assert 'if (backend === "ollama") tags.push("Ollama")' in RUNTIME_JS
+    assert 'if (backend === "qwen35") tags.push("Qwen3.5")' in RUNTIME_JS
     assert 'tag.dataset.v046RuntimeTag = "true"' in RUNTIME_JS
     assert 'appendRuntimeTags(card, job)' in RUNTIME_JS
+
+
+def test_fl2va_profile_availability_uses_canonical_backend_target_and_field_order():
+    assert 'const targetId = `fl2va_${canonicalGeneration}_${backend}`' in JS
+    assert 'state.workflowItems?.get?.(targetId)?.manifest' in JS
+    assert 'function positionFl2vaFields()' in JS
+    for selector in (
+        '[data-v042-mode-field]', '[data-v042-standardizer-field]',
+        '[data-v047-inference-profile-field]', '[data-v045-ollama-model-field]',
+    ):
+        assert selector in JS

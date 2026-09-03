@@ -3,6 +3,8 @@
   const STORAGE_KEY = "comfy-remote.fl2va.prompt-standardization-mode";
   const DEFAULT_MODE = "ollama";
   const DEFAULT_ASPECT = "9:16";
+  const DEFAULT_PROFILE = "int8";
+  const PROFILES = ["int8", "fp16_bf16"];
   const STANDARDIZATION_MODES = new Set(["raw", "ollama", "qwen35", "off", "comfyui"]);
   const QWEN_PRESETS = {
     original: "fl2va_original_qwen35",
@@ -254,33 +256,68 @@
     return values;
   }
 
-  function ensureInferenceProfileSelector() {
+  function visibleProfile(value) {
+    const profile = String(value || "").toLowerCase();
+    return profile === "auto" ? "int8" : profile;
+  }
+
+  function positionFl2vaFields() {
+    if (selectedPreset()?.id !== ENTRY_ID) return;
+    const grid = document.querySelector("#advanced-settings .advanced-grid");
+    const scheduler = grid?.querySelector('select[name="scheduler"]')?.closest("label.field");
+    if (!grid || !scheduler) return;
+    let anchor = scheduler;
+    for (const selector of [
+      "[data-v045-ollama-model-field]",
+      "[data-v047-inference-profile-field]",
+      "[data-v042-standardizer-field]",
+      "[data-v042-mode-field]",
+    ]) {
+      const field = grid.querySelector(selector);
+      if (!field) continue;
+      if (field.nextElementSibling !== anchor) grid.insertBefore(field, anchor);
+      anchor = field;
+    }
+  }
+
+  function ensureInferenceProfileSelector(candidate = null) {
     if (selectedPreset()?.id !== ENTRY_ID) {
       removeInferenceProfileSelector();
       return;
     }
     const grid = document.querySelector("#advanced-settings .advanced-grid");
-    if (!grid || grid.querySelector("[data-v047-inference-profile-field]")) return;
-    const label = document.createElement("label");
-    label.className = "field";
-    label.dataset.v047InferenceProfileField = "true";
-    label.innerHTML = "<span>模型配置</span>";
-    const select = document.createElement("select");
-    select.dataset.v047InferenceProfile = "true";
-    select.append(
-      option("auto", "自动"),
-      option("int8", "INT8"),
-      option("fp16_bf16", "FP16/BF16"),
-    );
-    label.append(select);
-    grid.append(label);
-    select.addEventListener("change", () => {
-      try { window.localStorage.setItem("comfy-remote.fl2va.inference-profile", select.value); } catch (_) {}
-    });
-    try {
-      const remembered = window.localStorage.getItem("comfy-remote.fl2va.inference-profile");
-      if (["auto", "int8", "fp16_bf16"].includes(remembered)) select.value = remembered;
-    } catch (_) {}
+    if (!grid) return;
+    let label = grid.querySelector("[data-v047-inference-profile-field]");
+    let select = label?.querySelector("select[data-v047-inference-profile]");
+    const live = visibleProfile(select?.value);
+    if (!label) {
+      label = document.createElement("label");
+      label.className = "field";
+      label.dataset.v047InferenceProfileField = "true";
+      label.innerHTML = "<span>主模型</span>";
+      select = document.createElement("select");
+      select.dataset.v047InferenceProfile = "true";
+      select.append(
+        option("int8", "pruned_int8"),
+        option("fp16_bf16", "pruned_bf16"),
+      );
+      label.append(select);
+      grid.append(label);
+      select.addEventListener("change", () => {
+        try { window.localStorage.setItem("comfy-remote.fl2va.inference-profile", select.value); } catch (_) {}
+        syncInferenceProfileAvailability(select);
+      });
+    }
+    const explicit = visibleProfile(candidate);
+    let next = PROFILES.includes(explicit) ? explicit : PROFILES.includes(live) ? live : "";
+    if (!next) {
+      try {
+        const stored = visibleProfile(window.localStorage.getItem("comfy-remote.fl2va.inference-profile"));
+        if (PROFILES.includes(stored)) next = stored;
+      } catch (_) {}
+    }
+    select.value = next || DEFAULT_PROFILE;
+    positionFl2vaFields();
     syncInferenceProfileAvailability(select);
   }
 
@@ -292,10 +329,9 @@
     if (!select) return;
     const generation = document.querySelector("[data-v042-generation-mode]")?.value;
     const backend = canonicalMode(document.querySelector("[data-v046-prompt-standardization-mode]")?.value);
-    const qwenId = QWEN_PRESETS[generation];
-    const original = state.workflowItems?.get?.("h3-fl2va")?.manifest;
-    const modeId = original?.generation_modes?.values?.[generation]?.preset_id;
-    const target = state.workflowItems?.get?.(backend === "qwen35" ? qwenId : modeId)?.manifest;
+    const canonicalGeneration = generation === "v4_600step" ? "v4step600" : generation;
+    const targetId = `fl2va_${canonicalGeneration}_${backend}`;
+    const target = state.workflowItems?.get?.(targetId)?.manifest;
     const main = target?.model_profile?.main_model;
     const variants = main?.variants && typeof main.variants === "object" ? main.variants : {};
     const fp16Variant = variants.fp16_bf16;
@@ -307,20 +343,19 @@
         ? (fp16Variant?.reason || "当前内置资产未声明可用的 FP16/BF16 变体")
         : "";
     }
-    if (select.selectedOptions[0]?.disabled) select.value = "auto";
+    if (select.selectedOptions[0]?.disabled) select.value = DEFAULT_PROFILE;
   }
 
   function syncInferenceProfile(candidate = null) {
     const select = document.querySelector("select[data-v047-inference-profile]");
     if (!select) return;
-    if (["auto", "int8", "fp16_bf16"].includes(String(candidate || ""))) {
-      select.value = candidate;
+    const explicit = visibleProfile(candidate);
+    if (PROFILES.includes(explicit)) {
+      select.value = explicit;
       return;
     }
-    try {
-      const remembered = window.localStorage.getItem("comfy-remote.fl2va.inference-profile");
-      if (["auto", "int8", "fp16_bf16"].includes(remembered)) select.value = remembered;
-    } catch (_) {}
+    if (PROFILES.includes(visibleProfile(select.value))) return;
+    select.value = DEFAULT_PROFILE;
   }
 
   function addStandardizationMode(formData) {
@@ -358,8 +393,9 @@
       removePhysicalCreationChoices();
       syncFl2vaAspectValue(explicitAspect, previousAspect, preservePreviousAspect);
       ensureStandardizationSelector(candidate);
-      ensureInferenceProfileSelector();
+      ensureInferenceProfileSelector(overrides?.inference_profile ?? overrides?.values?.inference_profile);
       syncInferenceProfile(overrides?.inference_profile ?? overrides?.values?.inference_profile);
+      positionFl2vaFields();
       syncInferenceProfileAvailability();
     });
     return result;
@@ -377,6 +413,7 @@
     syncFl2vaAspectValue(null, aspect?.value || "", aspect?.dataset.v046AspectExplicit === "true");
     ensureStandardizationSelector();
     ensureInferenceProfileSelector();
+    positionFl2vaFields();
     syncInferenceProfileAvailability();
     return result;
   };
@@ -388,6 +425,7 @@
     syncFl2vaAspectValue(null, aspect?.value || "", aspect?.dataset.v046AspectExplicit === "true");
     ensureStandardizationSelector();
     ensureInferenceProfileSelector();
+    positionFl2vaFields();
     syncInferenceProfileAvailability();
     return result;
   };
@@ -435,6 +473,7 @@
       new MutationObserver(() => queueMicrotask(() => {
         ensureStandardizationSelector();
         ensureInferenceProfileSelector();
+        positionFl2vaFields();
         syncInferenceProfileAvailability();
       }))
         .observe(advancedGrid, { childList: true });
@@ -445,6 +484,7 @@
       syncFl2vaAspectValue(null, aspect?.value || "", aspect?.dataset.v046AspectExplicit === "true");
       ensureStandardizationSelector();
       ensureInferenceProfileSelector();
+      positionFl2vaFields();
       syncInferenceProfileAvailability();
     });
   });

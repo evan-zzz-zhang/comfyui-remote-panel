@@ -2,10 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from comfyui_remote_panel.inference_profile import (
-    InferenceProfileError,
-    resolve_inference_profile,
-)
+from comfyui_remote_panel.inference_profile import resolve_inference_profile
 from comfyui_remote_panel.preset import load_presets
 from comfyui_remote_panel.workflow_registry import (
     CANONICAL_FL2VA_ASSET_IDS,
@@ -59,10 +56,46 @@ def test_auto_profile_resolves_to_current_int8_without_changing_graph():
     )
 
 
-def test_unavailable_explicit_profile_is_rejected_instead_of_falling_back():
+def test_fl2va_bf16_is_declared_for_every_real_unet_loader():
+    presets = load_presets(ROOT / "workflows")
+    for preset_id in CANONICAL_FL2VA_ASSET_IDS:
+        preset = presets[preset_id]
+        assert resolve_inference_profile(preset, "fp16_bf16") == (
+            "fp16_bf16", "fp16_bf16"
+        )
+        dependency = preset.manifest["model_profile"]["main_model"]["variants"][
+            "fp16_bf16"
+        ]["dependencies"][0]
+        assert dependency["category"] == "diffusion_models"
+        assert dependency["name"] == (
+            "MiniMax-H3/minimax_h3_fl2va_pruned_bf16.safetensors"
+        )
+        assert dependency["input"] == "unet_name"
+        assert preset.template[dependency["node"]]["class_type"] == "UNETLoader"
+
+
+def test_fl2va_int8_stays_unchanged_and_bf16_keeps_exact_runtime_selector():
     preset = load_presets(ROOT / "workflows")["fl2va_original_raw"]
-    with pytest.raises(InferenceProfileError, match="当前不可用"):
-        resolve_inference_profile(preset, "fp16_bf16")
+    values = {
+        name: spec.get("default")
+        for name, spec in preset.manifest["parameters"].items()
+    }
+    values.update({"prompt": "A test shot", "seed": "1"})
+    int8 = preset.build_prompt(
+        {**values, "_v047_effective_inference_profile": "int8"}, "int8-job", {}
+    )
+    assert int8["105:6"]["inputs"]["unet_name"] == (
+        r"MiniMax-H3\minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+    )
+
+    runtime_selector = r"MiniMax-H3\minimax_h3_fl2va_pruned_bf16.safetensors"
+    bf16 = preset.build_prompt(
+        {**values, "_v047_effective_inference_profile": "fp16_bf16"},
+        "bf16-job",
+        {},
+        {"105:6": {"unet_name": runtime_selector}},
+    )
+    assert bf16["105:6"]["inputs"]["unet_name"] == runtime_selector
 
 
 def test_declared_variant_changes_the_bound_model_node():

@@ -504,6 +504,7 @@ def install() -> None:
                 "_v047_prompt_backend",
                 "_v047_inference_profile",
                 "_v047_effective_inference_profile",
+                "_v047_variant_model_overrides",
                 "_v048_generation_mode",
                 "_v048_prompt_backend",
                 "_v048_inference_profile",
@@ -566,6 +567,8 @@ def install() -> None:
                 for file in effective_uploads
             }
             variant_model_overrides = fields.get("_v048_variant_model_overrides")
+            if not isinstance(variant_model_overrides, dict):
+                variant_model_overrides = fields.get("_v047_variant_model_overrides")
             prompt = preset.build_prompt(
                 normalized,
                 job_id,

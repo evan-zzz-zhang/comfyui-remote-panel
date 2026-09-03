@@ -425,26 +425,32 @@ def _virtual_metadata(presets: dict[str, Any]) -> dict[str, Any] | None:
     result.update({
         "id": REF2VA_ENTRY_ID,
         "name": "MiniMax H3 Ref2VA",
-        "description": "参考素材视频生成 · original / LightX2V / v4step600",
+        "description": "参考素材视频生成 · 原版 / LightX2V / v4_600step",
         "asset_role": "virtual",
         "available": True,
         "generation_modes": {
             "default": DEFAULT_REF2VA_GENERATION_MODE,
             "values": {
-                "v4step600": {"label": "v4step600", "preset_id": "ref2va_v4step600_raw"},
+                "v4step600": {"label": "v4_600step", "preset_id": "ref2va_v4step600_raw"},
                 "lightx2v": {"label": "LightX2V", "preset_id": "ref2va_lightx2v_raw"},
-                "original": {"label": "original", "preset_id": "ref2va_original_raw"},
+                "original": {"label": "原版", "preset_id": "ref2va_original_raw"},
             },
         },
         "prompt_backends": {
             "default": DEFAULT_REF2VA_PROMPT_BACKEND,
             "values": {
-                "raw": {"label": "Raw"}, "ollama": {"label": "Ollama"},
-                "qwen35": {"label": "Qwen3.5 4B"},
+                "raw": {"label": "原始提示词"}, "ollama": {"label": "Ollama 标准化"},
+                "qwen35": {"label": "Qwen3.5 标准化"},
             },
         },
-        "inference_profiles": ["auto", "int8", "fp16_bf16"],
+        "inference_profiles": ["int8", "fp16_bf16"],
     })
+    parameters = result.get("parameters")
+    if isinstance(parameters, dict):
+        for name, value in (("scheduler", "beta"), ("sampler", "euler"), ("steps", 8)):
+            spec = parameters.get(name)
+            if isinstance(spec, dict):
+                spec["default"] = value
     return result
 
 

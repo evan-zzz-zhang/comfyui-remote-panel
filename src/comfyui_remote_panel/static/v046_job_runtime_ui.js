@@ -34,10 +34,17 @@
 
   function runtimeTags(job) {
     const tags = [];
-    if (job.generation_mode === "lightx2v") tags.push("LightX2V");
-    if (job.generation_mode === "v4_600step") tags.push("v4_600step");
-    if (job.prompt_standardization_mode === "ollama") tags.push("Ollama");
-    if (job.prompt_standardization_mode === "comfyui") tags.push("Qwen3.5 4B");
+    const generationMode = job.generation_mode === "v4step600"
+      ? "v4_600step"
+      : job.generation_mode;
+    const backend = job.prompt_backend || ({
+      off: "raw", ollama: "ollama", comfyui: "qwen35",
+    }[job.prompt_standardization_mode]);
+    if (generationMode === "original") tags.push("原版");
+    if (generationMode === "lightx2v") tags.push("LightX2V");
+    if (generationMode === "v4_600step") tags.push("v4_600step");
+    if (backend === "ollama") tags.push("Ollama");
+    if (backend === "qwen35") tags.push("Qwen3.5");
     return tags;
   }
 

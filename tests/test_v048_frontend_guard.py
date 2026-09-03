@@ -37,13 +37,44 @@ def test_ref2va_dom_fields_are_removed_when_leaving_virtual_entry():
 
 
 def test_ref2va_explicit_retry_mode_precedes_local_storage_and_recreates_fields():
-    assert 'const next = valid(explicit, values) ? String(explicit).toLowerCase() : remembered(storageKey, values, fallback);' in JS
+    assert "const normalizedExplicit = normalize(explicit);" in JS
+    assert "valid(normalizedExplicit, values)" in JS
+    assert "valid(live, values)" in JS
+    assert ": remembered(storageKey, values, fallback);" in JS
     assert 'ensureRef2vaFields(overrides);' in JS
     assert 'applyPreset = function(presetId, overrides = {})' in JS
     assert 'selectedPreset()?.id === ENTRY_ID' in JS
     assert 'const STORAGE_MODE = "comfy-remote.ref2va.generation-mode"' in JS
     assert 'const STORAGE_BACKEND = "comfy-remote.ref2va.prompt-backend"' in JS
     assert 'const STORAGE_PROFILE = "comfy-remote.ref2va.inference-profile"' in JS
+
+
+def test_ref2va_uses_consistent_chinese_labels_two_model_choices_and_field_order():
+    assert '"生成模式"' in JS
+    assert '["v4_600step", "LightX2V", "原版"]' in JS
+    assert '"标准化提示词"' in JS
+    assert '["原始提示词", "Ollama 标准化", "Qwen3.5 标准化"]' in JS
+    assert '"主模型"' in JS
+    assert 'const PROFILES = ["int8", "fp16_bf16"]' in JS
+    assert '["pruned_int8", "pruned_bf16"]' in JS
+    assert 'const DEFAULT_PROFILE = "int8"' in JS
+    assert 'return profile === "auto" ? "int8" : profile' in JS
+    assert 'for (const key of ["inference-profile", "prompt-backend", "generation-mode"])' in JS
+    assert 'if (field.nextElementSibling !== anchor) grid.insertBefore(field, anchor)' in JS
+    for stale in ('"Generation Mode"', '"Prompt Backend"', '"Model Configuration"'):
+        assert stale not in JS
+
+
+def test_ref2va_mode_defaults_and_retry_tuning_priority_are_explicit():
+    for contract in (
+        'original: { scheduler: "simple", sampler: "res_multistep", steps: 20 }',
+        'lightx2v: { scheduler: "simple", sampler: "euler", steps: 4 }',
+        'v4step600: { scheduler: "beta", sampler: "euler", steps: 8 }',
+    ):
+        assert contract in JS
+    assert 'const hasExplicitTuning = ["scheduler", "sampler", "steps"].some(' in JS
+    assert 'presetId === ENTRY_ID && !hasExplicitTuning' in JS
+    assert 'applyModeDefaults(mode.value);' in JS
 
 
 def test_ci_checks_v048_frontend_syntax_in_addition_to_existing_checks():

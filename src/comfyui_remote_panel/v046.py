@@ -527,6 +527,7 @@ def _install_job_service() -> None:
             "_v047_prompt_backend",
             "_v047_inference_profile",
             "_v047_effective_inference_profile",
+            "_v047_variant_model_overrides",
         ):
             values.pop(key, None)
         result["input_values"] = values

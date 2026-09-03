@@ -5,10 +5,15 @@
   const STORAGE_PROFILE = "comfy-remote.ref2va.inference-profile";
   const DEFAULT_MODE = "v4step600";
   const DEFAULT_BACKEND = "raw";
-  const DEFAULT_PROFILE = "auto";
+  const DEFAULT_PROFILE = "int8";
   const MODES = ["v4step600", "lightx2v", "original"];
   const BACKENDS = ["raw", "ollama", "qwen35"];
-  const PROFILES = ["auto", "int8", "fp16_bf16"];
+  const PROFILES = ["int8", "fp16_bf16"];
+  const MODE_TUNING = {
+    original: { scheduler: "simple", sampler: "res_multistep", steps: 20 },
+    lightx2v: { scheduler: "simple", sampler: "euler", steps: 4 },
+    v4step600: { scheduler: "beta", sampler: "euler", steps: 8 },
+  };
   const PHYSICAL = new Set([
     "h3-ref2va", "h3-ref2va-lightx2v", "h3-ref2va-v4step600",
     "ref2va_original_raw", "ref2va_original_ollama", "ref2va_original_qwen35",
@@ -49,6 +54,24 @@
     const values = overridesValues(overrides);
     return overrides?.[key] ?? values[key] ?? fallback;
   }
+  function mergedOverrides(overrides) {
+    return { ...overrides, ...overridesValues(overrides) };
+  }
+  function canonicalMode(value) {
+    const mode = String(value || "").toLowerCase();
+    return mode === "v4_600step" ? "v4step600" : mode;
+  }
+  function visibleProfile(value) {
+    const profile = String(value || "").toLowerCase();
+    return profile === "auto" ? "int8" : profile;
+  }
+  function preferredMode(value) {
+    const explicit = canonicalMode(value);
+    if (valid(explicit, MODES)) return explicit;
+    const live = canonicalMode(document.querySelector("select[data-v048-ref2va-generation-mode]")?.value);
+    if (valid(live, MODES)) return live;
+    return remembered(STORAGE_MODE, MODES, DEFAULT_MODE);
+  }
   function removePhysicalCreationChoices() {
     document.querySelectorAll("#preset-select option").forEach(item => {
       if (PHYSICAL.has(item.value)) item.remove();
@@ -57,9 +80,10 @@
       if (PHYSICAL.has(item.dataset.pickWorkflow)) item.remove();
     });
   }
-  function ensureField(grid, key, labelText, values, labels, storageKey, fallback, explicit) {
+  function ensureField(grid, key, labelText, values, labels, storageKey, fallback, explicit, normalize = value => String(value || "").toLowerCase()) {
     let field = grid.querySelector(`[data-v048-ref2va-${key}-field]`);
     let select = field?.querySelector("select");
+    const live = normalize(select?.value);
     if (!field) {
       field = document.createElement("label");
       field.className = "field";
@@ -75,9 +99,35 @@
         updateSubmitAvailability();
       });
     }
-    const next = valid(explicit, values) ? String(explicit).toLowerCase() : remembered(storageKey, values, fallback);
+    const normalizedExplicit = normalize(explicit);
+    const next = valid(normalizedExplicit, values)
+      ? normalizedExplicit
+      : valid(live, values)
+        ? live
+        : remembered(storageKey, values, fallback);
     select.value = next;
     return select;
+  }
+  function positionRef2vaFields(grid) {
+    const scheduler = grid.querySelector('select[name="scheduler"]')?.closest("label.field");
+    if (!scheduler) return;
+    let anchor = scheduler;
+    for (const key of ["inference-profile", "prompt-backend", "generation-mode"]) {
+      const field = grid.querySelector(`[data-v048-ref2va-${key}-field]`);
+      if (!field) continue;
+      if (field.nextElementSibling !== anchor) grid.insertBefore(field, anchor);
+      anchor = field;
+    }
+  }
+  function applyModeDefaults(mode) {
+    const defaults = MODE_TUNING[canonicalMode(mode)];
+    if (!defaults) return;
+    const scheduler = document.querySelector('select[name="scheduler"]');
+    const sampler = document.querySelector('select[name="sampler"]');
+    const steps = document.querySelector('input[name="steps"]');
+    if (scheduler) scheduler.value = defaults.scheduler;
+    if (sampler) sampler.value = defaults.sampler;
+    if (steps) steps.value = String(defaults.steps);
   }
   function ensureRef2vaFields(overrides = {}) {
     if (!selectedRef2va()) {
@@ -86,18 +136,25 @@
     }
     const grid = document.querySelector("#advanced-settings .advanced-grid");
     if (!grid) return;
-    const mode = ensureField(grid, "generation-mode", "Generation Mode", MODES,
-      ["v4step600", "LightX2V", "original"], STORAGE_MODE, DEFAULT_MODE,
-      candidate(overrides, "generation_mode", null));
-    const backend = ensureField(grid, "prompt-backend", "Prompt Backend", BACKENDS,
-      ["Raw", "Ollama", "Qwen3.5 4B"], STORAGE_BACKEND, DEFAULT_BACKEND,
+    const mode = ensureField(grid, "generation-mode", "生成模式", MODES,
+      ["v4_600step", "LightX2V", "原版"], STORAGE_MODE, DEFAULT_MODE,
+      candidate(overrides, "generation_mode", null), canonicalMode);
+    const backend = ensureField(grid, "prompt-backend", "标准化提示词", BACKENDS,
+      ["原始提示词", "Ollama 标准化", "Qwen3.5 标准化"], STORAGE_BACKEND, DEFAULT_BACKEND,
       candidate(overrides, "prompt_backend", null));
-    const profile = ensureField(grid, "inference-profile", "Model Configuration", PROFILES,
-      ["Auto", "INT8", "FP16/BF16"], STORAGE_PROFILE, DEFAULT_PROFILE,
-      candidate(overrides, "inference_profile", null));
+    const profile = ensureField(grid, "inference-profile", "主模型", PROFILES,
+      ["pruned_int8", "pruned_bf16"], STORAGE_PROFILE, DEFAULT_PROFILE,
+      candidate(overrides, "inference_profile", null), visibleProfile);
     mode.dataset.v048Ref2vaGenerationMode = "true";
     backend.dataset.v048Ref2vaPromptBackend = "true";
     profile.dataset.v048Ref2vaInferenceProfile = "true";
+    mode.onchange = () => {
+      if (!valid(mode.value, MODES)) return;
+      remember(STORAGE_MODE, mode.value);
+      applyModeDefaults(mode.value);
+      updateSubmitAvailability();
+    };
+    positionRef2vaFields(grid);
     updateSubmitAvailability();
   }
   function removeRef2vaFields() {
@@ -177,7 +234,15 @@
   }
 
   applyPreset = function(presetId, overrides = {}) {
-    const result = baseApply(presetId, overrides);
+    const merged = mergedOverrides(overrides);
+    const mode = preferredMode(merged.generation_mode);
+    const hasExplicitTuning = ["scheduler", "sampler", "steps"].some(
+      key => merged[key] !== undefined && merged[key] !== null && merged[key] !== ""
+    );
+    const nextOverrides = presetId === ENTRY_ID && !hasExplicitTuning
+      ? { ...overrides, ...MODE_TUNING[mode] }
+      : overrides;
+    const result = baseApply(presetId, nextOverrides);
     queueMicrotask(() => {
       removePhysicalCreationChoices();
       ensureRef2vaFields(overrides);

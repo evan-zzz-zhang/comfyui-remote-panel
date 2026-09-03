@@ -138,7 +138,7 @@
       const policy = seedControlValue(preset, overrides);
       const policyLabel = document.createElement("label");
       policyLabel.className = "field v04-control v04-seed-policy";
-      policyLabel.innerHTML = `<span>Seed 策略</span><select data-v04-seed-policy>
+      policyLabel.innerHTML = `<span>种子策略</span><select data-v04-seed-policy>
         <option value="randomize">随机</option>
         <option value="fixed">固定</option>
         <option value="increment">递增</option>

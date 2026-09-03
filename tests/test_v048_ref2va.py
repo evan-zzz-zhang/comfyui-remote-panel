@@ -16,7 +16,7 @@ from comfyui_remote_panel.workflow_registry import (
     ref2va_asset_key,
     resolve_ref2va_asset,
 )
-from comfyui_remote_panel.v048_ref2va import _canonical_key
+from comfyui_remote_panel.v048_ref2va import _canonical_key, _virtual_metadata
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -131,6 +131,24 @@ def test_ref2va_generation_modes_keep_their_legacy_sampling_contract():
     for mode, sampling in expected.items():
         normalized = presets[f"ref2va_{mode}_raw"].validate_parameters(values())
         assert (normalized["scheduler"], normalized["sampler"], normalized["steps"]) == sampling
+
+
+def test_ref2va_virtual_entry_defaults_and_labels_match_v4step600_contract():
+    metadata = _virtual_metadata(load_presets(ROOT / "workflows"))
+    assert metadata is not None
+    assert metadata["name"] == "MiniMax H3 Ref2VA"
+    assert metadata["generation_modes"]["default"] == "v4step600"
+    assert metadata["generation_modes"]["values"]["original"]["label"] == "原版"
+    assert metadata["generation_modes"]["values"]["v4step600"]["label"] == "v4_600step"
+    assert metadata["prompt_backends"]["values"] == {
+        "raw": {"label": "原始提示词"},
+        "ollama": {"label": "Ollama 标准化"},
+        "qwen35": {"label": "Qwen3.5 标准化"},
+    }
+    assert metadata["inference_profiles"] == ["int8", "fp16_bf16"]
+    assert metadata["parameters"]["scheduler"]["default"] == "beta"
+    assert metadata["parameters"]["sampler"]["default"] == "euler"
+    assert metadata["parameters"]["steps"]["default"] == 8
 
 
 def test_ref2va_collection_media_is_preserved_for_prompt_backends():
@@ -329,8 +347,16 @@ async def test_new_canonical_ref2va_retry_restores_virtual_routing_and_media(
         "generation_mode": "lightx2v",
         "prompt_backend": "raw",
         "inference_profile": "int8",
+        "seed_policy": "fixed",
+        "media_resolution": {
+            "image_0": {"policy": "auto", "target_megapixels": 0.5},
+        },
     }))
     form.add_field("prompt", "retry canonical")
+    form.add_field("scheduler", "simple")
+    form.add_field("sampler", "euler")
+    form.add_field("steps", "4")
+    form.add_field("seed", "314159")
     form.add_field("ref_images", image_data.getvalue(), filename="reference.png", content_type="image/png")
     response = await panel_client_v048.post("/api/jobs", data=form, headers=LOGIN)
     assert response.status == 201, await response.text()
@@ -344,6 +370,14 @@ async def test_new_canonical_ref2va_retry_restores_virtual_routing_and_media(
     assert draft["generation_mode"] == "lightx2v"
     assert draft["prompt_backend"] == "raw"
     assert draft["inference_profile"] == "int8"
+    assert draft["scheduler"] == "simple"
+    assert draft["sampler"] == "euler"
+    assert draft["steps"] == 4
+    assert draft["seed"] == "314159"
+    assert draft["seed_policy"] == "fixed"
+    assert draft["media_resolution"]["image_0"] == {
+        "policy": "auto", "target_megapixels": 0.5,
+    }
     assert draft["retained_media"]
     assert draft["retained_media"][0]["role"] == "image_0"
 

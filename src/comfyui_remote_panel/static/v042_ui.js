@@ -221,9 +221,10 @@
   }
 
   function modeOptions(mode) {
+    const labels = { original: "原版", lightx2v: "LightX2V", v4_600step: "v4_600step" };
     return enabledModes().map(id => {
       const item = modeDefinitions()[id];
-      return `<option value="${escapeHtml(id)}"${id === mode ? " selected" : ""}>${escapeHtml(item?.label || id)}</option>`;
+      return `<option value="${escapeHtml(id)}"${id === mode ? " selected" : ""}>${escapeHtml(labels[id] || item?.label || id)}</option>`;
     }).join("");
   }
 

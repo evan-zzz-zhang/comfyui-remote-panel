@@ -116,6 +116,7 @@ class JobService:
                 "_v047_prompt_backend",
                 "_v047_inference_profile",
                 "_v047_effective_inference_profile",
+                "_v047_variant_model_overrides",
                 "_v048_generation_mode",
                 "_v048_prompt_backend",
                 "_v048_inference_profile",

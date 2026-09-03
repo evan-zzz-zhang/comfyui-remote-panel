@@ -159,7 +159,7 @@ async def test_root_loads_v042_scripts_after_existing_frontend_layers(tmp_path, 
     response = await client.get("/", headers={"Tailscale-User-Login": "owner@example.com"})
     assert response.status == 200
     html = await response.text()
-    ui_tag = '<script src="/static/v042_ui.js?v=0.4.5.0" defer></script>'
+    ui_tag = '<script src="/static/v042_ui.js?v=0.4.8.1" defer></script>'
     patch_tag = '<script src="/static/v042_patch.js?v=0.4.2.4" defer></script>'
     assert html.count(ui_tag) == 1
     assert html.count(patch_tag) == 1
