@@ -266,8 +266,7 @@
     "127": "加载模型",
     "128": "加载模型",
     "130": "合成视频",
-    "136": "构建参考条件",
-    "152": "标准化提示词"
+    "136": "标准化提示词"
   },
   "progress_phase": {
     "92": "save",
@@ -279,8 +278,7 @@
     "127": "build",
     "128": "build",
     "130": "compose",
-    "136": "build",
-    "152": "standardize"
+    "136": "standardize"
   },
   "generation_mode": "original",
   "prompt_backend": "ollama",

@@ -289,10 +289,9 @@
     "127": "加载模型",
     "128": "加载模型",
     "130": "合成视频",
-    "136": "构建参考条件",
+    "136": "标准化提示词",
     "145": "应用 Turbo LoRA",
-    "147": "准备采样",
-    "152": "标准化提示词"
+    "147": "准备采样"
   },
   "progress_phase": {
     "92": "save",
@@ -304,8 +303,7 @@
     "127": "build",
     "128": "build",
     "130": "compose",
-    "136": "build",
-    "152": "standardize"
+    "136": "standardize"
   },
   "generation_mode": "lightx2v",
   "prompt_backend": "ollama",

@@ -154,10 +154,21 @@ def test_ref2va_ollama_uses_native_reference_conditioning_contract(mode):
     assert graph["136"]["inputs"]["ollama_model"] == "gemma4:e4b"
     assert graph["136"]["inputs"]["ref_images.ref_image_0"] == ["9100", 0]
     assert graph["136"]["inputs"]["creative_brief"] == ["138", 0]
+    assert graph["136"]["inputs"]["duration_seconds"] == ["132", 0]
+    assert "length" not in graph["136"]["inputs"]
     assert graph["136"]["inputs"]["prompt_seed"] == 42
     assert graph["136"]["inputs"]["unload_after"] is True
     assert graph["153"]["inputs"]["source"] == ["136", 5]
     assert "H3PromptStandardizer" not in {node["class_type"] for node in graph.values()}
+
+
+@pytest.mark.parametrize("mode", ["original", "lightx2v", "v4step600"])
+def test_ref2va_ollama_progress_metadata_tracks_native_standardizer(mode):
+    manifest = load_presets(ROOT / "workflows")[f"ref2va_{mode}_ollama"].manifest
+    assert "152" not in manifest["stages"]
+    assert "152" not in manifest["progress_phase"]
+    assert manifest["stages"]["136"] == "标准化提示词"
+    assert manifest["progress_phase"]["136"] == "standardize"
 
 
 def test_ref2va_representative_visual_prefers_image_then_video_first_frame():
