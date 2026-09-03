@@ -27,6 +27,7 @@ jobs:
       - run: node --check src/comfyui_remote_panel/static/configurator_v2_runtime.js
       - run: node tests/frontend_contract_smoke.js
       - run: node --check src/comfyui_remote_panel/static/v04_ui.js
+      - run: node --check src/comfyui_remote_panel/static/h3_advanced_controller.js
       - run: node --check src/comfyui_remote_panel/static/v041_ui.js
       - run: node --check src/comfyui_remote_panel/static/v042_ui.js
       - run: node --check src/comfyui_remote_panel/static/v042_patch.js

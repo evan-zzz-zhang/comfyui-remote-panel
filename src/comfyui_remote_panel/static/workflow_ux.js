@@ -240,6 +240,7 @@
     } else {
       renderGenericForm(preset, overrides);
     }
+    if (h3) window.syncH3CreationUI?.(preset, overrides);
     updateSettingsSummary();
   }
 

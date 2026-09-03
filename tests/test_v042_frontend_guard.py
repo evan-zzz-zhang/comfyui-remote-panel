@@ -1,173 +1,68 @@
-from __future__ import annotations
-
 from pathlib import Path
-
-import pytest
-
-from comfyui_remote_panel.app import create_app
-from comfyui_remote_panel.config import Config
-
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "src" / "comfyui_remote_panel" / "static"
 JS = (STATIC / "v042_ui.js").read_text(encoding="utf-8")
+CONTROLLER = (STATIC / "h3_advanced_controller.js").read_text(encoding="utf-8")
 PATCH = (STATIC / "v042_patch.js").read_text(encoding="utf-8")
 INDEX = (STATIC / "index.html").read_text(encoding="utf-8")
 
 
-def _config(tmp_path: Path) -> Config:
-    return Config(
-        host="127.0.0.1",
-        port=8190,
-        public_origin="https://device.example.ts.net",
-        allowed_logins=("owner@example.com",),
-        comfyui_base_url="http://127.0.0.1:1",
-        comfyui_input_dir=tmp_path / "comfy-input",
-        comfyui_output_dir=tmp_path / "comfy-output",
-        minimum_comfyui_version="0.0.0",
-        data_dir=tmp_path / "data",
-        workflow_dir=ROOT / "workflows",
-        monitoring_interval=60,
-        nvidia_smi_timeout=.1,
-    )
-
-
-def test_fl2va_mode_ui_stays_inside_existing_advanced_settings():
-    assert '#advanced-settings' in JS
-    assert '.advanced-grid' in JS
-    assert '生成模式' in JS
-    assert '使用 H3 提示词标准化' in JS
-    assert 'Ollama 标准化模型' in JS
-    assert 'prompt-field' not in JS
-    assert 'settings-close' not in JS
-    assert 'v042_ui.js' not in INDEX
-
-
-def test_generation_mode_defaults_to_v4_and_uses_local_storage():
+def test_fl2va_compatibility_wrapper_does_not_own_advanced_dom():
     assert 'const ENTRY_ID = "h3-fl2va-group"' in JS
     assert 'const DEFAULT_MODE = "v4_600step"' in JS
     assert 'comfy-remote.fl2va.generation-mode' in JS
-    assert 'window.localStorage.getItem(MODE_STORAGE_KEY)' in JS
-    assert 'window.localStorage.setItem(MODE_STORAGE_KEY, mode)' in JS
-    assert 'loadPresets = async function()' in JS
-    assert 'applyPreset(ENTRY_ID)' in JS
+    assert 'applyPreset = function(presetId, overrides = {})' in JS
+    for stale in ("ensureControls", "removeControls", "installToggleStyle", "data-v042-mode-field", "data-v042-standardizer-field"):
+        assert stale not in JS
 
 
-def test_fl2va_virtual_entry_name_does_not_inherit_physical_workflow_name():
-    assert 'name: "MiniMax H3 FL2VA"' in JS
-    assert 'name: originalItem?.name || source?.name' not in JS
+def test_shared_controller_is_the_single_h3_advanced_owner():
+    assert 'h3_advanced_controller.js' in INDEX
+    assert 'const ORDER = [' in CONTROLLER
+    for role in ("generation-mode", "prompt-backend", "main-model", "ollama-model", "scheduler", "sampler", "steps", "seed-policy", "seed-value", "reference-resolution"):
+        assert f'"{role}"' in CONTROLLER
+    assert 'window.ComfyRemoteH3AdvancedSettings = {' in CONTROLLER
+    assert 'registerAdapter: register' in CONTROLLER
+    assert 'window.syncH3CreationUI = syncH3CreationUI' in CONTROLLER
+    assert 'getState,' in CONTROLLER
 
 
-def test_ollama_model_uses_existing_advanced_grid_and_remembered_preference():
-    assert 'const DEFAULT_OLLAMA_MODEL = "gemma4:e4b"' in JS
-    assert 'comfy-remote.fl2va.ollama-model' in JS
-    assert 'data-v045-ollama-model-field' in JS
-    assert 'data-v045-ollama-model' in JS
-    assert 'standardizerField.insertAdjacentElement("afterend", ollamaField)' in JS
-    assert 'input.disabled = checkbox?.checked === false' in JS
-    assert 'window.localStorage.getItem(OLLAMA_STORAGE_KEY)' in JS
-    assert 'window.localStorage.setItem(OLLAMA_STORAGE_KEY, model)' in JS
+def test_fl2va_mode_tuning_and_backend_routing_remain_explicit():
+    fl2va = (STATIC / "v046_fl2va_ui.js").read_text(encoding="utf-8")
+    for contract in (
+        'original: { scheduler: "simple", sampler: "res_multistep", steps: 20 }',
+        'lightx2v: { scheduler: "simple", sampler: "euler", steps: 8 }',
+        'v4_600step: { scheduler: "beta", sampler: "euler", steps: 8 }',
+    ):
+        assert contract in fl2va
+    assert 'values.prompt_standardization_mode = backend === "raw" ? "off" : backend === "qwen35" ? "comfyui" : "ollama"' in fl2va
     assert 'values.ollama_model = ollamaModel' in JS
-    assert 'preferredOllamaModel(merged.ollama_model, mode)' in JS
 
 
-def test_lightx2v_has_deterministic_mode_defaults():
-    assert 'lightx2v: { scheduler: "simple", sampler: "euler", steps: 8 }' in JS
-    assert 'v4_600step: { scheduler: "beta", sampler: "euler", steps: 8 }' in JS
-    assert 'original: { scheduler: "simple", sampler: "res_multistep", steps: 20 }' in JS
-    assert 'applyModeDefaults(next)' in JS
-
-
-def test_prompt_requirement_tracks_standardizer_and_frame_presence():
-    assert 'const hasFrame = ["#first-frame", "#last-frame"].some' in JS
-    assert 'prompt.required = Boolean(toggle?.checked) || !hasFrame' in JS
-
-
-def test_standardizer_patch_hides_native_checkbox_and_uses_existing_toggle_button():
-    assert '[data-v042-standardizer-field] .v042-switch { display: none !important; }' in PATCH
-    assert 'button.className = "toggle-button"' in PATCH
-    assert 'button.classList.toggle("on", enabled)' in PATCH
-    assert 'button.setAttribute("aria-checked", enabled ? "true" : "false")' in PATCH
-    assert 'checkbox.checked = !checkbox.checked' in PATCH
-
-
-def test_standardized_prompt_is_only_added_to_task_details():
+def test_standardized_prompt_patch_only_keeps_task_detail_behavior():
     assert 'job?.standardized_prompt' in PATCH
-    assert '标准化提示词' in PATCH
     assert 'addStandardizedPromptToTaskDetails' in PATCH
     assert 'data-task-details' in PATCH
-    assert 'row.dataset.v042StandardizedPromptRow = "true"' in PATCH
-    assert 'jobCard = function(job)' not in PATCH
-    assert 'baseJobCardV042Patch' not in PATCH
+    assert 'new MutationObserver' not in PATCH
+    assert 'data-v042-standardizer-field' not in PATCH
 
 
-def test_standardized_prompt_is_kept_adjacent_to_original_prompt_row():
-    assert 'const PROMPT_ROW_LABELS = new Set(["提示词", "正面提示词", "prompt", "positive_prompt"])' in PATCH
-    assert 'function findPromptRow(list)' in PATCH
-    assert 'function positionStandardizedPromptRow(body)' in PATCH
-    assert 'promptRow.insertAdjacentElement("afterend", row)' in PATCH
-    assert 'queueMicrotask(() => positionStandardizedPromptRow(body))' in PATCH
-    assert 'window.requestAnimationFrame(() => positionStandardizedPromptRow(body))' in PATCH
+def test_v042_keeps_physical_workflow_compatibility_without_advanced_observer():
+    assert 'function hidePhysicalWorkflowChoices()' in JS
+    assert 'physicalPresetIds()' in JS
+    assert '.observe(sheet, { childList: true })' in JS
+    assert '.observe(advanced' not in JS
 
 
-def test_retry_resyncs_compact_generation_settings_after_final_values_are_restored():
-    assert 'function syncGenerationSettingsSummary()' in PATCH
-    assert '#settings-chips' in PATCH
-    assert 'select[name="aspect_ratio"]' in PATCH
-    assert 'input[name="duration_seconds"]' in PATCH
-    assert '#megapixels-value' in PATCH
-    assert '/^\\/api\\/jobs\\/[^/]+\\/retry$/' in PATCH
-    assert 'window.setTimeout(syncGenerationSettingsSummary, 0)' in PATCH
-
-
-def test_fl2va_values_json_is_merged_and_deduplicated_before_upload():
-    assert 'formData.getAll("values_json")' in JS
-    assert 'formData.delete("values_json")' in JS
-    assert 'formData.set("values_json", JSON.stringify(values))' in JS
+def test_retry_and_upload_paths_use_shared_state():
+    assert 'const ui = window.ComfyRemoteH3AdvancedSettings?.getState?.() || {}' in JS
     assert 'values.generation_mode = mode' in JS
     assert 'values.prompt_standardization = standardize' in JS
-    assert 'values.ollama_model = ollamaModel' in JS
-    assert 'values.media_resolution = mediaResolution' in JS
-    assert 'dedupeScalarFields(formData)' in JS
+    assert 'formData.set("values_json", JSON.stringify(values))' in JS
 
 
-def test_physical_fl2va_presets_are_hidden_from_creation_picker_but_keep_mode_status():
-    assert 'const ENTRY_ID = "h3-fl2va-group"' in JS
-    assert 'function physicalPresetIds()' in JS
-    assert 'function hidePhysicalWorkflowChoices()' in JS
-    assert 'button.remove()' in JS
-    assert 'function modeEnabled(mode)' in JS
-    assert 'item.status === "enabled"' in JS
-    assert 'new MutationObserver(() => queueMicrotask(hidePhysicalWorkflowChoices))' in JS
-    for preset_id in (
-        "fl2va_original_raw", "fl2va_original_ollama", "fl2va_original_qwen35",
-        "fl2va_v4step600_raw", "fl2va_v4step600_ollama", "fl2va_v4step600_qwen35",
-        "fl2va_lightx2v_raw", "fl2va_lightx2v_ollama", "fl2va_lightx2v_qwen35",
-    ):
-        assert f'"{preset_id}"' in JS
-
-
-def test_fl2va_mode_targets_use_workflow_items_when_presets_hide_physical_assets():
-    assert 'function targetWorkflowItem(mode)' in JS
-    assert 'state.workflowItems?.get?.(definition.preset_id)' in JS
-    assert 'return item ? state.presets.get(item.id) || item.manifest || null : null' in JS
-    assert 'function targetAvailable(mode)' in JS
-    assert 'item.status !== "enabled"' in JS
-    assert 'state.metrics?.presets?.[item.id]?.available === true' in JS
-    assert 'return state.presets.get(definition.preset_id)' not in JS
-    assert 'const available = Boolean(mode && modeEnabled(mode) && targetAvailable(mode))' in JS
-
-
-@pytest.mark.asyncio
-async def test_root_loads_v042_scripts_after_existing_frontend_layers(tmp_path, aiohttp_client):
-    client = await aiohttp_client(create_app(_config(tmp_path)))
-    response = await client.get("/", headers={"Tailscale-User-Login": "owner@example.com"})
-    assert response.status == 200
-    html = await response.text()
-    ui_tag = '<script src="/static/v042_ui.js?v=0.4.8.2" defer></script>'
-    patch_tag = '<script src="/static/v042_patch.js?v=0.4.2.4" defer></script>'
-    assert html.count(ui_tag) == 1
-    assert html.count(patch_tag) == 1
-    assert html.index(ui_tag) < html.index(patch_tag)
-    assert '<script src="/static/v041_ui.js?v=0.4.1" defer></script>' in html
-    assert '<label class="creation-section prompt-field">' in html
+def test_ci_runs_production_flow_and_controller_syntax_checks():
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "node --check src/comfyui_remote_panel/static/h3_advanced_controller.js" in ci
+    assert "node tests/frontend_contract_smoke.js" in ci

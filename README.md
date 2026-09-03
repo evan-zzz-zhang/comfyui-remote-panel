@@ -10,7 +10,7 @@
 
 Comfy Remote is a mobile-first remote creation panel for ComfyUI. It runs on the Windows computer that hosts ComfyUI and turns locally verified **ComfyUI API Workflows** into a phone-friendly interface for selecting workflows, adding media, editing prompts, submitting jobs, and reviewing results.
 
-The current v0.4.8 baseline builds on the accepted v0.4.7 FL2VA family with one Ref2VA creation entry, three generation modes, three prompt backends, Auto/INT8/FP16-BF16 profile routing, representative-image prompt standardization, and legacy workflow compatibility. It still avoids silently rewriting arbitrary workflows or exposing ComfyUI directly to the network. Real GPU acceptance for the new Ref2VA routes remains pending.
+The current v0.4.8 baseline builds on the accepted v0.4.7 FL2VA family with one Ref2VA creation entry, three generation modes, Raw/Ollama/Qwen3.5 prompt backends, INT8/FP16-BF16 profile routing, representative-image prompt standardization, and legacy workflow compatibility. It still avoids silently rewriting arbitrary workflows or exposing ComfyUI directly to the network. Real GPU acceptance for the new Ref2VA routes remains pending.
 
 ## What it does
 
@@ -24,7 +24,7 @@ The current v0.4.8 baseline builds on the accepted v0.4.7 FL2VA family with one 
 - Reconciles Jobs that have registered output artifacts with those managed local files. If an output is deleted or moved away, its stale artifact reference is removed; once all registered outputs for that Job are gone, the Job is removed from history. Jobs that never registered an output are not deleted merely for having no result file.
 - Provides `randomize / fixed / increment` Seed Policy and reference-image resolution preprocessing while keeping Generic controls bound to real Workflow inputs.
 - Groups the bundled H3 FL2VA workflows behind one creation entry with `v4_600step`, `LightX2V`, and `original` generation modes while keeping the underlying physical workflow enable/disable state authoritative.
-- H3 FL2VA prompt standardization is a three-state Advanced Setting: `Off`, `Ollama`, or `ComfyUI`. Ollama keeps the configurable model selector (default `gemma4:e4b`); ComfyUI routes to bundled Qwen3.5 4B workflows. Retry restores the backend actually used, and standardized prompts are stored in the same Job detail field for both backends.
+- H3 FL2VA and Ref2VA share one Advanced Settings contract: Raw prompt, Ollama, or Qwen3.5 standardization; INT8 or FP16-BF16 main model; and randomize, fixed, or increment Seed Policy. The Ollama model selector is shown only for Ollama (default `gemma4:e4b`); Qwen3.5 routes to bundled workflows. Retry restores the backend actually used, and standardized prompts are stored in the same Job detail field for both families.
 - Separates queue wait, prompt-standardization time, H3 sampling time, and total execution time where available, and shows compact `LightX2V`, `v4_600step`, `Ollama`, and `Qwen3.5 4B` task tags only when meaningful.
 - Hardens task reconciliation so incomplete ComfyUI history is not treated as failure and explicit `execution_success` remains success evidence even when final history persistence is slightly delayed.
 - Provides guarded Recovery Lite controls. A verified unmanaged ComfyUI listener can be force-stopped when the Panel no longer has a valid process record, without broad `python.exe` killing.
@@ -142,7 +142,7 @@ See [SECURITY.md](SECURITY.md) for details.
 - **Recovery remains manual, not a full watchdog.** The Panel can identify verified managed/unmanaged ComfyUI process states and offer guarded recovery controls, but it does not automatically restart crash loops, recover GPU/driver faults, or resubmit interrupted jobs.
 - **Real hard-hang/OOM recovery remains field-validated rather than manufactured for release testing.** Safety paths are automated-test covered, but v0.4.6 does not intentionally force GPU/ComfyUI hangs during acceptance.
 - **Task state remains evidence-based.** Output-artifact deletion controls history retention but does not redefine a successful task as failed, and leftover files are not used to retroactively infer execution success.
-- **No Ollama management layer.** The H3 FL2VA Advanced Setting changes the model name passed to `H3PromptStandardizer`; Comfy Remote does not start/stop Ollama, download/remove models, or enumerate installed models.
+- **No Ollama management layer.** The H3 FL2VA/Ref2VA Advanced Settings only change the model name passed to `H3PromptStandardizer`; Comfy Remote does not start/stop Ollama, download/remove models, or manage the Ollama installation.
 - **ComfyUI Qwen3.5 standardization depends on the bundled H3 custom nodes and local Qwen3.5 model being installed and runnable.** The Panel does not download those model assets automatically.
 - **No Wake-on-LAN.** Waking a sleeping or powered-off computer from outside the machine is not part of v0.4.6.
 - **No multi-host support.** One Panel currently maps to one local ComfyUI installation.

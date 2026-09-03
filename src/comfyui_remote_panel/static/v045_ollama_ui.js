@@ -1,40 +1,7 @@
 (() => {
-  const MODEL_SELECTOR = "[data-v045-ollama-model]";
-  const FIELD_SELECTOR = "[data-v045-ollama-model-field], [data-v048-ref2va-ollama-model-field]";
-  const STANDARDIZER_SELECTOR = "[data-v042-prompt-standardization]";
-  const REF2VA_BACKEND_SELECTOR = "[data-v048-ref2va-prompt-backend]";
   const STORAGE_KEY = "comfy-remote.fl2va.ollama-model";
   const DEFAULT_MODEL = "gemma4:e4b";
   let modelsPromise = null;
-
-  function storageKey(field) {
-    return field?.dataset.ollamaStorageKey || STORAGE_KEY;
-  }
-
-  function rememberedModel(field) {
-    try {
-      return window.localStorage.getItem(storageKey(field))?.trim() || "";
-    } catch (_) {
-      return "";
-    }
-  }
-
-  function rememberModel(field, value) {
-    const model = String(value || "").trim();
-    if (!model) return;
-    try { window.localStorage.setItem(storageKey(field), model); } catch (_) {}
-  }
-
-  function standardizationEnabled(field) {
-    if (field?.matches?.("[data-v048-ref2va-ollama-model-field]")) {
-      return document.querySelector(REF2VA_BACKEND_SELECTOR)?.value === "ollama";
-    }
-    return document.querySelector(STANDARDIZER_SELECTOR)?.checked !== false;
-  }
-
-  function syncDisabled(select, field = select?.closest(FIELD_SELECTOR)) {
-    if (select) select.disabled = !standardizationEnabled(field);
-  }
 
   async function fetchModels() {
     if (!modelsPromise) {
@@ -54,71 +21,9 @@
     return modelsPromise;
   }
 
-  function option(value, label = value) {
-    const item = document.createElement("option");
-    item.value = value;
-    item.textContent = label;
-    return item;
-  }
-
-  async function upgradeField(field) {
-    const current = field.querySelector(MODEL_SELECTOR);
-    if (!current) return;
-    if (current.tagName === "SELECT") {
-      syncDisabled(current, field);
-      return;
-    }
-
-    const preferred = String(current.value || rememberedModel(field) || DEFAULT_MODEL).trim() || DEFAULT_MODEL;
-    const select = document.createElement("select");
-    select.dataset.v045OllamaModel = "true";
-    select.disabled = true;
-    select.append(option(preferred, "正在读取 Ollama 模型…"));
-    current.replaceWith(select);
-
-    select.addEventListener("change", () => rememberModel(field, select.value));
-
-    try {
-      const models = await fetchModels();
-      if (!select.isConnected) return;
-      select.innerHTML = "";
-      const unique = [...new Set(models)];
-      if (!unique.includes(preferred)) {
-        select.append(option(preferred, `${preferred}（未检测到）`));
-      }
-      for (const model of unique) select.append(option(model));
-      if (!select.options.length) select.append(option(preferred));
-      select.value = preferred;
-      select.title = unique.length ? `已检测到 ${unique.length} 个 Ollama 模型` : "未检测到 Ollama 模型";
-    } catch (error) {
-      if (!select.isConnected) return;
-      select.innerHTML = "";
-      select.append(option(preferred, `${preferred}（模型列表读取失败）`));
-      select.value = preferred;
-      select.title = String(error?.message || error || "无法读取 Ollama 模型");
-    } finally {
-      syncDisabled(select, field);
-    }
-  }
-
-  function upgradeFields() {
-    document.querySelectorAll(FIELD_SELECTOR).forEach(field => upgradeField(field));
-  }
-
-  document.addEventListener("change", event => {
-    if (event.target?.matches?.(`${STANDARDIZER_SELECTOR}, ${REF2VA_BACKEND_SELECTOR}`)) {
-      document.querySelectorAll(FIELD_SELECTOR).forEach(field => {
-        syncDisabled(field.querySelector(MODEL_SELECTOR), field);
-      });
-    }
-  });
-
-  document.addEventListener("DOMContentLoaded", () => {
-    upgradeFields();
-    const advanced = document.querySelector("#advanced-settings");
-    if (advanced) {
-      new MutationObserver(() => queueMicrotask(upgradeFields))
-        .observe(advanced, { childList: true, subtree: true });
-    }
-  });
+  window.H3OllamaModelService = {
+    getModels: fetchModels,
+    storageKey: STORAGE_KEY,
+    defaultModel: DEFAULT_MODEL,
+  };
 })();

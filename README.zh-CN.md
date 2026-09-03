@@ -10,7 +10,7 @@
 
 Comfy Remote 是一个手机优先的 ComfyUI 远程创作面板。它运行在 ComfyUI 所在的 Windows 电脑上，把已经在本机验证过的 **ComfyUI API Workflow** 转成适合手机使用的创作界面：选择工作流、添加素材、填写提示词、提交任务、查看结果。
 
-当前 v0.4.8 基线在已验收的 v0.4.7 FL2VA 家族之上加入一个 Ref2VA 创作入口、三种生成模式、三种 Prompt Backend、Auto/INT8/FP16-BF16 配置、代表视觉输入的提示词标准化与旧工作流兼容。仍然不会静默改写陌生工作流，也不会把 ComfyUI 直接暴露到网络。新的 Ref2VA 路由尚待真实 GPU 验收。
+当前 v0.4.8 基线在已验收的 v0.4.7 FL2VA 家族之上加入一个 Ref2VA 创作入口、三种生成模式、Raw/Ollama/Qwen3.5 三种 Prompt Backend、INT8/FP16-BF16 配置、代表视觉输入的提示词标准化与旧工作流兼容。仍然不会静默改写陌生工作流，也不会把 ComfyUI 直接暴露到网络。新的 Ref2VA 路由尚待真实 GPU 验收。
 
 ## 能做什么
 
@@ -24,7 +24,7 @@ Comfy Remote 是一个手机优先的 ComfyUI 远程创作面板。它运行在 
 - 对已经登记过 output artifact 的 Job，Panel 会检查对应受管本地生成产物；如果某个产物被删除或移走，就移除失效 artifact 引用；当该 Job 的全部已登记生成产物都不存在后，对应历史记录自动移除。从未登记过 output 的失败/中断任务不会仅因为“没有文件”被删除。
 - 提供 `randomize / fixed / increment` Seed Policy 与参考图分辨率预处理；Generic 控件只来自真实 Workflow binding。
 - 把内置 H3 FL2VA 物理工作流收敛到一个创作入口，通过 `v4_600step`、`LightX2V`、`original` 三种生成模式选择，同时仍由底层物理工作流的启用/禁用状态决定是否可用。
-- H3 FL2VA “标准化提示词”是三态高级设置：`关闭`、`Ollama`、`ComfyUI`。Ollama 保留可配置模型（默认 `gemma4:e4b`）；ComfyUI 路由到内置 Qwen3.5 4B 工作流。Retry 会恢复实际使用的后端，两种标准化方式都把结果保存到同一个任务详情字段。
+- H3 FL2VA 与 Ref2VA 共用一套高级设置契约：原始提示词、Ollama 或 Qwen3.5 标准化；`pruned_int8` 或 `pruned_bf16` 主模型；以及随机、固定、递增三种 Seed Policy。Ollama 模型选择器只在 Ollama 模式显示（默认 `gemma4:e4b`）；Qwen3.5 路由到内置工作流。Retry 会恢复实际使用的后端，两种 family 的标准化结果都保存到同一个任务详情字段。
 - 任务详情在可用时区分排队等待、标准化提示词、H3 采样和总执行时间；任务卡只在有意义时显示 `LightX2V`、`v4_600step`、`Ollama`、`Qwen3.5 4B` 标签。
 - 加固任务状态 reconciliation：不完整 ComfyUI history 不再直接算失败；最终 history 尚未完全落盘时，明确的 `execution_success` 仍作为成功证据。
 - 提供 Recovery Lite 受控恢复能力；当 Panel 没有有效进程记录、但能够唯一安全识别当前 ComfyUI 监听进程时，可提供“强制关闭”，不会按模糊 `python.exe` 批量结束进程。
@@ -142,7 +142,7 @@ Phone → Tailscale HTTPS Serve → 127.0.0.1:8190 Comfy Remote → 127.0.0.1:81
 - **恢复仍是人工操作，不是完整 watchdog。** Panel 能识别已核验的受管/非受管 ComfyUI 进程状态并提供受控恢复，但不会自动处理 crash loop、GPU/驱动故障，也不会自动续跑或重新提交被中断任务。
 - **真实硬卡死 / OOM 恢复继续依赖现场补充验证。** 安全保护路径有自动化覆盖，但 v0.4.6 不会为了发布验收故意制造 GPU / ComfyUI 卡死。
 - **任务状态仍以证据为准。** 生成产物删除只决定历史记录是否继续保留，不会把成功任务改写成失败；也不会仅凭残留文件反推旧任务执行成功。
-- **不提供 Ollama 管理层。** H3 FL2VA 高级设置只修改传给 `H3PromptStandardizer` 的模型名；Panel 不负责启动/关闭 Ollama、下载/删除模型或自动读取模型列表。
+- **不提供 Ollama 管理层。** H3 FL2VA/Ref2VA 高级设置只修改传给 `H3PromptStandardizer` 的模型名；Panel 不负责启动/关闭 Ollama、下载/删除模型或管理 Ollama 安装。
 - **ComfyUI Qwen3.5 标准化依赖对应 H3 custom nodes 与本地 Qwen3.5 模型已经安装且能运行。** Panel 不自动下载这些模型资源。
 - **没有 Wake-on-LAN。** 电脑睡眠、关机后的机外唤醒不属于 v0.4.6。
 - **没有多主机。** 当前一个 Panel 对应本机一套 ComfyUI。

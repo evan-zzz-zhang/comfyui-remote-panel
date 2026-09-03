@@ -17,11 +17,6 @@
     "fl2va_v4step600_raw", "fl2va_v4step600_ollama", "fl2va_v4step600_qwen35",
     "fl2va_lightx2v_raw", "fl2va_lightx2v_ollama", "fl2va_lightx2v_qwen35",
   ]);
-  const MODE_TUNING = {
-    v4_600step: { scheduler: "beta", sampler: "euler", steps: 8 },
-    lightx2v: { scheduler: "simple", sampler: "euler", steps: 8 },
-    original: { scheduler: "simple", sampler: "res_multistep", steps: 20 },
-  };
 
   const baseLoadPresetsV042 = loadPresets;
   const baseLoadWorkflowsV042 = loadWorkflows;
@@ -91,11 +86,6 @@
     return enabledModes()[0] || null;
   }
 
-  function rememberMode(mode) {
-    if (!validMode(mode) || !modeEnabled(mode)) return;
-    try { window.localStorage.setItem(MODE_STORAGE_KEY, mode); } catch (_) {}
-  }
-
   function targetWorkflowItem(mode) {
     const definition = modeDefinitions()[mode];
     return definition?.preset_id ? state.workflowItems?.get?.(definition.preset_id) || null : null;
@@ -132,16 +122,6 @@
     const model = String(value || "").trim();
     if (!model) return;
     try { window.localStorage.setItem(OLLAMA_STORAGE_KEY, model); } catch (_) {}
-  }
-
-  function tuningDefaults(mode) {
-    const preset = targetPreset(mode);
-    const fallback = MODE_TUNING[mode] || {};
-    return {
-      scheduler: preset?.parameters?.scheduler?.default ?? fallback.scheduler,
-      sampler: preset?.parameters?.sampler?.default ?? fallback.sampler,
-      steps: preset?.parameters?.steps?.default ?? fallback.steps,
-    };
   }
 
   function publicParametersFromManifest(manifest) {
@@ -220,146 +200,14 @@
     });
   }
 
-  function modeOptions(mode) {
-    const labels = { original: "原版", lightx2v: "LightX2V", v4_600step: "v4_600step" };
-    return enabledModes().map(id => {
-      const item = modeDefinitions()[id];
-      return `<option value="${escapeHtml(id)}"${id === mode ? " selected" : ""}>${escapeHtml(labels[id] || item?.label || id)}</option>`;
-    }).join("");
-  }
-
-  function installToggleStyle() {
-    if (document.querySelector("#v042-style")) return;
-    const style = document.createElement("style");
-    style.id = "v042-style";
-    style.textContent = `
-      [data-v042-standardizer-field] { align-items: center; }
-      [data-v042-standardizer-field] > span { min-width: 0; }
-      .v042-switch { position: relative; display: inline-flex; width: 42px; height: 24px; flex: 0 0 42px; margin-left: auto; }
-      .v042-switch input { position: absolute; opacity: 0; pointer-events: none; }
-      .v042-switch i { position: absolute; inset: 0; border-radius: 999px; background: var(--surface-3, #3a3d38); transition: .16s ease; }
-      .v042-switch i::after { content: ""; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; border-radius: 50%; background: #fff; transition: .16s ease; }
-      .v042-switch input:checked + i { background: var(--accent, #5f8f54); }
-      .v042-switch input:checked + i::after { transform: translateX(18px); }
-    `;
-    document.head.append(style);
-  }
-
-  function applyModeDefaults(mode) {
-    const preset = targetPreset(mode);
-    const defaults = tuningDefaults(mode);
-    const group = state.presets.get(ENTRY_ID);
-    const schedulerSpec = preset?.parameters?.scheduler || group?.parameters?.scheduler;
-    const samplerSpec = preset?.parameters?.sampler || group?.parameters?.sampler;
-    const stepsSpec = preset?.parameters?.steps || group?.parameters?.steps;
-    const scheduler = document.querySelector('select[name="scheduler"]');
-    const sampler = document.querySelector('select[name="sampler"]');
-    const steps = document.querySelector('input[name="steps"]');
-    if (scheduler && schedulerSpec && defaults.scheduler != null) {
-      fillSelect(scheduler, Object.keys(schedulerSpec.values || {}), defaults.scheduler);
-    }
-    if (sampler && samplerSpec && defaults.sampler != null) {
-      fillSelect(sampler, Object.keys(samplerSpec.values || {}), defaults.sampler);
-    }
-    if (steps && defaults.steps != null) {
-      if (stepsSpec?.minimum != null) steps.min = stepsSpec.minimum;
-      if (stepsSpec?.maximum != null) steps.max = stepsSpec.maximum;
-      steps.value = defaults.steps;
-    }
-  }
-
   function syncPromptRequired() {
     const prompt = document.querySelector('textarea[name="prompt"]');
-    const toggle = document.querySelector("[data-v042-prompt-standardization]");
+    const backend = window.ComfyRemoteH3AdvancedSettings?.getState?.()?.promptBackend;
     const hasFrame = ["#first-frame", "#last-frame"].some(selector => {
       const input = document.querySelector(selector);
       return Boolean(input?.files?.length);
     }) || (state.retryRoles || []).some(role => role === "first" || role === "last");
-    if (prompt) prompt.required = Boolean(toggle?.checked) || !hasFrame;
-  }
-
-  function syncOllamaModelState() {
-    const checkbox = document.querySelector("[data-v042-prompt-standardization]");
-    const input = document.querySelector("[data-v045-ollama-model]");
-    if (input) input.disabled = checkbox?.checked === false;
-  }
-
-  function removeControls() {
-    document.querySelector("[data-v042-mode-field]")?.remove();
-    document.querySelector("[data-v042-standardizer-field]")?.remove();
-    document.querySelector("[data-v045-ollama-model-field]")?.remove();
-    document.querySelectorAll("#v042-fl2va-values").forEach(node => node.remove());
-  }
-
-  function ensureControls(mode, standardization, ollamaModel) {
-    installToggleStyle();
-    const preset = selectedPreset();
-    const advanced = document.querySelector("#advanced-settings");
-    const grid = advanced?.querySelector(".advanced-grid");
-    if (!preset || preset.id !== ENTRY_ID || !grid) {
-      removeControls();
-      return;
-    }
-
-    const selectedMode = preferredMode(mode);
-    if (!selectedMode) {
-      removeControls();
-      updateSubmitAvailability();
-      return;
-    }
-
-    let modeField = grid.querySelector("[data-v042-mode-field]");
-    if (!modeField) {
-      modeField = document.createElement("label");
-      modeField.className = "field";
-      modeField.dataset.v042ModeField = "true";
-      modeField.innerHTML = `<span>生成模式</span><select data-v042-generation-mode></select>`;
-      grid.prepend(modeField);
-    }
-    const modeSelect = modeField.querySelector("[data-v042-generation-mode]");
-    modeSelect.innerHTML = modeOptions(selectedMode);
-    modeSelect.value = selectedMode;
-
-    let standardizerField = grid.querySelector("[data-v042-standardizer-field]");
-    if (!standardizerField) {
-      standardizerField = document.createElement("label");
-      standardizerField.className = "field";
-      standardizerField.dataset.v042StandardizerField = "true";
-      standardizerField.innerHTML = `<span>使用 H3 提示词标准化</span><span class="v042-switch"><input type="checkbox" data-v042-prompt-standardization><i aria-hidden="true"></i></span>`;
-      modeField.insertAdjacentElement("afterend", standardizerField);
-    }
-    const checkbox = standardizerField.querySelector("[data-v042-prompt-standardization]");
-    checkbox.checked = standardization !== false;
-
-    let ollamaField = grid.querySelector("[data-v045-ollama-model-field]");
-    if (!ollamaField) {
-      ollamaField = document.createElement("label");
-      ollamaField.className = "field";
-      ollamaField.dataset.v045OllamaModelField = "true";
-      ollamaField.innerHTML = `<span>Ollama 标准化模型</span><input type="text" autocomplete="off" data-v045-ollama-model>`;
-      standardizerField.insertAdjacentElement("afterend", ollamaField);
-    }
-    const ollamaInput = ollamaField.querySelector("[data-v045-ollama-model]");
-    ollamaInput.value = preferredOllamaModel(ollamaModel, selectedMode);
-
-    modeSelect.onchange = () => {
-      const next = modeSelect.value;
-      if (!validMode(next) || !modeEnabled(next)) return;
-      rememberMode(next);
-      applyModeDefaults(next);
-      updateSubmitAvailability();
-    };
-    checkbox.onchange = () => {
-      syncPromptRequired();
-      syncOllamaModelState();
-    };
-    ollamaInput.onchange = () => {
-      const model = preferredOllamaModel(ollamaInput.value, selectedMode);
-      ollamaInput.value = model;
-      rememberOllamaModel(model);
-    };
-    syncPromptRequired();
-    syncOllamaModelState();
+    if (prompt) prompt.required = backend === "raw" ? !hasFrame : true;
   }
 
   function parseValuesJsonEntries(formData) {
@@ -412,10 +260,10 @@
   function augmentJobFormData(formData) {
     if (String(formData.get("preset_id") || "") !== ENTRY_ID) return formData;
     dedupeScalarFields(formData);
-    const mode = preferredMode(document.querySelector("[data-v042-generation-mode]")?.value);
-    const standardize = document.querySelector("[data-v042-prompt-standardization]")?.checked !== false;
-    const ollamaInput = document.querySelector("[data-v045-ollama-model]");
-    const ollamaModel = preferredOllamaModel(ollamaInput?.value, mode);
+    const ui = window.ComfyRemoteH3AdvancedSettings?.getState?.() || {};
+    const mode = preferredMode(ui.generationMode);
+    const standardize = ui.promptBackend !== "raw";
+    const ollamaModel = preferredOllamaModel(ui.ollamaModel, mode);
     rememberOllamaModel(ollamaModel);
     const values = parseValuesJsonEntries(formData);
     const directMediaResolution = formData.get("media_resolution");
@@ -437,32 +285,18 @@
     const directMode = presetId === ENTRY_ID ? null : modeForPreset(presetId);
     const isUnifiedFl2va = presetId === ENTRY_ID || directMode !== null;
     if (!isUnifiedFl2va) {
-      const result = baseApplyPresetV042(presetId, overrides);
-      removeControls();
-      return result;
+      return baseApplyPresetV042(presetId, overrides);
     }
 
     installGroupPreset();
     const merged = mergedOverrides(overrides);
     const mode = preferredMode(merged.generation_mode ?? directMode);
     if (!mode || !state.presets.has(ENTRY_ID)) {
-      removeControls();
       return;
     }
 
-    const hasExplicitTuning = ["scheduler", "sampler", "steps"].some(
-      key => merged[key] !== undefined && merged[key] !== null && merged[key] !== ""
-    );
-    const nextOverrides = hasExplicitTuning
-      ? { ...overrides }
-      : { ...overrides, ...tuningDefaults(mode) };
+    const nextOverrides = { ...overrides, generation_mode: mode };
     const result = baseApplyPresetV042(ENTRY_ID, nextOverrides);
-    const standardization = merged.prompt_standardization
-      ?? targetPreset(mode)?.parameters?.prompt_standardization?.default
-      ?? state.presets.get(ENTRY_ID)?.parameters?.prompt_standardization?.default
-      ?? true;
-    const ollamaModel = preferredOllamaModel(merged.ollama_model, mode);
-    ensureControls(mode, standardization, ollamaModel);
     return result;
   };
 
@@ -471,7 +305,6 @@
     const select = document.querySelector("#preset-select");
     if (!select) return;
     if (!group) {
-      removeControls();
       if (select.value === ENTRY_ID || physicalPresetIds().has(select.value)) {
         const fallback = fallbackVisiblePreset();
         if (fallback) applyPreset(fallback.id);
@@ -484,10 +317,8 @@
       return;
     }
     if (select.value === ENTRY_ID || physicalPresetIds().has(select.value) || !select.value) {
-      const currentMode = document.querySelector("[data-v042-generation-mode]")?.value;
-      const mode = preferredMode(currentMode);
+      const mode = preferredMode(window.ComfyRemoteH3AdvancedSettings?.getState?.()?.generationMode);
       applyPreset(ENTRY_ID, { generation_mode: mode });
-      applyModeDefaults(mode);
     }
     hidePhysicalWorkflowChoices();
   }
@@ -525,13 +356,12 @@
     const preset = selectedPreset();
     if (preset?.id !== ENTRY_ID) return;
     const button = document.querySelector("#submit-button");
-    const mode = preferredMode(document.querySelector("[data-v042-generation-mode]")?.value);
+    const mode = preferredMode(window.ComfyRemoteH3AdvancedSettings?.getState?.()?.generationMode);
     const available = Boolean(mode && modeEnabled(mode) && targetAvailable(mode));
     if (button && !available) button.disabled = true;
   };
 
   document.addEventListener("DOMContentLoaded", () => {
-    installToggleStyle();
     document.querySelector("#workflow-picker-button")?.addEventListener("click", () => {
       window.setTimeout(hidePhysicalWorkflowChoices, 0);
     });

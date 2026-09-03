@@ -159,78 +159,6 @@
     return rememberedSeedPolicy(preset) || preset?.seed_policy?.default || "randomize";
   }
 
-  function installH3Controls(preset, overrides = {}) {
-    const details = document.querySelector("#advanced-settings");
-    const grid = details?.querySelector(".advanced-grid");
-    if (!details || !grid) return;
-    const previousPolicy = grid.querySelector("[data-v04-seed-policy]");
-    const livePolicy = previousPolicy?.dataset.seedPolicyFamily === preset?.family
-      ? previousPolicy.value
-      : "";
-    grid.querySelectorAll(".v04-control").forEach(node => node.remove());
-
-    const supportsSeed = Boolean(preset?.seed_policy?.supported);
-    const seedInput = grid.querySelector('input[name="seed"]');
-    const seedLabel = seedInput?.closest("label.field");
-    if (supportsSeed && seedInput && seedLabel) {
-      const policy = seedControlValue(preset, overrides, livePolicy);
-      const policyLabel = document.createElement("label");
-      policyLabel.className = "field v04-control v04-seed-policy";
-      policyLabel.dataset.h3AdvancedRole = "seed-policy";
-      policyLabel.innerHTML = `<span>种子策略</span><select data-v04-seed-policy>
-        <option value="randomize">随机</option>
-        <option value="fixed">固定</option>
-        <option value="increment">递增</option>
-      </select>`;
-      seedLabel.before(policyLabel);
-      const select = policyLabel.querySelector("select");
-      select.dataset.seedPolicyFamily = preset.family || "";
-      select.value = policy;
-      const base = overrides?.seed_value ?? overrides?.seed ?? seedInput.value ?? "";
-      if (policy !== "randomize" && base !== "") seedInput.value = String(base);
-      const sync = () => {
-        const value = select.value;
-        seedLabel.classList.toggle("hidden", value === "randomize");
-        seedInput.placeholder = value === "increment" ? "起始 Seed" : "Seed";
-        if (value === "randomize") seedInput.value = "";
-        else if (!seedInput.value) seedInput.value = String(overrides?.seed_value ?? 0);
-      };
-      select.addEventListener("change", () => {
-        rememberSeedPolicy(preset, select.value);
-        sync();
-      });
-      sync();
-    }
-
-    const specs = imageSlotSpecs(preset);
-    if (specs.length) {
-      const same = specs.every(item =>
-        item.policy === specs[0].policy
-        && Number(item.target ?? 1) === Number(specs[0].target ?? 1)
-        && item.allowAuto === specs[0].allowAuto
-      );
-      const visibleSpecs = same ? [{ ...specs[0], role: "image", label: "参考图" }] : specs;
-      for (const spec of visibleSpecs) {
-        const field = document.createElement("label");
-        field.className = "field v04-control v04-resolution";
-        field.dataset.h3AdvancedRole = "reference-resolution";
-        const selected = requestedResolutionValue(spec, overrides);
-        field.innerHTML = `<span>${escapeHtml(spec.label)}分辨率</span><select data-v04-resolution="${escapeHtml(spec.role)}">${resolutionOptions(spec, selected)}</select>${spec.note ? `<small>${escapeHtml(spec.note)}</small>` : ""}`;
-        grid.append(field);
-      }
-    }
-
-    let hidden = details.querySelector('input[name="values_json"].v04-control');
-    if (!hidden) {
-      hidden = document.createElement("input");
-      hidden.type = "hidden";
-      hidden.name = "values_json";
-      hidden.className = "v04-control";
-      details.append(hidden);
-    }
-    normalizeH3AdvancedLayout(grid);
-  }
-
   function installGenericControls(preset, overrides = {}) {
     const root = document.querySelector("#generic-parameters");
     if (!root) return;
@@ -318,57 +246,11 @@
   }
 
   function installCreationControls(preset, overrides = {}) {
-    if (!preset) return;
-    if (preset.family === "generic") installGenericControls(preset, overrides);
-    else installH3Controls(preset, overrides);
-  }
-
-  function h3AdvancedRole(field) {
-    if (field.dataset.h3AdvancedRole) return field.dataset.h3AdvancedRole;
-    if (field.matches?.("[data-v042-mode-field], [data-v048-ref2va-generation-mode-field]")) return "generation-mode";
-    if (field.matches?.("[data-v042-standardizer-field], [data-v048-ref2va-prompt-backend-field]")) return "prompt-backend";
-    if (field.matches?.("[data-v047-inference-profile-field], [data-v048-ref2va-inference-profile-field]")) return "main-model";
-    if (field.matches?.("[data-v045-ollama-model-field], [data-v048-ref2va-ollama-model-field]")) return "ollama-model";
-    if (field.querySelector?.('select[name="scheduler"]')) return "scheduler";
-    if (field.querySelector?.('select[name="sampler"]')) return "sampler";
-    if (field.querySelector?.('input[name="steps"]')) return "steps";
-    if (field.querySelector?.("[data-v04-seed-policy]")) return "seed-policy";
-    if (field.querySelector?.('input[name="seed"]')) return "seed-value";
-    if (field.matches?.(".v04-resolution")) return "reference-resolution";
-    return "";
-  }
-
-  function normalizeH3AdvancedLayout(grid = document.querySelector("#advanced-settings .advanced-grid")) {
-    if (!grid) return;
-    const order = [
-      "generation-mode", "prompt-backend", "main-model", "ollama-model",
-      "scheduler", "sampler", "steps", "seed-policy", "seed-value",
-      "reference-resolution",
-    ];
-    const fields = [...grid.children].filter(field => field.matches?.("label.field"));
-    const managed = fields.filter(field => h3AdvancedRole(field));
-    if (!managed.length) return;
-    const currentRoles = managed.map(field => h3AdvancedRole(field));
-    for (const field of managed) {
-      const role = h3AdvancedRole(field);
-      field.dataset.h3AdvancedRole = role;
-    }
-    const ordered = order.flatMap(role => managed.filter(field => field.dataset.h3AdvancedRole === role));
-    if (ordered.length !== managed.length) return;
-    const desiredRoles = ordered.map(field => field.dataset.h3AdvancedRole);
-    if (currentRoles.every((role, index) => role === desiredRoles[index])) return;
-    const first = managed[0];
-    const marker = document.createElement("span");
-    marker.hidden = true;
-    grid.insertBefore(marker, first);
-    for (const field of managed) field.remove();
-    for (const field of ordered) grid.insertBefore(field, marker);
-    marker.remove();
+    if (preset?.family === "generic") installGenericControls(preset, overrides);
   }
 
   const CreationControls = window.ComfyRemoteCreationControls = window.ComfyRemoteCreationControls || {};
   CreationControls.install = installCreationControls;
-  CreationControls.normalize = normalizeH3AdvancedLayout;
 
   const baseApplyPresetForMedia = applyPreset;
   applyPreset = function(...args) {
