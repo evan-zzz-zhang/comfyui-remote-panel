@@ -184,6 +184,37 @@ def test_ref2va_representative_visual_prefers_image_then_video_first_frame():
     text = presets["ref2va_original_ollama"].build_prompt(values(), "text", {})
     assert "ref_images.ref_image_0" not in text["136"]["inputs"]
 
+    raw = presets["ref2va_original_raw"].build_prompt(values(), "raw", {"image_0": "image.png"})
+    assert "first_frame" not in raw["136"]["inputs"]
+
+
+@pytest.mark.parametrize(
+    "media, expected_source, expected_image_node",
+    [
+        ({"image_0": "image.png", "video_0": "clip.mp4"}, ["9100", 0], None),
+        ({"video_0": "clip.mp4"}, ["9500", 0], "9500"),
+        ({}, None, None),
+    ],
+)
+def test_ref2va_qwen_writer_keeps_representative_visual_contract(
+    media, expected_source, expected_image_node
+):
+    preset = load_presets(ROOT / "workflows")["ref2va_v4step600_qwen35"]
+    graph = preset.build_prompt(values(), "qwen-visual", media)
+    inputs = graph["176"]["inputs"]
+    assert inputs.get("first_frame") == expected_source
+    assert "last_frame" not in inputs
+    assert graph["136"]["inputs"].get("ref_images.ref_image_0") == (
+        ["9100", 0] if "image_0" in media else None
+    )
+    if expected_image_node:
+        assert graph[expected_image_node] == {
+            "class_type": "ImageFromBatch",
+            "inputs": {"images": ["9300", 0], "batch_index": 0, "length": 1},
+        }
+    else:
+        assert not any(node.get("class_type") == "ImageFromBatch" for node in graph.values())
+
 
 def test_ref2va_qwen_keeps_h3_encoder_separate_and_captures_metadata():
     preset = load_presets(ROOT / "workflows")["ref2va_v4step600_qwen35"]

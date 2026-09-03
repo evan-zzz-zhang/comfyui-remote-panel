@@ -206,9 +206,12 @@ def _install_preset() -> None:
         if node_id not in graph:
             return graph
         # Native Ref2VA standardization consumes the complete collection
-        # binding on its conditioning node. Only the legacy generic node
-        # accepts the representative first-frame input below.
-        if graph[node_id].get("class_type") != "H3PromptStandardizer":
+        # binding on its conditioning node. The legacy generic standardizer
+        # and the Qwen writer still accept the representative first frame.
+        node_class = graph[node_id].get("class_type")
+        if node_class == "H3Ref2VAOllamaConditioning":
+            return graph
+        if node_class not in {"H3PromptStandardizer", "H3OfficialSkillPromptWriterQwen"}:
             return graph
         representative = _representative_source(graph, media)
         inputs = graph[node_id].setdefault("inputs", {})
