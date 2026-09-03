@@ -151,6 +151,15 @@ def test_ref2va_virtual_entry_defaults_and_labels_match_v4step600_contract():
     assert metadata["parameters"]["steps"]["default"] == 8
 
 
+@pytest.mark.asyncio
+async def test_virtual_preset_api_exposes_consistent_fl2va_and_ref2va_names(panel_client_v048):
+    response = await panel_client_v048.get("/api/presets", headers=LOGIN)
+    assert response.status == 200
+    items = {item["id"]: item for item in (await response.json())["items"]}
+    assert items["h3-fl2va-group"]["name"] == "MiniMax H3 FL2VA"
+    assert items["h3-ref2va-group"]["name"] == "MiniMax H3 Ref2VA"
+
+
 def test_ref2va_collection_media_is_preserved_for_prompt_backends():
     presets = load_presets(ROOT / "workflows")
     media = {"image_0": "image.png", "image_1": "image2.png", "video_0": "clip.mp4", "audio_0": "voice.wav"}
@@ -178,6 +187,28 @@ def test_ref2va_ollama_uses_native_reference_conditioning_contract(mode):
     assert graph["136"]["inputs"]["unload_after"] is True
     assert graph["153"]["inputs"]["source"] == ["136", 5]
     assert "H3PromptStandardizer" not in {node["class_type"] for node in graph.values()}
+
+
+@pytest.mark.parametrize("mode", ["original", "lightx2v", "v4step600"])
+def test_ref2va_ollama_manifest_binds_model_to_native_conditioning(mode):
+    preset = load_presets(ROOT / "workflows")[f"ref2va_{mode}_ollama"]
+    spec = preset.manifest["parameters"]["ollama_model"]
+    assert spec == {
+        "type": "string",
+        "default": "gemma4:e4b",
+        "node": "136",
+        "input": "ollama_model",
+        "ui": {"label": "Ollama 标准化模型", "semantic": "advanced"},
+    }
+    graph = preset.build_prompt(values(ollama_model="qwen3:8b"), f"{mode}-custom", {})
+    assert graph["136"]["inputs"]["ollama_model"] == "qwen3:8b"
+
+
+@pytest.mark.parametrize("backend", ["raw", "qwen35"])
+def test_non_ollama_ref2va_manifests_do_not_accept_ollama_model(backend):
+    presets = load_presets(ROOT / "workflows")
+    for mode in ("original", "lightx2v", "v4step600"):
+        assert "ollama_model" not in presets[f"ref2va_{mode}_{backend}"].manifest["parameters"]
 
 
 @pytest.mark.parametrize("mode", ["original", "lightx2v", "v4step600"])
@@ -319,6 +350,76 @@ async def test_full_runtime_stack_persists_virtual_ref2va_routing_and_builds_bf1
     assert public["inference_profile"] == "fp16_bf16"
     assert public["effective_inference_profile"] == "fp16_bf16"
     assert all(not key.startswith("_v048") for key in public["input_values"])
+
+
+@pytest.mark.asyncio
+async def test_full_runtime_stack_binds_and_retries_selected_ref2va_ollama_model(
+    panel_client_v048, comfy_server_v048
+):
+    form = FormData(default_to_multipart=True)
+    form.add_field("preset_id", "h3-ref2va-group")
+    form.add_field("prompt", "custom ollama model")
+    form.add_field("values_json", json.dumps({
+        "generation_mode": "v4step600",
+        "prompt_backend": "ollama",
+        "inference_profile": "int8",
+        "ollama_model": "qwen3:8b",
+    }))
+
+    response = await panel_client_v048.post("/api/jobs", data=form, headers=LOGIN)
+    assert response.status == 201, await response.text()
+    created = await response.json()
+    assert comfy_server_v048.app["submitted"][-1]["prompt"]["136"]["inputs"]["ollama_model"] == "qwen3:8b"
+    stored = await panel_client_v048.app["db"].get_job(created["id"])
+    assert stored["input_values"]["ollama_model"] == "qwen3:8b"
+
+    await panel_client_v048.app["db"].update_job(created["id"], status="failed")
+    retry = await panel_client_v048.post(f"/api/jobs/{created['id']}/retry", headers=LOGIN)
+    assert retry.status == 200
+    draft = await retry.json()
+    assert draft["prompt_backend"] == "ollama"
+    assert draft["values"]["ollama_model"] == "qwen3:8b"
+
+
+@pytest.mark.asyncio
+async def test_ref2va_seed_policies_drive_actual_graph_seed(panel_client_v048, comfy_server_v048, monkeypatch):
+    from comfyui_remote_panel import v04
+
+    monkeypatch.setattr(v04.secrets, "randbelow", lambda _: 321)
+
+    async def submit(policy, seed=None):
+        form = FormData(default_to_multipart=True)
+        form.add_field("preset_id", "h3-ref2va-group")
+        form.add_field("prompt", f"{policy} seed")
+        values_json = {
+            "generation_mode": "original",
+            "prompt_backend": "raw",
+            "inference_profile": "int8",
+            "seed_policy": policy,
+        }
+        if seed is not None:
+            values_json["seed_value"] = str(seed)
+            form.add_field("seed", str(seed))
+        form.add_field("values_json", json.dumps(values_json))
+        response = await panel_client_v048.post("/api/jobs", data=form, headers=LOGIN)
+        assert response.status == 201, await response.text()
+        return await response.json(), comfy_server_v048.app["submitted"][-1]["prompt"]
+
+    randomized, random_graph = await submit("randomize")
+    fixed, fixed_graph = await submit("fixed", 700)
+    incremented_1, increment_graph_1 = await submit("increment", 800)
+    incremented_2, increment_graph_2 = await submit("increment", 800)
+
+    assert randomized["seed_policy"] == "randomize"
+    assert randomized["actual_seed"] == "321"
+    assert random_graph["129"]["inputs"]["noise_seed"] == 321
+    assert fixed["seed_policy"] == "fixed"
+    assert fixed["actual_seed"] == "700"
+    assert fixed_graph["129"]["inputs"]["noise_seed"] == 700
+    assert incremented_1["actual_seed"] == "800"
+    assert incremented_2["actual_seed"] == "801"
+    assert increment_graph_1["129"]["inputs"]["noise_seed"] == 800
+    assert increment_graph_2["129"]["inputs"]["noise_seed"] == 801
 
 
 @pytest.mark.asyncio

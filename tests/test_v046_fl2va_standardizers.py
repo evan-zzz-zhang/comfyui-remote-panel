@@ -131,7 +131,10 @@ async def test_fl2va_creation_and_management_apis_keep_physical_assets_separate(
     presets_response = await panel_client_v046.get("/api/presets", headers=LOGIN)
     assert presets_response.status == 200
     public_presets = (await presets_response.json())["items"]
-    assert not any(item.get("family") == "fl2va" for item in public_presets)
+    fl2va_presets = [item for item in public_presets if item.get("family") == "fl2va"]
+    assert [(item["id"], item["name"]) for item in fl2va_presets] == [
+        ("h3-fl2va-group", "MiniMax H3 FL2VA")
+    ]
 
     workflows_response = await panel_client_v046.get("/api/workflows", headers=LOGIN)
     assert workflows_response.status == 200
@@ -141,6 +144,7 @@ async def test_fl2va_creation_and_management_apis_keep_physical_assets_separate(
         "fl2va_v4step600_raw", "fl2va_v4step600_ollama", "fl2va_v4step600_qwen35",
         "fl2va_lightx2v_raw", "fl2va_lightx2v_ollama", "fl2va_lightx2v_qwen35",
     }
+    assert not physical_ids & {item["id"] for item in public_presets}
     by_id = {item["id"]: item for item in workflows}
     assert physical_ids <= by_id.keys()
     assert all(by_id[item_id]["status"] == "enabled" for item_id in physical_ids)

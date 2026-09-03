@@ -169,7 +169,7 @@
     return {
       ...(source || {}),
       id: ENTRY_ID,
-      name: originalItem?.name || source?.name || "MiniMax H3 FL2VA",
+      name: "MiniMax H3 FL2VA",
       family: "fl2va",
       description: "首尾帧视频生成 · 原版 / LightX2V / v4_600step",
       parameters: manifest ? publicParametersFromManifest(manifest) : { ...(source?.parameters || {}) },

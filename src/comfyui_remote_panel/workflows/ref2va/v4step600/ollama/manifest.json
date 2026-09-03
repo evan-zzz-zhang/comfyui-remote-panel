@@ -61,6 +61,16 @@
       "node": "138",
       "input": "value"
     },
+    "ollama_model": {
+      "type": "string",
+      "default": "gemma4:e4b",
+      "node": "136",
+      "input": "ollama_model",
+      "ui": {
+        "label": "Ollama 标准化模型",
+        "semantic": "advanced"
+      }
+    },
     "scheduler": {
       "type": "enum",
       "default": "beta",

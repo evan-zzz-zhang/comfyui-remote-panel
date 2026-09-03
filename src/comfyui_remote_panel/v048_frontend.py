@@ -5,7 +5,7 @@ from typing import Any
 from aiohttp import web
 
 
-_SCRIPT_TAG = '<script src="/static/v048_ref2va_ui.js?v=0.4.8.1" defer></script>'
+_SCRIPT_TAG = '<script src="/static/v048_ref2va_ui.js?v=0.4.8.2" defer></script>'
 
 
 def install() -> None:

@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 JS = (ROOT / "src" / "comfyui_remote_panel" / "static" / "v048_ref2va_ui.js").read_text(encoding="utf-8")
+CREATION_JS = (ROOT / "src" / "comfyui_remote_panel" / "static" / "configurator_v2_runtime.js").read_text(encoding="utf-8")
 CI = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
 
@@ -28,6 +29,7 @@ def test_ref2va_dom_fields_are_removed_when_leaving_virtual_entry():
     assert "[data-v048-ref2va-generation-mode-field]" in JS
     assert "[data-v048-ref2va-prompt-backend-field]" in JS
     assert "[data-v048-ref2va-inference-profile-field]" in JS
+    assert "[data-v048-ref2va-ollama-model-field]" in JS
     assert ".forEach(field => field.remove());" in JS
     assert "if (!selectedRef2va()) {" in JS
     assert "removeRef2vaFields();" in JS
@@ -59,7 +61,7 @@ def test_ref2va_uses_consistent_chinese_labels_two_model_choices_and_field_order
     assert '["pruned_int8", "pruned_bf16"]' in JS
     assert 'const DEFAULT_PROFILE = "int8"' in JS
     assert 'return profile === "auto" ? "int8" : profile' in JS
-    assert 'for (const key of ["inference-profile", "prompt-backend", "generation-mode"])' in JS
+    assert 'for (const key of ["inference-profile", "ollama-model", "prompt-backend", "generation-mode"])' in JS
     assert 'if (field.nextElementSibling !== anchor) grid.insertBefore(field, anchor)' in JS
     for stale in ('"Generation Mode"', '"Prompt Backend"', '"Model Configuration"'):
         assert stale not in JS
@@ -75,6 +77,30 @@ def test_ref2va_mode_defaults_and_retry_tuning_priority_are_explicit():
     assert 'const hasExplicitTuning = ["scheduler", "sampler", "steps"].some(' in JS
     assert 'presetId === ENTRY_ID && !hasExplicitTuning' in JS
     assert 'applyModeDefaults(mode.value);' in JS
+
+
+def test_ref2va_ollama_model_is_scoped_visible_and_submitted_only_for_ollama():
+    assert 'const STORAGE_OLLAMA_MODEL = "comfy-remote.ref2va.ollama-model"' in JS
+    assert 'data-v048-ref2va-ollama-model-field' in JS
+    assert 'field.dataset.ollamaStorageKey = STORAGE_OLLAMA_MODEL' in JS
+    assert 'field.hidden = backend !== "ollama"' in JS
+    assert 'candidate(overrides, "ollama_model", null)' in JS
+    assert 'if (backend === "ollama") values.ollama_model = ollamaModel' in JS
+    assert 'else delete values.ollama_model' in JS
+    assert 'data-v045-ollama-model>' in JS
+    assert 'name="ollama_model"' not in JS
+
+
+def test_ref2va_seed_policy_reuses_shared_contract_with_family_isolation_and_retry_priority():
+    assert 'window.ComfyRemoteCreationControls?.install?.(group(), overrides)' in JS
+    assert 'comfy-remote.ref2va.seed-policy' in CREATION_JS
+    assert 'comfy-remote.fl2va.seed-policy' in CREATION_JS
+    assert 'const explicit = overrides?.seed_policy ?? overrides?.values?.seed_policy' in CREATION_JS
+    assert 'if (validSeedPolicy(explicit)) return explicit' in CREATION_JS
+    assert 'if (validSeedPolicy(live)) return live' in CREATION_JS
+    assert 'return rememberedSeedPolicy(preset) || preset?.seed_policy?.default || "randomize"' in CREATION_JS
+    assert '<select data-v04-seed-policy>' in CREATION_JS
+    assert 'name="seed_policy"' not in CREATION_JS
 
 
 def test_ci_checks_v048_frontend_syntax_in_addition_to_existing_checks():

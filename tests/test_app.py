@@ -117,7 +117,10 @@ async def test_panel_opens_when_comfyui_is_offline(tmp_path, aiohttp_client):
     presets = await client.get("/api/presets", headers=LOGIN)
     assert presets.status == 200
     items = (await presets.json())["items"]
-    assert not any(item["family"] == "fl2va" for item in items)
+    fl2va_items = [item for item in items if item["family"] == "fl2va"]
+    assert [(item["id"], item["name"]) for item in fl2va_items] == [
+        ("h3-fl2va-group", "MiniMax H3 FL2VA")
+    ]
     workflows = await client.get("/api/workflows", headers=LOGIN)
     workflow_ids = {item["id"] for item in (await workflows.json())["items"]}
     assert "fl2va_original_raw" in workflow_ids

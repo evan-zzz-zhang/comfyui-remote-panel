@@ -9,7 +9,7 @@ import aiohttp
 from aiohttp import web
 
 
-_OLLAMA_SCRIPT_TAG = '<script src="/static/v045_ollama_ui.js?v=0.4.5.1" defer></script>'
+_OLLAMA_SCRIPT_TAG = '<script src="/static/v045_ollama_ui.js?v=0.4.8.2" defer></script>'
 _GENERATION_SYNC_SCRIPT_TAG = '<script src="/static/v045_generation_sync.js?v=0.4.5.0" defer></script>'
 _DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 

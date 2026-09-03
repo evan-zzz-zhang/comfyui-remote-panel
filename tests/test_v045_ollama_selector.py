@@ -73,7 +73,7 @@ async def test_root_injects_v045_frontend_scripts_once(tmp_path, aiohttp_client)
     response = await client.get("/", headers=LOGIN)
     assert response.status == 200
     html = await response.text()
-    ollama_tag = '<script src="/static/v045_ollama_ui.js?v=0.4.5.1" defer></script>'
+    ollama_tag = '<script src="/static/v045_ollama_ui.js?v=0.4.8.2" defer></script>'
     sync_tag = '<script src="/static/v045_generation_sync.js?v=0.4.5.0" defer></script>'
     assert html.count(ollama_tag) == 1
     assert html.count(sync_tag) == 1
@@ -82,10 +82,18 @@ async def test_root_injects_v045_frontend_scripts_once(tmp_path, aiohttp_client)
 def test_ollama_ui_uses_real_select_and_disables_it_with_standardizer():
     assert 'fetch("/api/ollama/models"' in JS
     assert 'document.createElement("select")' in JS
-    assert 'select.disabled = !standardizationEnabled()' in JS
+    assert 'select.disabled = !standardizationEnabled(field)' in JS
     assert 'data-v045-ollama-model' in JS
     assert '（未检测到）' in JS
     assert '11434' not in JS
+
+
+def test_shared_ollama_selector_supports_ref2va_with_family_storage_and_backend_state():
+    assert '[data-v048-ref2va-ollama-model-field]' in JS
+    assert '[data-v048-ref2va-prompt-backend]' in JS
+    assert 'field?.dataset.ollamaStorageKey || STORAGE_KEY' in JS
+    assert 'document.querySelectorAll(FIELD_SELECTOR)' in JS
+    assert 'return document.querySelector(REF2VA_BACKEND_SELECTOR)?.value === "ollama"' in JS
 
 
 def test_generation_summary_sync_reemits_authoritative_h3_controls_without_polling():

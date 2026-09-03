@@ -121,21 +121,59 @@
     return policy === "auto" ? String(value?.target_megapixels ?? spec.target ?? 1.0) : "original";
   }
 
-  function seedControlValue(preset, overrides) {
-    return overrides?.seed_policy || preset?.seed_policy?.default || "randomize";
+  function seedStorageKey(preset) {
+    if (preset?.id === "h3-ref2va-group" || preset?.family === "ref2va") {
+      return "comfy-remote.ref2va.seed-policy";
+    }
+    if (preset?.id === "h3-fl2va-group" || preset?.family === "fl2va") {
+      return "comfy-remote.fl2va.seed-policy";
+    }
+    return "";
+  }
+
+  function validSeedPolicy(value) {
+    return ["randomize", "fixed", "increment"].includes(String(value || ""));
+  }
+
+  function rememberedSeedPolicy(preset) {
+    const key = seedStorageKey(preset);
+    if (!key) return "";
+    try {
+      const value = window.localStorage.getItem(key);
+      return validSeedPolicy(value) ? value : "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function rememberSeedPolicy(preset, value) {
+    const key = seedStorageKey(preset);
+    if (!key || !validSeedPolicy(value)) return;
+    try { window.localStorage.setItem(key, value); } catch (_) {}
+  }
+
+  function seedControlValue(preset, overrides, live) {
+    const explicit = overrides?.seed_policy ?? overrides?.values?.seed_policy;
+    if (validSeedPolicy(explicit)) return explicit;
+    if (validSeedPolicy(live)) return live;
+    return rememberedSeedPolicy(preset) || preset?.seed_policy?.default || "randomize";
   }
 
   function installH3Controls(preset, overrides = {}) {
     const details = document.querySelector("#advanced-settings");
     const grid = details?.querySelector(".advanced-grid");
     if (!details || !grid) return;
+    const previousPolicy = grid.querySelector("[data-v04-seed-policy]");
+    const livePolicy = previousPolicy?.dataset.seedPolicyFamily === preset?.family
+      ? previousPolicy.value
+      : "";
     grid.querySelectorAll(".v04-control").forEach(node => node.remove());
 
     const supportsSeed = Boolean(preset?.seed_policy?.supported);
     const seedInput = grid.querySelector('input[name="seed"]');
     const seedLabel = seedInput?.closest("label.field");
     if (supportsSeed && seedInput && seedLabel) {
-      const policy = seedControlValue(preset, overrides);
+      const policy = seedControlValue(preset, overrides, livePolicy);
       const policyLabel = document.createElement("label");
       policyLabel.className = "field v04-control v04-seed-policy";
       policyLabel.innerHTML = `<span>种子策略</span><select data-v04-seed-policy>
@@ -145,6 +183,7 @@
       </select>`;
       seedLabel.before(policyLabel);
       const select = policyLabel.querySelector("select");
+      select.dataset.seedPolicyFamily = preset.family || "";
       select.value = policy;
       const base = overrides?.seed_value ?? overrides?.seed ?? seedInput.value ?? "";
       if (policy !== "randomize" && base !== "") seedInput.value = String(base);
@@ -155,7 +194,10 @@
         if (value === "randomize") seedInput.value = "";
         else if (!seedInput.value) seedInput.value = String(overrides?.seed_value ?? 0);
       };
-      select.addEventListener("change", sync);
+      select.addEventListener("change", () => {
+        rememberSeedPolicy(preset, select.value);
+        sync();
+      });
       sync();
     }
 
@@ -277,6 +319,9 @@
     if (preset.family === "generic") installGenericControls(preset, overrides);
     else installH3Controls(preset, overrides);
   }
+
+  const CreationControls = window.ComfyRemoteCreationControls = window.ComfyRemoteCreationControls || {};
+  CreationControls.install = installCreationControls;
 
   const baseApplyPresetForMedia = applyPreset;
   applyPreset = function(...args) {

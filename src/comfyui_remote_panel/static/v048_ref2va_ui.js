@@ -3,9 +3,11 @@
   const STORAGE_MODE = "comfy-remote.ref2va.generation-mode";
   const STORAGE_BACKEND = "comfy-remote.ref2va.prompt-backend";
   const STORAGE_PROFILE = "comfy-remote.ref2va.inference-profile";
+  const STORAGE_OLLAMA_MODEL = "comfy-remote.ref2va.ollama-model";
   const DEFAULT_MODE = "v4step600";
   const DEFAULT_BACKEND = "raw";
   const DEFAULT_PROFILE = "int8";
+  const DEFAULT_OLLAMA_MODEL = "gemma4:e4b";
   const MODES = ["v4step600", "lightx2v", "original"];
   const BACKENDS = ["raw", "ollama", "qwen35"];
   const PROFILES = ["int8", "fp16_bf16"];
@@ -36,6 +38,9 @@
     } catch (_) { return fallback; }
   }
   function remember(key, value) { try { window.localStorage.setItem(key, value); } catch (_) {} }
+  function rememberedText(key, fallback) {
+    try { return window.localStorage.getItem(key)?.trim() || fallback; } catch (_) { return fallback; }
+  }
   function option(value, label) {
     const item = document.createElement("option");
     item.value = value;
@@ -108,11 +113,33 @@
     select.value = next;
     return select;
   }
+  function ensureOllamaField(grid, backend, explicit) {
+    let field = grid.querySelector("[data-v048-ref2va-ollama-model-field]");
+    let control = field?.querySelector("[data-v045-ollama-model]");
+    const normalizedExplicit = typeof explicit === "string" ? explicit.trim() : "";
+    const live = String(control?.value || "").trim();
+    const next = normalizedExplicit || live || rememberedText(STORAGE_OLLAMA_MODEL, DEFAULT_OLLAMA_MODEL);
+    if (!field) {
+      field = document.createElement("label");
+      field.className = "field";
+      field.dataset.v048Ref2vaOllamaModelField = "true";
+      field.dataset.ollamaStorageKey = STORAGE_OLLAMA_MODEL;
+      field.innerHTML = '<span>Ollama 标准化模型</span><input type="text" autocomplete="off" data-v045-ollama-model>';
+      grid.append(field);
+      control = field.querySelector("[data-v045-ollama-model]");
+    }
+    if (control?.tagName === "SELECT" && ![...control.options].some(item => item.value === next)) {
+      control.append(option(next, next));
+    }
+    if (control) control.value = next;
+    field.hidden = backend !== "ollama";
+    return control;
+  }
   function positionRef2vaFields(grid) {
     const scheduler = grid.querySelector('select[name="scheduler"]')?.closest("label.field");
     if (!scheduler) return;
     let anchor = scheduler;
-    for (const key of ["inference-profile", "prompt-backend", "generation-mode"]) {
+    for (const key of ["inference-profile", "ollama-model", "prompt-backend", "generation-mode"]) {
       const field = grid.querySelector(`[data-v048-ref2va-${key}-field]`);
       if (!field) continue;
       if (field.nextElementSibling !== anchor) grid.insertBefore(field, anchor);
@@ -136,22 +163,35 @@
     }
     const grid = document.querySelector("#advanced-settings .advanced-grid");
     if (!grid) return;
+    if (!grid.querySelector("[data-v04-seed-policy]")) {
+      window.ComfyRemoteCreationControls?.install?.(group(), overrides);
+    }
     const mode = ensureField(grid, "generation-mode", "生成模式", MODES,
       ["v4_600step", "LightX2V", "原版"], STORAGE_MODE, DEFAULT_MODE,
       candidate(overrides, "generation_mode", null), canonicalMode);
     const backend = ensureField(grid, "prompt-backend", "标准化提示词", BACKENDS,
       ["原始提示词", "Ollama 标准化", "Qwen3.5 标准化"], STORAGE_BACKEND, DEFAULT_BACKEND,
       candidate(overrides, "prompt_backend", null));
+    const ollamaModel = ensureOllamaField(
+      grid, backend.value, candidate(overrides, "ollama_model", null)
+    );
     const profile = ensureField(grid, "inference-profile", "主模型", PROFILES,
       ["pruned_int8", "pruned_bf16"], STORAGE_PROFILE, DEFAULT_PROFILE,
       candidate(overrides, "inference_profile", null), visibleProfile);
     mode.dataset.v048Ref2vaGenerationMode = "true";
     backend.dataset.v048Ref2vaPromptBackend = "true";
+    if (ollamaModel) ollamaModel.dataset.v045OllamaModel = "true";
     profile.dataset.v048Ref2vaInferenceProfile = "true";
     mode.onchange = () => {
       if (!valid(mode.value, MODES)) return;
       remember(STORAGE_MODE, mode.value);
       applyModeDefaults(mode.value);
+      updateSubmitAvailability();
+    };
+    backend.onchange = () => {
+      if (!valid(backend.value, BACKENDS)) return;
+      remember(STORAGE_BACKEND, backend.value);
+      ensureOllamaField(grid, backend.value, null);
       updateSubmitAvailability();
     };
     positionRef2vaFields(grid);
@@ -161,6 +201,7 @@
     document.querySelectorAll(
       "[data-v048-ref2va-generation-mode-field], "
       + "[data-v048-ref2va-prompt-backend-field], "
+      + "[data-v048-ref2va-ollama-model-field], "
       + "[data-v048-ref2va-inference-profile-field]"
     ).forEach(field => field.remove());
   }
@@ -169,11 +210,12 @@
       mode: document.querySelector("select[data-v048-ref2va-generation-mode]")?.value || DEFAULT_MODE,
       backend: document.querySelector("select[data-v048-ref2va-prompt-backend]")?.value || DEFAULT_BACKEND,
       profile: document.querySelector("select[data-v048-ref2va-inference-profile]")?.value || DEFAULT_PROFILE,
+      ollamaModel: document.querySelector("[data-v048-ref2va-ollama-model-field] [data-v045-ollama-model]")?.value || DEFAULT_OLLAMA_MODEL,
     };
   }
   function updateRef2vaAvailability() {
     if (!selectedRef2va()) return;
-    const {mode, backend, profile} = currentRef2vaValues();
+    const {mode, backend, profile, ollamaModel} = currentRef2vaValues();
     const target = state.workflowItems?.get?.(targetId(mode, backend));
     const profileSelect = document.querySelector("select[data-v048-ref2va-inference-profile]");
     const variant = target?.manifest?.model_profile?.main_model?.variants?.fp16_bf16;
@@ -228,6 +270,8 @@
     values.generation_mode = mode;
     values.prompt_backend = backend;
     values.inference_profile = profile;
+    if (backend === "ollama") values.ollama_model = ollamaModel;
+    else delete values.ollama_model;
     formData.delete("values_json");
     formData.set("values_json", JSON.stringify(values));
     return formData;

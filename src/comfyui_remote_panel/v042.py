@@ -6,6 +6,8 @@ import secrets
 import time
 from typing import Any
 
+from aiohttp import web
+
 from .workflow_registry import CANONICAL_FL2VA_ASSET_IDS
 
 
@@ -313,9 +315,67 @@ def _install_job_service() -> None:
     jobs_module.JobService.public_job = public_job_v042
 
 
+def _virtual_metadata(presets: dict[str, Any]) -> dict[str, Any] | None:
+    source = presets.get(LEGACY_FL2VA_ENTRY_ID) or next(
+        (preset for preset in presets.values() if preset.manifest.get("family") == "fl2va"),
+        None,
+    )
+    if source is None:
+        return None
+    result = source.public_metadata()
+    result.update({
+        "id": FL2VA_ENTRY_ID,
+        "name": "MiniMax H3 FL2VA",
+        "description": "首尾帧视频生成 · 原版 / LightX2V / v4_600step",
+        "asset_role": "virtual",
+        "available": True,
+    })
+    return result
+
+
+def _install_app() -> None:
+    from . import app as app_module
+
+    if getattr(app_module.create_app, "_v042_fl2va_api", False):
+        return
+    original = app_module.create_app
+
+    def create_app_v042(*args: Any, **kwargs: Any):
+        application = original(*args, **kwargs)
+
+        @web.middleware
+        async def v042_api(request: web.Request, handler):
+            response = await handler(request)
+            if request.method != "GET" or request.path != "/api/presets" or not isinstance(response, web.Response):
+                return response
+            try:
+                payload = json.loads(response.text or "{}")
+            except (TypeError, json.JSONDecodeError):
+                return response
+            items = payload.get("items") if isinstance(payload, dict) else None
+            if not isinstance(items, list):
+                return response
+            items = [item for item in items if item.get("id") != FL2VA_ENTRY_ID]
+            virtual = _virtual_metadata(application["presets"])
+            if virtual is not None:
+                items.append(virtual)
+            replacement = web.json_response({"items": items}, status=response.status)
+            for key, value in response.headers.items():
+                if key.lower() not in {"content-type", "content-length"}:
+                    replacement.headers[key] = value
+            return replacement
+
+        application.middlewares.insert(0, v042_api)
+        return application
+
+    create_app_v042._v042_fl2va_api = True  # type: ignore[attr-defined]
+    app_module.create_app = create_app_v042
+
+
 def install() -> None:
     """Install the v0.4.2 FL2VA mode routing and H3 prompt/aspect contract."""
 
     _install_database_behavior()
     _install_preset_behavior()
     _install_job_service()
+    _install_app()

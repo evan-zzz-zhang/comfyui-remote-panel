@@ -53,6 +53,11 @@ def test_generation_mode_defaults_to_v4_and_uses_local_storage():
     assert 'applyPreset(ENTRY_ID)' in JS
 
 
+def test_fl2va_virtual_entry_name_does_not_inherit_physical_workflow_name():
+    assert 'name: "MiniMax H3 FL2VA"' in JS
+    assert 'name: originalItem?.name || source?.name' not in JS
+
+
 def test_ollama_model_uses_existing_advanced_grid_and_remembered_preference():
     assert 'const DEFAULT_OLLAMA_MODEL = "gemma4:e4b"' in JS
     assert 'comfy-remote.fl2va.ollama-model' in JS
@@ -159,7 +164,7 @@ async def test_root_loads_v042_scripts_after_existing_frontend_layers(tmp_path, 
     response = await client.get("/", headers={"Tailscale-User-Login": "owner@example.com"})
     assert response.status == 200
     html = await response.text()
-    ui_tag = '<script src="/static/v042_ui.js?v=0.4.8.1" defer></script>'
+    ui_tag = '<script src="/static/v042_ui.js?v=0.4.8.2" defer></script>'
     patch_tag = '<script src="/static/v042_patch.js?v=0.4.2.4" defer></script>'
     assert html.count(ui_tag) == 1
     assert html.count(patch_tag) == 1
