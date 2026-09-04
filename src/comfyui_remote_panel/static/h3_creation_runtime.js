@@ -52,6 +52,15 @@
     }
     const mapped = adapter.mapPreset?.(presetId, overrides) || { presetId, overrides };
     const nextOverrides = mergedOverrides(mapped.overrides);
+    // Retry metadata must exist before the base/UI render path runs. FL2VA uses
+    // retryRoles while deciding whether an empty Raw prompt is allowed, and
+    // rendering first then restoring roles makes a retained frame look absent.
+    if (Array.isArray(nextOverrides.input_roles)) {
+      state.retryRoles = [...nextOverrides.input_roles];
+      state.retryKeepRoles = Array.isArray(nextOverrides.retry_keep_roles)
+        ? [...nextOverrides.retry_keep_roles]
+        : [...state.retryRoles];
+    }
     const result = baseApplyPreset(mapped.presetId, nextOverrides);
     finishH3Apply(adapter);
     return result;
