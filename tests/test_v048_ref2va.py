@@ -1,6 +1,7 @@
 from pathlib import Path
 import io
 import json
+import time
 
 import pytest
 from aiohttp import FormData, web
@@ -379,6 +380,97 @@ async def test_full_runtime_stack_binds_and_retries_selected_ref2va_ollama_model
     draft = await retry.json()
     assert draft["prompt_backend"] == "ollama"
     assert draft["values"]["ollama_model"] == "qwen3:8b"
+
+
+@pytest.mark.asyncio
+async def test_ref2va_qwen_prompt_capture_records_elapsed_without_standardize_ws_stage(
+    panel_client_v048, comfy_server_v048
+):
+    form = FormData(default_to_multipart=True)
+    form.add_field("preset_id", "h3-ref2va-group")
+    form.add_field("prompt", "Qwen timing capture")
+    form.add_field("values_json", json.dumps({
+        "generation_mode": "v4step600",
+        "prompt_backend": "qwen35",
+        "inference_profile": "int8",
+    }))
+    response = await panel_client_v048.post("/api/jobs", data=form, headers=LOGIN)
+    assert response.status == 201, await response.text()
+    job_id = (await response.json())["id"]
+
+    await panel_client_v048.app["db"].update_job(
+        job_id, status="running", started_at=time.time() - 7
+    )
+    comfy_server_v048.app["history"][job_id] = {
+        "status": {"completed": True, "status_str": "success", "messages": []},
+        "outputs": {"92": {"standardized_prompt": "Qwen captured prompt"}},
+    }
+
+    # Deliberately reconcile from history without sending a websocket
+    # standardize event. This is the delayed Qwen capture path.
+    await panel_client_v048.app["jobs"].reconcile_once()
+
+    stored = await panel_client_v048.app["db"].get_job(job_id)
+    assert stored is not None
+    public = panel_client_v048.app["jobs"].public_job(stored)
+    assert public["standardized_prompt"] == "Qwen captured prompt"
+    assert public["standardization_elapsed_seconds"] > 0
+    timing = stored["input_values"]["_v046_phase_timing"]
+    assert timing["standardization_finished_at"] >= timing["standardization_started_at"]
+
+
+@pytest.mark.asyncio
+async def test_prompt_capture_timing_preserves_existing_ollama_phase_bounds(
+    panel_client_v048
+):
+    form = FormData(default_to_multipart=True)
+    form.add_field("preset_id", "h3-ref2va-group")
+    form.add_field("prompt", "Ollama timing capture")
+    form.add_field("values_json", json.dumps({
+        "generation_mode": "v4step600",
+        "prompt_backend": "ollama",
+        "inference_profile": "int8",
+    }))
+    response = await panel_client_v048.post("/api/jobs", data=form, headers=LOGIN)
+    assert response.status == 201, await response.text()
+    job_id = (await response.json())["id"]
+    db = panel_client_v048.app["db"]
+    with db._connect() as connection:
+        row = connection.execute(
+            "SELECT input_values_json FROM jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+        values = json.loads(row[0])
+        values["_v046_phase_timing"] = {
+            "standardization_started_at": 10.0,
+            "standardization_finished_at": 20.0,
+        }
+        connection.execute(
+            "UPDATE jobs SET input_values_json = ? WHERE id = ?",
+            (json.dumps(values), job_id),
+        )
+
+    await db.set_standardized_prompt_v042(job_id, "Ollama captured prompt")
+    stored = await db.get_job(job_id)
+    assert stored["input_values"]["_v046_phase_timing"] == {
+        "standardization_started_at": 10.0,
+        "standardization_finished_at": 20.0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_raw_public_job_reports_zero_standardization_elapsed(panel_client_v048):
+    form = FormData(default_to_multipart=True)
+    form.add_field("preset_id", "h3-ref2va-group")
+    form.add_field("prompt", "Raw timing")
+    form.add_field("values_json", json.dumps({
+        "generation_mode": "v4step600",
+        "prompt_backend": "raw",
+        "inference_profile": "int8",
+    }))
+    response = await panel_client_v048.post("/api/jobs", data=form, headers=LOGIN)
+    assert response.status == 201, await response.text()
+    job = await panel_client_v048.app["db"].get_job((await response.json())["id"])
+    assert panel_client_v048.app["jobs"].public_job(job)["standardization_elapsed_seconds"] == 0
 
 
 @pytest.mark.asyncio

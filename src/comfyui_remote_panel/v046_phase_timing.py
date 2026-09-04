@@ -76,6 +76,46 @@ def _install_database_behavior() -> None:
     db_module.Database.update_phase_timing_v046 = update_phase_timing_v046
 
 
+def _install_prompt_capture_behavior() -> None:
+    from . import db as db_module
+
+    setter = getattr(db_module.Database, "set_standardized_prompt_v042", None)
+    if not callable(setter) or getattr(setter, "_v046_phase_timing_capture", False):
+        return
+
+    original_setter = setter
+
+    async def set_standardized_prompt_v046_timing(
+        self, job_id: str, prompt: str
+    ) -> dict[str, Any] | None:
+        refreshed = await original_setter(self, job_id, prompt)
+        if refreshed is None:
+            return None
+
+        values = refreshed.get("input_values")
+        timing = values.get(_TIMING_KEY) if isinstance(values, dict) else None
+        if not isinstance(timing, dict):
+            timing = {}
+
+        updates: dict[str, float] = {}
+        if timing.get("standardization_finished_at") is None:
+            started_at = timing.get("standardization_started_at")
+            if started_at is None:
+                # Qwen history capture can be the first observable boundary on
+                # installs that do not emit a websocket standardize stage.
+                started_at = refreshed.get("started_at") or refreshed.get("created_at")
+                if started_at is not None:
+                    updates["standardization_started_at"] = float(started_at)
+            updates["standardization_finished_at"] = time.time()
+
+        if updates:
+            refreshed = await self.update_phase_timing_v046(job_id, **updates)
+        return refreshed
+
+    set_standardized_prompt_v046_timing._v046_phase_timing_capture = True  # type: ignore[attr-defined]
+    db_module.Database.set_standardized_prompt_v042 = set_standardized_prompt_v046_timing
+
+
 def _install_job_service_behavior() -> None:
     from . import jobs as jobs_module
 
@@ -151,9 +191,16 @@ def _install_job_service_behavior() -> None:
         if generation_start is not None and generation_end is None:
             generation_end = now if phase == "sampling" or terminal_end is not None else None
 
-        result["standardization_elapsed_seconds"] = _elapsed(
-            standardization_start, standardization_end
-        )
+        stored_values = job.get("input_values")
+        backend = result.get("prompt_backend")
+        if not isinstance(backend, str) and isinstance(stored_values, dict):
+            backend = stored_values.get("_v048_prompt_backend")
+        if backend == "raw" or result.get("prompt_standardization_mode") == "off":
+            result["standardization_elapsed_seconds"] = 0
+        else:
+            result["standardization_elapsed_seconds"] = _elapsed(
+                standardization_start, standardization_end
+            )
         result["generation_elapsed_seconds"] = _elapsed(
             generation_start, generation_end
         )
@@ -171,4 +218,5 @@ def install() -> None:
     """Persist prompt-standardization and sampler timings without a DB schema change."""
 
     _install_database_behavior()
+    _install_prompt_capture_behavior()
     _install_job_service_behavior()
