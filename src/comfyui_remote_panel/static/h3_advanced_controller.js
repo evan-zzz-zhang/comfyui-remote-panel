@@ -386,7 +386,7 @@
       if (item.disabled) item.title = "当前内置资产不可用";
       else item.removeAttribute("title");
     }
-    if (modelSelect.options?.some(item => item.value === state.mainModel && !item.disabled)) {
+    if (Array.from(modelSelect.options || []).some(item => item.value === state.mainModel && !item.disabled)) {
       modelSelect.value = state.mainModel;
     } else {
       modelSelect.value = adapter.defaults.mainModel;
