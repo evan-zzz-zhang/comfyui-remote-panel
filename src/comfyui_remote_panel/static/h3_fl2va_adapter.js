@@ -114,6 +114,7 @@
     if (String(formData.get("preset_id") || "") !== ENTRY_ID) return formData;
     const values = valuesFromFormData(formData);
     const backend = normalizeBackend(ui.promptBackend || DEFAULT_BACKEND);
+    const seedPolicy = ui.seedPolicy || "randomize";
     Object.assign(values, {
       generation_mode: normalizeMode(ui.generationMode || DEFAULT_MODE),
       prompt_backend: backend,
@@ -123,10 +124,15 @@
       scheduler: ui.scheduler,
       sampler: ui.sampler,
       steps: ui.steps,
-      seed_policy: ui.seedPolicy || "randomize",
+      seed_policy: seedPolicy,
     });
-    if (ui.seedPolicy && ui.seedPolicy !== "randomize") values.seed_value = ui.seedValue ?? "";
-    else delete values.seed_value;
+    if (seedPolicy !== "randomize") values.seed_value = ui.seedValue ?? "";
+    else {
+      delete values.seed_value;
+      // Retry drafts expose the previous task's resolved seed through the base
+      // form. Randomize must not accidentally resubmit that hidden old seed.
+      formData.delete("seed");
+    }
     if (ui.referenceResolution) values.media_resolution = referenceResolutionToTransport(ui.referenceResolution, ui);
     if (backend === "ollama") values.ollama_model = String(ui.ollamaModel || DEFAULT_OLLAMA_MODEL).trim() || DEFAULT_OLLAMA_MODEL;
     else delete values.ollama_model;
