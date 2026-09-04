@@ -10,6 +10,12 @@
   background: var(--surface-1) !important;
 }
 
+/* H3 advanced fields use the native hidden attribute for conditional visibility.
+   The base .field rule sets display:grid, so explicitly keep hidden fields out of layout. */
+#advanced-settings .field[hidden] {
+  display: none !important;
+}
+
 /* Main navigation already names these pages; do not repeat the same title below it. */
 #view-generate > .page-heading,
 #view-jobs > .page-heading,
