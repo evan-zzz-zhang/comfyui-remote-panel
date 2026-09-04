@@ -68,7 +68,7 @@ class Element {
     this.style = { display: "", setProperty: (key, value) => { this.style[key] = value; } };
     this.hidden = false; this.name = ""; this.id = ""; this.type = ""; this.value = "";
     this.checked = false; this.disabled = false; this.placeholder = ""; this.listeners = {};
-    this._text = ""; this.mutationCount = 0;
+    this._text = ""; this.mutationCount = 0; this._observers = [];
   }
   get textContent() { return this._text + this.children.map(child => child.textContent).join(""); }
   set textContent(value) { this._text = String(value ?? ""); this.children = []; }
@@ -83,7 +83,10 @@ class Element {
   setAttribute(name, value) { this.attributes[name] = String(value); if (name === "id") this.id = String(value); if (name === "class") String(value).split(/\s+/).filter(Boolean).forEach(item => this.classList.add(item)); if (name === "name") this.name = String(value); if (name === "type") this.type = String(value); if (name.startsWith("data-")) this.dataset[dataKey(name.slice(5))] = String(value); }
   getAttribute(name) { return this.attributes[name] ?? (name === "id" ? this.id : name === "name" ? this.name : null); }
   removeAttribute(name) { delete this.attributes[name]; if (name === "title") delete this.title; }
-  recordMutation() { if (this.parentElement) this.parentElement.mutationCount += 1; else this.mutationCount += 1; }
+  recordMutation() {
+    this.mutationCount += 1;
+    for (const observer of this._observers || []) observer.schedule();
+  }
   append(...nodes) { for (const node of nodes) { if (!node) continue; if (node.parentElement) node.remove(); node.parentElement = this; this.children.push(node); this.recordMutation(); } }
   prepend(...nodes) { for (const node of [...nodes].reverse()) { if (node.parentElement) node.remove(); node.parentElement = this; this.children.unshift(node); this.recordMutation(); } }
   replaceChildren(...nodes) { this.children.forEach(node => { node.parentElement = null; }); this.children = []; this.recordMutation(); this.append(...nodes); }
@@ -119,6 +122,16 @@ class Document extends Element {
   createElement(tagName) { return new Element(tagName); }
   addEventListener(name, callback) { (this.listeners[name] ||= []).push(callback); }
   dispatchEvent(event) { event.target ||= this; (this.listeners[event.type] || []).forEach(callback => callback.call(this, event)); return true; }
+}
+class MutationObserverHarness {
+  constructor(callback) { this.callback = callback; this.targets = []; this.queued = false; }
+  observe(target) { this.targets.push(target); target._observers ||= []; target._observers.push(this); }
+  disconnect() { for (const target of this.targets) target._observers = (target._observers || []).filter(item => item !== this); this.targets = []; }
+  schedule() {
+    if (this.queued) return;
+    this.queued = true;
+    queueMicrotask(() => { this.queued = false; this.callback([]); });
+  }
 }
 class FormDataHarness {
   constructor(entries = {}) { this.entries = new Map(Object.entries(entries)); }
@@ -179,13 +192,13 @@ function buildContext() {
     selectedPreset: () => state.presets.get(presetSelect.value),
     applyPreset: baseApplyPreset, updateSubmitAvailability() {}, uploadForm() {}, loadPresets() {}, loadWorkflows() {}, apiAction() {},
     escapeHtml: value => String(value ?? ""), aspectLabel: value => value, mediaKindFromRole: () => "image", queueMicrotask,
-    MutationObserver: class {}, fetch: async () => ({ ok: true, json: async () => ({ items: [] }) }),
+    MutationObserver: MutationObserverHarness, fetch: async () => ({ ok: true, json: async () => ({ items: [] }) }),
     Event: EventHarness, FormData: FormDataHarness,
   };
   context.window = context; context.globalThis = context; return { context, state, grid, presetSelect, storage };
 }
 function installProductionChain(context) {
-  for (const name of ["workflow_ux.js", "h3_advanced_controller.js", "v042_ui.js", "v045_ollama_ui.js", "v046_fl2va_ui.js", "v048_ref2va_ui.js"]) loadScript(context, name);
+  for (const name of ["workflow_ux.js", "h3_advanced_controller.js", "h3_ollama_service.js", "h3_creation_runtime.js", "h3_fl2va_adapter.js", "h3_ref2va_adapter.js"]) loadScript(context, name);
 }
 function seedProductionState(state) {
   const modes = ["original", "lightx2v", "v4step600"], backends = ["raw", "ollama", "qwen35"];
@@ -230,12 +243,35 @@ async function renderCase(env, family, backend, seedPolicy) {
   const expectedLabels = { "generation-mode": "生成模式", "prompt-backend": "标准化提示词", "main-model": "主模型", "ollama-model": "Ollama 标准化模型", scheduler: "调度器", sampler: "采样器", steps: "迭代步数", "seed-policy": "种子策略", "seed-value": "种子", "reference-resolution": "参考图分辨率" };
   assert.deepEqual(signature(grid).map(item => [item[0], item[1]]), expected.map(role => [role, expectedLabels[role]]), `${family} labels: ${backend}/${seedPolicy}`);
   assert.equal(grid.querySelector('[data-h3-advanced-role="ollama-model"]').hidden, backend !== "ollama", `${family} Ollama visibility: ${backend}`);
-  assert.equal(grid.querySelector('[data-h3-advanced-role="seed-value"]').classList.contains("hidden"), seedPolicy === "randomize", `${family} seed visibility: ${seedPolicy}`);
+  assert.equal(grid.querySelector('[data-h3-advanced-role="seed-value"]').hidden, seedPolicy === "randomize", `${family} seed visibility: ${seedPolicy}`);
   return { roles: roles(grid), signature: signature(grid), contract: contract(grid), state: context.ComfyRemoteH3AdvancedSettings.getState() };
 }
 
 (async () => {
   const env = buildContext(); installProductionChain(env.context); seedProductionState(env.state);
+  const lifecycle = buildContext(); installProductionChain(lifecycle.context); seedProductionState(lifecycle.state);
+  lifecycle.presetSelect.value = "h3-ref2va-group";
+  lifecycle.context.applyPreset("h3-ref2va-group", { generation_mode: "v4step600", prompt_backend: "ollama", seed_policy: "randomize" });
+  await new Promise(resolve => queueMicrotask(resolve));
+  assert.ok(lifecycle.grid.mutationCount > 0, "first H3 normalization must repair the base order");
+  lifecycle.grid.mutationCount = 0;
+  lifecycle.context.ComfyRemoteH3AdvancedSettings.normalize(lifecycle.grid);
+  assert.equal(lifecycle.grid.mutationCount, 0, "golden H3 order must be idempotent");
+  let observerCallbacks = 0;
+  const convergenceObserver = new lifecycle.context.MutationObserver(() => {
+    observerCallbacks += 1;
+    lifecycle.context.ComfyRemoteH3AdvancedSettings.normalize(lifecycle.grid);
+  });
+  convergenceObserver.observe(lifecycle.grid, { childList: true });
+  const managed = lifecycle.grid.children.filter(field => field.dataset.h3AdvancedRole);
+  lifecycle.grid.insertBefore(managed[managed.length - 1], managed[0]);
+  await new Promise(resolve => queueMicrotask(resolve));
+  await new Promise(resolve => queueMicrotask(resolve));
+  const settledMutations = lifecycle.grid.mutationCount;
+  await new Promise(resolve => queueMicrotask(resolve));
+  assert.ok(observerCallbacks >= 1, "observer convergence test must execute the callback");
+  assert.equal(lifecycle.grid.mutationCount, settledMutations, "observer callback must converge without churn");
+  convergenceObserver.disconnect();
   const cases = [["raw", "randomize"], ["ollama", "randomize"], ["ollama", "fixed"], ["ollama", "increment"], ["qwen35", "randomize"]];
   for (const [backend, seedPolicy] of cases) {
     const fl = await renderCase(env, "fl2va", backend, seedPolicy);
@@ -262,5 +298,18 @@ async function renderCase(env, family, backend, seedPolicy) {
     assert.deepEqual(env.context.ComfyRemoteH3AdvancedSettings.getState(), originalState, `${family} mode round-trip state`);
   }
   for (const [backend, seedPolicy] of cases) { await renderCase(env, "fl2va", backend, seedPolicy); await renderCase(env, "ref2va", backend, seedPolicy); }
+  for (const backend of ["raw", "ollama", "qwen35"]) {
+    env.presetSelect.value = "h3-ref2va-group";
+    env.context.applyPreset("h3-ref2va-group", { generation_mode: "v4step600", prompt_backend: backend, inference_profile: "int8", seed_policy: "randomize" });
+    const formData = new env.context.FormData({ preset_id: "h3-ref2va-group", values_json: JSON.stringify({ existing: true }) });
+    env.context.uploadForm("/api/jobs", formData);
+    const values = JSON.parse(formData.get("values_json"));
+    assert.equal(values.prompt_backend, backend, `Ref2VA routing backend: ${backend}`);
+    assert.equal(values.inference_profile, "int8");
+    assert.equal(values.generation_mode, "v4step600");
+    assert.equal(values.existing, true);
+    assert.equal(Object.prototype.hasOwnProperty.call(values, "ollama_model"), backend === "ollama");
+    assert.equal(formData.getAll("ollama_model").length, 0, "ollama routing must stay in values_json");
+  }
   console.log("frontend production-flow contract smoke passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

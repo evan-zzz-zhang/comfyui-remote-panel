@@ -240,7 +240,10 @@
     } else {
       renderGenericForm(preset, overrides);
     }
-    if (h3) window.syncH3CreationUI?.(preset, overrides);
+    if (h3) {
+      const mounted = window.H3CreationRuntime?.mount?.(preset, overrides);
+      if (!mounted) window.syncH3CreationUI?.(preset, overrides);
+    } else window.ComfyRemoteH3AdvancedSettings?.unmount?.();
     updateSettingsSummary();
   }
 

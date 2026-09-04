@@ -147,7 +147,10 @@
     }
     const ordered = ORDER.map(role => unique.get(role)).filter(Boolean);
     const current = [...grid.children].filter(node => node.matches?.("label.field") && fieldRole(node));
-    if (current.every((field, index) => field === ordered[index])) return;
+    const currentRoles = current.map(fieldRole);
+    const desiredRoles = ordered.map(fieldRole);
+    if (currentRoles.length === desiredRoles.length
+      && currentRoles.every((role, index) => role === desiredRoles[index])) return;
     const marker = document.createElement("span");
     marker.hidden = true;
     const first = current[0] || grid.firstElementChild;
@@ -227,7 +230,8 @@
     select.value = valid(state.seedPolicy, SEED_POLICIES) ? state.seedPolicy : "randomize";
     base.value = state.seedPolicy === "randomize" ? "" : state.seedValue;
     base.placeholder = state.seedPolicy === "increment" ? "起始 Seed" : "Seed";
-    baseField.classList.toggle("hidden", state.seedPolicy === "randomize");
+    baseField.hidden = state.seedPolicy === "randomize";
+    baseField.classList.remove("hidden");
     baseField.dataset.h3SeedValue = "true";
   }
 
@@ -238,10 +242,10 @@
       existing.forEach(field => field.remove());
       return;
     }
-    const same = specs.every(item => item.policy === specs[0].policy
-      && Number(item.target ?? 1) === Number(specs[0].target ?? 1)
-      && item.allowAuto === specs[0].allowAuto);
-    const visible = same ? [{ ...specs[0], role: "image", label: "参考图" }] : specs;
+    // H3 exposes one product-level reference resolution control. Even when a
+    // manifest describes multiple media roles, keep the controller's
+    // reference-resolution role singular so the family layouts cannot drift.
+    const visible = [{ ...specs[0], role: "image", label: "参考图" }];
     visible.forEach((spec, index) => {
       const field = existing[index] || document.createElement("label");
       field.className = "field v04-control v04-resolution";
@@ -280,6 +284,7 @@
       steps: grid.querySelector('input[name="steps"]')?.value || state.steps,
       seedPolicy: read("seed-policy") || state.seedPolicy,
       seedValue: grid.querySelector('input[name="seed"]')?.value || state.seedValue,
+      referenceResolution: state.referenceResolution,
     };
   }
 
@@ -354,7 +359,50 @@
     normalize(grid);
     familyStates.set(adapter.family, { ...state });
     activeState = { ...state };
+    const availability = adapter.getModelAvailability?.(state) || {};
+    const modelSelect = model.select;
+    for (const item of modelSelect.options || []) {
+      const available = availability[item.value];
+      item.disabled = available === false;
+      if (item.disabled) item.title = "当前内置资产不可用";
+      else item.removeAttribute("title");
+    }
+    if (modelSelect.options?.some(item => item.value === state.mainModel && !item.disabled)) {
+      modelSelect.value = state.mainModel;
+    } else {
+      modelSelect.value = adapter.defaults.mainModel;
+      activeState.mainModel = adapter.defaults.mainModel;
+      familyStates.set(adapter.family, { ...activeState });
+    }
     adapter.onRender?.(state);
+  }
+
+  function restoreBaseFields(grid) {
+    for (const role of ["scheduler", "sampler", "steps", "seed-value"]) {
+      const field = grid.querySelector(`[data-h3-advanced-role="${role}"]`);
+      if (!field) continue;
+      field.hidden = false;
+      field.classList.remove("hidden");
+      delete field.dataset.h3AdvancedRole;
+      delete field.dataset.h3BaseField;
+      delete field.dataset.h3SeedValue;
+      field.querySelector("select, input")?.removeAttribute("data-h3-advanced-role");
+    }
+  }
+
+  function unmount() {
+    const grid = document.querySelector("#advanced-settings .advanced-grid");
+    if (grid) {
+      grid.querySelectorAll('[data-h3-owned="true"]').forEach(field => field.remove());
+      restoreBaseFields(grid);
+      normalize(grid);
+    }
+    activeState = null;
+  }
+
+  function mount(adapter, preset, overrides = {}) {
+    if (!adapter || !preset) return;
+    sync(preset, overrides);
   }
 
   function sync(preset, overrides = {}) {
@@ -451,6 +499,8 @@
     normalize,
     getState,
     bind,
+    mount,
+    unmount,
     getAdapters: () => new Map(adapters),
   };
   window.syncH3CreationUI = syncH3CreationUI;

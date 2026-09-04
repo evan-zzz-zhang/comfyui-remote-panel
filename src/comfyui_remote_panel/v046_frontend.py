@@ -6,11 +6,9 @@ from aiohttp import web
 
 
 _SCRIPT_TAGS = (
-    '<script src="/static/v046_fl2va_ui.js?v=0.4.8.2" defer></script>\n'
-    '  <script src="/static/v046_job_runtime_ui.js?v=0.4.8.1" defer></script>\n'
-    '  <script src="/static/v046_workflow_selection_guard.js?v=0.4.6.2" defer></script>\n'
     '  <script src="/static/v046_force_stop_ui.js?v=0.4.6.2" defer></script>\n'
-    '  <script src="/static/v046_sage_attention_status.js?v=0.4.6.1" defer></script>'
+    '  <script src="/static/v046_sage_attention_status.js?v=0.4.6.1" defer></script>\n'
+    '  <script src="/static/v046_job_runtime_ui.js?v=0.4.8.1" defer></script>'
 )
 
 
@@ -37,7 +35,7 @@ def install() -> None:
                 and response.content_type == "text/html"
             ):
                 html = response.text
-                if html and "/static/v046_workflow_selection_guard.js" not in html:
+                if html and "/static/v046_job_runtime_ui.js" not in html:
                     html = html.replace("</body>", f"  {_SCRIPT_TAGS}\n</body>")
                     replacement = web.Response(
                         text=html,

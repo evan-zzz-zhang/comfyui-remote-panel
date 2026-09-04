@@ -9,7 +9,6 @@ import aiohttp
 from aiohttp import web
 
 
-_OLLAMA_SCRIPT_TAG = '<script src="/static/v045_ollama_ui.js?v=0.4.8.2" defer></script>'
 _GENERATION_SYNC_SCRIPT_TAG = '<script src="/static/v045_generation_sync.js?v=0.4.5.0" defer></script>'
 _DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
 
@@ -92,10 +91,7 @@ def install() -> None:
             ):
                 html = response.text
                 if html:
-                    missing = [
-                        tag for tag in (_OLLAMA_SCRIPT_TAG, _GENERATION_SYNC_SCRIPT_TAG)
-                        if tag not in html
-                    ]
+                    missing = [tag for tag in (_GENERATION_SYNC_SCRIPT_TAG,) if tag not in html]
                     if missing:
                         html = html.replace("</body>", "  " + "\n  ".join(missing) + "\n</body>")
                         replacement = web.Response(
