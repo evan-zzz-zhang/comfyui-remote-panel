@@ -25,6 +25,15 @@
   function normalizeMode(value) { return String(value || "").toLowerCase() === "v4_600step" ? "v4step600" : String(value || "").toLowerCase(); }
   function normalizeBackend(value) { return ({ off: "raw", comfyui: "qwen35" }[String(value || "").toLowerCase()] || String(value || "").toLowerCase()); }
   function normalizeMainModel(value) { return String(value || "").toLowerCase() === "auto" ? DEFAULT_PROFILE : String(value || "").toLowerCase(); }
+  function clone(value) {
+    if (!value || typeof value !== "object") return value;
+    return JSON.parse(JSON.stringify(value));
+  }
+  function referenceResolutionFromTransport(value, fallback) {
+    const parsed = typeof value === "string" ? (() => { try { return JSON.parse(value); } catch (_) { return null; } })() : value;
+    return { ui: parsed && typeof parsed === "object" ? clone(parsed) : fallback, transport: null };
+  }
+  function referenceResolutionToTransport(ui) { return ui ? clone(ui) : null; }
   function targetId(mode, backend) { return `ref2va_${normalizeMode(mode)}_${normalizeBackend(backend)}`; }
   function group() { return state.presets?.get?.(ENTRY_ID); }
   function refresh() { return group(); }
@@ -81,6 +90,7 @@
     modelValues: ["int8", "fp16_bf16"], modelLabels: ["pruned_int8", "pruned_bf16"],
     normalizeMode, normalizeBackend, normalizeMainModel, modeTuning: mode => MODE_TUNING[normalizeMode(mode)],
     defaults: { mode: DEFAULT_MODE, backend: DEFAULT_BACKEND, mainModel: DEFAULT_PROFILE, ollamaModel: DEFAULT_OLLAMA_MODEL, scheduler: "beta", sampler: "euler", steps: "8", seedPolicy: "randomize", referenceResolution: null },
+    referenceResolutionFromTransport, referenceResolutionToTransport,
     storage: STORAGE, physicalPresetIds: PHYSICAL_IDS, refresh, mapPreset, augmentFormData, getModelAvailability, getSubmitAvailability,
     isEntry: preset => preset?.id === ENTRY_ID || preset?.family === "ref2va",
   };

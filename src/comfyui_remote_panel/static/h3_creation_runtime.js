@@ -74,7 +74,7 @@
   function uploadFormWithH3(path, formData, onProgress) {
     if (path === "/api/jobs") {
       const adapter = adapters.get(state.presets?.get?.(String(formData.get("preset_id") || ""))?.family);
-      if (adapter) adapter.augmentFormData?.(formData, window.ComfyRemoteH3AdvancedSettings?.getState?.() || {});
+      if (adapter) adapter.augmentFormData?.(formData, window.ComfyRemoteH3AdvancedSettings?.getSubmissionState?.() || window.ComfyRemoteH3AdvancedSettings?.getState?.() || {});
     }
     return baseUploadForm(path, formData, onProgress);
   }

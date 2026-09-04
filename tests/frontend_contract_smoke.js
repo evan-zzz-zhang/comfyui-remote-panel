@@ -311,5 +311,60 @@ async function renderCase(env, family, backend, seedPolicy) {
     assert.equal(Object.prototype.hasOwnProperty.call(values, "ollama_model"), backend === "ollama");
     assert.equal(formData.getAll("ollama_model").length, 0, "ollama routing must stay in values_json");
   }
+  function resolutionForm(env) {
+    return new env.context.FormData({ preset_id: env.presetSelect.value, values_json: JSON.stringify({ existing: true }) });
+  }
+  function resolutionValues(env, formData) {
+    env.context.uploadForm("/api/jobs", formData);
+    return JSON.parse(formData.get("values_json")).media_resolution;
+  }
+  const flResolution = buildContext(); installProductionChain(flResolution.context); seedProductionState(flResolution.state);
+  flResolution.presetSelect.value = "h3-fl2va-group";
+  flResolution.context.applyPreset("h3-fl2va-group", {
+    generation_mode: "v4_600step", prompt_backend: "raw", media_resolution: { image: { policy: "auto", target_megapixels: 1.5 } },
+  });
+  const flNewValues = resolutionValues(flResolution, resolutionForm(flResolution));
+  assert.equal(flNewValues.first.target_megapixels, 1.5, "FL2VA new resolution must map image to first");
+  assert.equal(flNewValues.last.target_megapixels, 1.5, "FL2VA new resolution must map image to last");
+  assert.equal(Object.prototype.hasOwnProperty.call(flNewValues, "image"), false, "FL2VA transport must not use image role");
+
+  const flSymmetricRetry = buildContext(); installProductionChain(flSymmetricRetry.context); seedProductionState(flSymmetricRetry.state);
+  flSymmetricRetry.presetSelect.value = "h3-fl2va-group";
+  flSymmetricRetry.context.applyPreset("h3-fl2va-group", {
+    generation_mode: "v4_600step", prompt_backend: "raw",
+    media_resolution: { first: { policy: "auto", target_megapixels: 1.5 }, last: { policy: "auto", target_megapixels: 1.5 } },
+  });
+  assert.equal(flSymmetricRetry.context.ComfyRemoteH3AdvancedSettings.getState().referenceResolution.image.target_megapixels, 1.5, "symmetric FL2VA Retry display uses shared value");
+  const symmetric = resolutionValues(flSymmetricRetry, resolutionForm(flSymmetricRetry));
+  assert.equal(symmetric.first.target_megapixels, 1.5, "symmetric FL2VA Retry must retain first value");
+  assert.equal(symmetric.last.target_megapixels, 1.5, "symmetric FL2VA Retry must retain last value");
+
+  const refResolution = buildContext(); installProductionChain(refResolution.context); seedProductionState(refResolution.state);
+  refResolution.presetSelect.value = "h3-ref2va-group";
+  refResolution.context.applyPreset("h3-ref2va-group", {
+    generation_mode: "v4step600", prompt_backend: "raw", media_resolution: { image: { policy: "auto", target_megapixels: 1.5 } },
+  });
+  const refValues = resolutionValues(refResolution, resolutionForm(refResolution));
+  assert.equal(refValues.image.target_megapixels, 1.5, "Ref2VA resolution must retain image role");
+  assert.equal(Object.prototype.hasOwnProperty.call(refValues, "first"), false, "Ref2VA transport must not use frame-pair roles");
+
+  const flRetry = buildContext(); installProductionChain(flRetry.context); seedProductionState(flRetry.state);
+  flRetry.context.ComfyRemoteH3AdvancedSettings.bind();
+  flRetry.presetSelect.value = "h3-fl2va-group";
+  flRetry.context.applyPreset("h3-fl2va-group", {
+    generation_mode: "v4_600step", prompt_backend: "raw",
+    media_resolution: { first: { policy: "auto", target_megapixels: 1.0 }, last: { policy: "auto", target_megapixels: 1.5 } },
+  });
+  assert.equal(flRetry.context.ComfyRemoteH3AdvancedSettings.getState().referenceResolution.image.target_megapixels, 1.0, "FL2VA asymmetric Retry display uses first value");
+  const preserved = resolutionValues(flRetry, resolutionForm(flRetry));
+  assert.equal(preserved.first.target_megapixels, 1.0, "untouched FL2VA Retry must retain first snapshot");
+  assert.equal(preserved.last.target_megapixels, 1.5, "untouched FL2VA Retry must retain last snapshot");
+  const resolutionSelect = flRetry.grid.querySelector('[data-h3-advanced-role="reference-resolution"] select');
+  resolutionSelect.value = "2.0";
+  resolutionSelect.dispatchEvent(new flRetry.context.Event("change", { bubbles: true }));
+  const unified = resolutionValues(flRetry, resolutionForm(flRetry));
+  assert.equal(unified.first.target_megapixels, 2.0, "edited FL2VA resolution must unify first");
+  assert.equal(unified.last.target_megapixels, 2.0, "edited FL2VA resolution must unify last");
+  assert.equal(flRetry.context.ComfyRemoteH3AdvancedSettings.getSubmissionState().referenceResolutionDirty, true, "edited resolution must be dirty");
   console.log("frontend production-flow contract smoke passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

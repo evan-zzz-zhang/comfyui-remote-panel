@@ -128,6 +128,11 @@
     return value && typeof value === "object" ? value : fallback;
   }
 
+  function clone(value) {
+    if (!value || typeof value !== "object") return value;
+    return JSON.parse(JSON.stringify(value));
+  }
+
   function fieldRole(field) {
     return field?.dataset?.h3AdvancedRole || "";
   }
@@ -235,7 +240,7 @@
     baseField.dataset.h3SeedValue = "true";
   }
 
-  function ensureResolution(grid, preset, overrides, previous) {
+  function ensureResolution(grid, preset, state) {
     const specs = imageSlotSpecs(preset);
     const existing = [...grid.querySelectorAll('[data-h3-advanced-role="reference-resolution"]')];
     if (!specs.length) {
@@ -264,7 +269,7 @@
       }
       select.dataset.v04Resolution = spec.role;
       const values = spec.allowAuto ? RESOLUTION_VALUES : ["original"];
-      setOptions(select, values, values.map(value => value === "original" ? "保持原图" : `${value} MP`), requestedResolution(spec, overrides, previous.referenceResolution));
+      setOptions(select, values, values.map(value => value === "original" ? "保持原图" : `${value} MP`), requestedResolution(spec, { media_resolution: state.referenceResolution }, state.referenceResolution));
       if (!field.parentElement) grid.append(field);
     });
     existing.slice(visible.length).forEach(field => field.remove());
@@ -285,6 +290,8 @@
       seedPolicy: read("seed-policy") || state.seedPolicy,
       seedValue: grid.querySelector('input[name="seed"]')?.value || state.seedValue,
       referenceResolution: state.referenceResolution,
+      referenceResolutionTransport: state.referenceResolutionTransport,
+      referenceResolutionDirty: state.referenceResolutionDirty,
     };
   }
 
@@ -316,9 +323,19 @@
     const seedValue = seedPolicy === "randomize"
       ? ""
       : stringValue(candidate(overrides, "seed_value", "seed") ?? previous.seedValue ?? "");
-    const referenceResolution = normalizeReferenceResolution(
-      candidate(overrides, "media_resolution") ?? previous.referenceResolution ?? adapter.defaults.referenceResolution,
-    );
+    const explicitResolution = candidate(overrides, "media_resolution");
+    let referenceResolution = previous.referenceResolution ?? adapter.defaults.referenceResolution;
+    let referenceResolutionTransport = previous.referenceResolutionTransport || null;
+    let referenceResolutionDirty = previous.referenceResolutionDirty === true;
+    if (explicitResolution !== undefined) {
+      const mapped = adapter.referenceResolutionFromTransport?.(
+        explicitResolution,
+        referenceResolution,
+      ) || { ui: normalizeReferenceResolution(explicitResolution, referenceResolution), transport: null };
+      referenceResolution = mapped.ui;
+      referenceResolutionTransport = mapped.transport || null;
+      referenceResolutionDirty = overrides.reference_resolution_dirty === true;
+    }
     return {
       family: adapter.family,
       generationMode: mode,
@@ -331,6 +348,8 @@
       seedPolicy,
       seedValue,
       referenceResolution,
+      referenceResolutionTransport,
+      referenceResolutionDirty,
     };
   }
 
@@ -352,7 +371,7 @@
     if (sampler) { sampler.dataset.h3AdvancedRole = "sampler"; sampler.closest("label.field")?.setAttribute("data-h3-base-field", "true"); sampler.closest("label.field")?.setAttribute("data-h3-advanced-role", "sampler"); if (samplerValues.length) setOptions(sampler, samplerValues, samplerValues, state.sampler); else sampler.value = state.sampler; }
     if (steps) { steps.dataset.h3AdvancedRole = "steps"; steps.closest("label.field")?.setAttribute("data-h3-base-field", "true"); steps.closest("label.field")?.setAttribute("data-h3-advanced-role", "steps"); steps.value = state.steps; }
     ensureSeedPolicy(grid, state);
-    ensureResolution(grid, preset, overrides, state);
+    ensureResolution(grid, preset, state);
     mode.select.dataset.h3AdvancedRole = "generation-mode";
     backend.select.dataset.h3AdvancedRole = "prompt-backend";
     model.select.dataset.h3AdvancedRole = "main-model";
@@ -420,8 +439,34 @@
     sync(preset, overrides);
   }
 
+  function publicState(state) {
+    if (!state) return null;
+    return {
+      family: state.family,
+      generationMode: state.generationMode,
+      promptBackend: state.promptBackend,
+      mainModel: state.mainModel,
+      ollamaModel: state.ollamaModel,
+      scheduler: state.scheduler,
+      sampler: state.sampler,
+      steps: state.steps,
+      seedPolicy: state.seedPolicy,
+      seedValue: state.seedValue,
+      referenceResolution: clone(state.referenceResolution),
+    };
+  }
+
   function getState() {
-    return activeState ? { ...activeState, referenceResolution: activeState.referenceResolution && { ...activeState.referenceResolution } } : null;
+    return publicState(activeState);
+  }
+
+  function getSubmissionState() {
+    if (!activeState) return null;
+    return {
+      ...publicState(activeState),
+      referenceResolutionTransport: clone(activeState.referenceResolutionTransport),
+      referenceResolutionDirty: activeState.referenceResolutionDirty === true,
+    };
   }
 
   function handleChange(event) {
@@ -451,6 +496,8 @@
     } else if (role === "seed-value") next.seedValue = value;
     else if (role === "reference-resolution") {
       next.referenceResolution = { [target.dataset.v04Resolution]: target.value === "original" ? { policy: "original", target_megapixels: null } : { policy: "auto", target_megapixels: Number(target.value) } };
+      next.referenceResolutionTransport = null;
+      next.referenceResolutionDirty = true;
     }
     familyStates.set(adapter.family, next);
     activeState = next;
@@ -470,7 +517,21 @@
         steps: next.steps,
         seed_policy: next.seedPolicy,
         seed_value: next.seedValue,
+      });
+    }
+    if (role === "reference-resolution") {
+      sync(preset, {
+        generation_mode: next.generationMode,
+        prompt_backend: next.promptBackend,
+        inference_profile: next.mainModel,
+        ollama_model: next.ollamaModel,
+        scheduler: next.scheduler,
+        sampler: next.sampler,
+        steps: next.steps,
+        seed_policy: next.seedPolicy,
+        seed_value: next.seedValue,
         media_resolution: next.referenceResolution,
+        reference_resolution_dirty: true,
       });
     }
     adapter.onChange?.(next, role);
@@ -498,6 +559,7 @@
     render: sync,
     normalize,
     getState,
+    getSubmissionState,
     bind,
     mount,
     unmount,

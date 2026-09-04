@@ -35,6 +35,27 @@
   function normalizeMainModel(value) {
     return String(value || "").toLowerCase() === "auto" ? DEFAULT_PROFILE : String(value || "").toLowerCase();
   }
+  function clone(value) {
+    if (!value || typeof value !== "object") return value;
+    return JSON.parse(JSON.stringify(value));
+  }
+  function referenceResolutionFromTransport(value, fallback) {
+    const parsed = typeof value === "string" ? (() => { try { return JSON.parse(value); } catch (_) { return null; } })() : value;
+    if (parsed?.first || parsed?.last) {
+      const display = clone(parsed.first || parsed.last);
+      return { ui: display ? { image: display } : fallback, transport: clone(parsed) };
+    }
+    return { ui: parsed && typeof parsed === "object" ? clone(parsed) : fallback, transport: null };
+  }
+  function referenceResolutionToTransport(ui, state) {
+    if (!ui) return null;
+    if (!state?.referenceResolutionDirty && state?.referenceResolutionTransport
+      && (state.referenceResolutionTransport.first || state.referenceResolutionTransport.last)) {
+      return clone(state.referenceResolutionTransport);
+    }
+    const value = ui.image || ui.first || ui.last;
+    return value ? { first: clone(value), last: clone(value) } : null;
+  }
   function modeKey(mode) { return normalizeMode(mode) === "v4_600step" ? "v4step600" : normalizeMode(mode); }
   function targetId(mode, backend) { return `fl2va_${modeKey(mode)}_${normalizeBackend(backend)}`; }
   function merged(overrides) { return { ...(overrides || {}), ...(overrides?.values || {}) }; }
@@ -106,7 +127,7 @@
     });
     if (ui.seedPolicy && ui.seedPolicy !== "randomize") values.seed_value = ui.seedValue ?? "";
     else delete values.seed_value;
-    if (ui.referenceResolution) values.media_resolution = ui.referenceResolution;
+    if (ui.referenceResolution) values.media_resolution = referenceResolutionToTransport(ui.referenceResolution, ui);
     if (backend === "ollama") values.ollama_model = String(ui.ollamaModel || DEFAULT_OLLAMA_MODEL).trim() || DEFAULT_OLLAMA_MODEL;
     else delete values.ollama_model;
     formData.delete("values_json");
@@ -131,6 +152,7 @@
     modelValues: ["int8", "fp16_bf16"], modelLabels: ["pruned_int8", "pruned_bf16"],
     normalizeMode, normalizeBackend, normalizeMainModel, modeTuning: mode => MODE_TUNING[normalizeMode(mode)],
     defaults: { mode: DEFAULT_MODE, backend: DEFAULT_BACKEND, mainModel: DEFAULT_PROFILE, ollamaModel: DEFAULT_OLLAMA_MODEL, scheduler: "beta", sampler: "euler", steps: "8", seedPolicy: "randomize", referenceResolution: null },
+    referenceResolutionFromTransport, referenceResolutionToTransport,
     storage: STORAGE, physicalPresetIds: PHYSICAL_IDS, refresh, mapPreset, augmentFormData, getModelAvailability, getSubmitAvailability,
     isEntry: preset => preset?.id === ENTRY_ID || preset?.family === "fl2va",
   };
