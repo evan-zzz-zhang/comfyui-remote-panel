@@ -210,11 +210,15 @@ def _install_file_store() -> None:
 
     original_copy_input_async = files_module.FileStore.copy_input_async
 
-    async def copy_input_async_v041(self, source: Path, job_id: str, role: str):
+    async def copy_input_async_v041(
+        self, source: Path, job_id: str, role: str, reservation=None
+    ):
         context = _RETRY_MEDIA_CONTEXT.get()
         source_key = _path_key(Path(source))
         try:
-            copied = await original_copy_input_async(self, source, job_id, role)
+            copied = await original_copy_input_async(
+                self, source, job_id, role, reservation=reservation
+            )
         except FileNotFoundError as exc:
             if context is not None and source_key in context.get("retained_sources", set()):
                 raise files_module.FileValidationError(

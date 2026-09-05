@@ -127,13 +127,14 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
         job_id = new_job_id()
         uploaded: list[dict[str, Any]] = []
         fields: dict[str, Any] = {}
+        reservation = None
         allowed_text = {"preset_id", "prompt", "duration_seconds", "aspect_ratio", "megapixels", "seed", "scheduler", "sampler", "steps", "retry_source_id", "retry_keep_roles", "values_json"}
         fixed_files = {"first_frame": "first", "last_frame": "last"}
         repeated_files = {"ref_images": ("image", 9), "ref_videos": ("video", 3), "ref_audios": ("audio", 3)}
         slot_files = {**{f"image_{index}": f"image_{index}" for index in range(9)}, **{f"video_{index}": f"video_{index}" for index in range(3)}, **{f"audio_{index}": f"audio_{index}" for index in range(3)}}
         repeated_counts = {name: 0 for name in repeated_files}
         try:
-            await app["files"].ensure_capacity(
+            reservation = await app["files"].reserve_capacity(
                 request.content_length or 0, await app["db"].tracked_size(),
                 config.minimum_free_bytes, config.output_reserve_bytes, config.max_tracked_bytes,
             )
@@ -145,13 +146,13 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
                         raise PresetError("同一帧只能上传一张图片")
                     if not part.filename:
                         continue
-                    uploaded.append(await app["files"].save_upload(job_id, role, part))
+                    uploaded.append(await app["files"].save_upload(job_id, role, part, reservation))
                 elif part.name in slot_files:
                     role = slot_files[part.name]
                     if any(item["role"] == role for item in uploaded):
                         raise PresetError(f"素材槽位重复：{role}")
                     if part.filename:
-                        uploaded.append(await app["files"].save_upload(job_id, role, part))
+                        uploaded.append(await app["files"].save_upload(job_id, role, part, reservation))
                 elif part.name in repeated_files:
                     if not part.filename:
                         continue
@@ -160,7 +161,7 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
                     if index >= maximum:
                         raise PresetError(f"{part.name} 上传数量超过 {maximum}")
                     repeated_counts[part.name] += 1
-                    uploaded.append(await app["files"].save_upload(job_id, f"{prefix}_{index}", part))
+                    uploaded.append(await app["files"].save_upload(job_id, f"{prefix}_{index}", part, reservation))
                 elif part.name in allowed_text:
                     if part.name in fields:
                         raise PresetError(f"字段重复：{part.name}")
@@ -186,6 +187,7 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
             else:
                 raise PresetError("种子必须是整数")
             fields["seed"] = seed_text or None
+            fields["_capacity_reservation"] = reservation
             job = await app["jobs"].create(fields, uploaded, job_id)
             return web.json_response(app["jobs"].public_job(job), status=201)
         except StorageCapacityError as exc:
@@ -200,6 +202,9 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
         except ComfyError as exc:
             app["files"].cleanup_untracked(uploaded)
             return json_error(str(exc), 503, "comfyui_unavailable")
+        finally:
+            if reservation is not None:
+                await reservation.release()
 
     async def cancel_job(request: web.Request) -> web.Response:
         try:

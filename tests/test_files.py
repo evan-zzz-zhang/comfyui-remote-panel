@@ -5,7 +5,12 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from comfyui_remote_panel.files import MAX_IMAGE_BYTES, FileStore, FileValidationError
+from comfyui_remote_panel.files import (
+    MAX_IMAGE_BYTES,
+    FileStore,
+    FileValidationError,
+    StorageCapacityError,
+)
 
 
 def store(tmp_path: Path) -> FileStore:
@@ -106,6 +111,71 @@ async def test_oversize_stream_is_rejected_and_temp_file_is_removed(tmp_path):
     with pytest.raises(FileValidationError, match="25MB"):
         await value.save_upload("job", "first", OversizePart())
     assert list(value.temp_root.iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_unknown_length_upload_grows_capacity_reservation_from_actual_chunks(tmp_path, monkeypatch):
+    value = store(tmp_path)
+    image_data = Path(tmp_path / "source.png")
+    Image.new("RGB", (32, 32), "red").save(image_data, format="PNG")
+    payload = image_data.read_bytes()
+    monkeypatch.setattr(
+        "comfyui_remote_panel.files.shutil.disk_usage",
+        lambda _path: type("Usage", (), {"free": 10**9})(),
+    )
+    reservation = await value.reserve_capacity(0, 0, 0, 0, len(payload))
+
+    class ChunkedPart:
+        def __init__(self, chunks):
+            self.chunks = iter(chunks)
+
+        async def read_chunk(self, _size):
+            return next(self.chunks, b"")
+
+    try:
+        saved = await value.save_upload(
+            "123e4567-e89b-42d3-a456-426614174000",
+            "first",
+            ChunkedPart([payload[:3], payload[3:]]),
+            reservation,
+        )
+        assert saved["size_bytes"] == len(payload)
+        assert Path(saved["path"]).exists()
+    finally:
+        await reservation.release()
+
+
+@pytest.mark.asyncio
+async def test_capacity_reservations_block_concurrent_requests_and_release(tmp_path, monkeypatch):
+    value = store(tmp_path)
+    monkeypatch.setattr(
+        "comfyui_remote_panel.files.shutil.disk_usage",
+        lambda _path: type("Usage", (), {"free": 10**9})(),
+    )
+    first = await value.reserve_capacity(8, 0, 0, 0, 10)
+    with pytest.raises(StorageCapacityError):
+        await value.reserve_capacity(3, 0, 0, 0, 10)
+    await first.release()
+    second = await value.reserve_capacity(10, 0, 0, 0, 10)
+    await second.release()
+
+
+@pytest.mark.asyncio
+async def test_retry_copy_reserves_actual_source_size(tmp_path, monkeypatch):
+    value = store(tmp_path)
+    source = value.input_root / "rp_aaaaaaaaaaaa_image-0.png"
+    source.write_bytes(b"x" * 12)
+    monkeypatch.setattr(
+        "comfyui_remote_panel.files.shutil.disk_usage",
+        lambda _path: type("Usage", (), {"free": 10**9})(),
+    )
+    reservation = await value.reserve_capacity(0, 0, 0, 0, 11)
+    try:
+        with pytest.raises(StorageCapacityError):
+            await value.copy_input_async(source, "bbbbbbbbbbbb", "image_0", reservation)
+        assert not (value.input_root / "rp_bbbbbbbbbbbb_image-0.png").exists()
+    finally:
+        await reservation.release()
 
 
 @pytest.mark.asyncio

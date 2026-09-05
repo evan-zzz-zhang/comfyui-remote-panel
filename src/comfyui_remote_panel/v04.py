@@ -432,6 +432,7 @@ def install() -> None:
         effective_uploads = list(uploaded)
         copied: list[dict[str, Any]] = []
         persisted = False
+        reservation = fields.get("_capacity_reservation")
         try:
             retry_source_id = fields.get("retry_source_id")
             if retry_source_id:
@@ -470,7 +471,7 @@ def install() -> None:
                         should_copy = not replaced
                     if compatible and should_copy and role not in supplied_roles:
                         copied_file = await self.files.copy_input_async(
-                            Path(file["path"]), job_id, file["role"]
+                            Path(file["path"]), job_id, file["role"], reservation=reservation
                         )
                         copied.append(copied_file)
                         effective_uploads.append(copied_file)

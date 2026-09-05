@@ -38,12 +38,64 @@ class StorageCapacityError(RuntimeError):
     pass
 
 
+class CapacityReservation:
+    def __init__(
+        self,
+        store: "FileStore",
+        covered_bytes: int,
+        tracked_bytes: int,
+        minimum_free_bytes: int,
+        output_reserve_bytes: int,
+        max_tracked_bytes: int | None,
+    ):
+        self._store = store
+        self._covered_bytes = max(0, int(covered_bytes))
+        self._held_bytes = self._covered_bytes
+        self._used_bytes = 0
+        self._tracked_bytes = tracked_bytes
+        self._minimum_free_bytes = minimum_free_bytes
+        self._output_reserve_bytes = output_reserve_bytes
+        self._max_tracked_bytes = max_tracked_bytes
+        self._released = False
+
+    async def grow(self, amount: int) -> None:
+        if self._released:
+            raise RuntimeError("capacity reservation is already released")
+        amount = max(0, int(amount))
+        self._used_bytes += amount
+        additional = max(0, self._used_bytes - self._held_bytes)
+        if not additional:
+            return
+        await self._store._extend_capacity_reservation(self, additional)
+        self._held_bytes += additional
+
+    async def discard(self, amount: int) -> None:
+        if self._released:
+            return
+        amount = min(max(0, int(amount)), self._used_bytes)
+        self._used_bytes -= amount
+        releasable = max(self._covered_bytes, self._used_bytes)
+        if releasable >= self._held_bytes:
+            return
+        await self._store._release_capacity_bytes(self._held_bytes - releasable)
+        self._held_bytes = releasable
+
+    async def release(self) -> None:
+        if self._released:
+            return
+        await self._store._release_capacity_bytes(self._held_bytes)
+        self._held_bytes = 0
+        self._released = True
+
+
 class FileStore:
     def __init__(self, input_root: Path, output_root: Path, data_dir: Path):
         self.input_root = input_root.resolve()
         self.output_root = output_root.resolve()
         self.temp_root = (data_dir / "tmp").resolve()
         self._worker_limit = asyncio.Semaphore(2)
+        self._capacity_lock = asyncio.Lock()
+        self._reserved_capacity_bytes = 0
 
     async def _run_blocking(self, function: Any, *args: Any) -> Any:
         async with self._worker_limit:
@@ -55,7 +107,10 @@ class FileStore:
             if directory.is_symlink():
                 raise RuntimeError(f"managed directory must not be a link: {directory}")
 
-    async def save_upload(self, job_id: str, role: str, part: Any) -> dict[str, Any]:
+    async def save_upload(
+        self, job_id: str, role: str, part: Any,
+        reservation: CapacityReservation | None = None,
+    ) -> dict[str, Any]:
         kind = self.role_kind(role)
         if kind is None:
             raise FileValidationError("invalid image role")
@@ -72,6 +127,8 @@ class FileStore:
                     if size > limit:
                         labels = {"image": "单张图片不能超过 25MB", "video": "单个视频不能超过 200MB", "audio": "单个音频不能超过 50MB"}
                         raise FileValidationError(labels[kind])
+                    if reservation is not None:
+                        await reservation.grow(len(chunk))
                     handle.write(chunk)
             return await self._run_blocking(self._validate_and_store, temp, job_id, role, kind)
         except Exception:
@@ -168,8 +225,55 @@ class FileStore:
         shutil.copy2(source, destination)
         return {"role": role, "path": destination, "size_bytes": destination.stat().st_size}
 
-    async def copy_input_async(self, source: Path, new_job_id: str, role: str) -> dict[str, Any]:
-        return await self._run_blocking(self.copy_input, source, new_job_id, role)
+    async def copy_input_async(
+        self, source: Path, new_job_id: str, role: str,
+        reservation: CapacityReservation | None = None,
+    ) -> dict[str, Any]:
+        reserved = 0
+        if reservation is not None:
+            resolved = await asyncio.to_thread(source.resolve, strict=True)
+            reserved = (await asyncio.to_thread(resolved.stat)).st_size
+            await reservation.grow(reserved)
+        try:
+            return await self._run_blocking(self.copy_input, source, new_job_id, role)
+        except Exception:
+            if reservation is not None and reserved:
+                await reservation.discard(reserved)
+            raise
+
+    async def reserve_capacity(
+        self, incoming_bytes: int, tracked_bytes: int, minimum_free_bytes: int,
+        output_reserve_bytes: int, max_tracked_bytes: int | None,
+    ) -> CapacityReservation:
+        incoming_bytes = max(0, int(incoming_bytes))
+        async with self._capacity_lock:
+            self._ensure_capacity(
+                incoming_bytes,
+                tracked_bytes + self._reserved_capacity_bytes,
+                minimum_free_bytes,
+                output_reserve_bytes,
+                max_tracked_bytes,
+            )
+            self._reserved_capacity_bytes += incoming_bytes
+        return CapacityReservation(
+            self, incoming_bytes, tracked_bytes, minimum_free_bytes,
+            output_reserve_bytes, max_tracked_bytes,
+        )
+
+    async def _extend_capacity_reservation(self, reservation: CapacityReservation, additional: int) -> None:
+        async with self._capacity_lock:
+            self._ensure_capacity(
+                additional,
+                reservation._tracked_bytes + self._reserved_capacity_bytes,
+                reservation._minimum_free_bytes,
+                reservation._output_reserve_bytes,
+                reservation._max_tracked_bytes,
+            )
+            self._reserved_capacity_bytes += additional
+
+    async def _release_capacity_bytes(self, amount: int) -> None:
+        async with self._capacity_lock:
+            self._reserved_capacity_bytes = max(0, self._reserved_capacity_bytes - max(0, int(amount)))
 
     async def ensure_capacity(
         self, incoming_bytes: int, tracked_bytes: int, minimum_free_bytes: int,
