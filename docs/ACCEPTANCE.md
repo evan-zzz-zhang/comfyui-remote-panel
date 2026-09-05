@@ -369,3 +369,28 @@ Raw 与 Qwen 均登记了 5.167 秒、480 × 864、24 FPS 的 MP4 产物；三�
 Ollama 的差异仍需单独定位。Ollama 还存在标准化器语义偏差，Raw 则可作为不经过
 标准化的控制组，后续重点检查两者的参考条件输入、角色绑定和模型条件权重。本节
 作为 9/9 性能与生成链路基线，同时记录 Qwen3.5 角色替换通过、Raw/Ollama 待排查。
+
+## 2026-09-05 v0.4.8 修复阶段自动化验收
+
+本轮完成上次审查范围内的 7 项可靠性修复，保持数据库结构和既有 API 返回格式不变，
+并保持创作页布局、Settings、手机 Prompt 焦点/键盘、工作流默认值、Seed 与高级参数
+绑定不变。Ref2VA 角色替换语义、BF16、Watchdog、多主机、媒体优化和架构重构不在本轮。
+
+覆盖结果：
+
+- 自动清理：权限不足、短暂 I/O 错误、路径校验不确定和多输出混合状态均不会误删；全部输出确认缺失后仍保留既有同步与 purge 行为，并在清理前重新核对任务状态。
+- 执行限制：Generic、FL2VA、Ref2VA 的物理 ID、虚拟入口、直接 API 和 Retry 均经过服务端启用状态校验；Configurator 显式草稿测试保持可用，普通请求不能伪造测试权限。
+- 存储：旧文件表与 artifact 表按统一路径去重；图片、多输出、旧任务和 artifact-only 记录覆盖；未知长度上传、Retry 复制、并发预留、失败/取消释放均通过模拟容量测试。
+- 历史同步：SSE 连续心跳后仍能收到事件；断线期间删除的已加载任务会在重连后消失；超过首屏 100 条的历史不因分页快照缺失而误删；存在性查询有 100 个 ID 上限。
+- HTTP：媒体流 200/206、HEAD、416、SSE、普通响应和错误响应均带安全头；视频播放、Range 拖动、下载和输入媒体缓存策略通过 HTTP 回归。
+
+本地验收结果为 **455 passed**，仓库安全检查、包构建、前端语法/i18n 检查和行为 smoke
+均通过。测试运行产生的既有 Windows asyncio 子进程清理 warning 不影响通过结论；尚未进行
+新的真实 GPU、手机切后台或断网现场验收，因此这些设备级项目仍标记为未验证。
+
+The same repair scope is covered by the automated suite: uncertain artifact probes are preserved,
+workflow enablement is enforced server-side, legacy and artifact storage records are deduplicated,
+upload/Retry capacity is reserved under concurrency, SSE reconnects reconcile loaded history, and
+security headers are present before media/SSE streams are prepared. The local Windows run reports
+455 passed tests plus passing repository safety, build, frontend syntax/i18n, and smoke checks.
+Raw/Ollama Ref2VA role semantics and BF16 representative acceptance remain intentionally open.

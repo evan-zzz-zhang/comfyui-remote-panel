@@ -14,6 +14,7 @@
 - [x] 增加 Ref2VA 独立前端 selector、localStorage key 与 `values_json` 表单提交路径。
 - [x] 完成目标 Windows / ComfyUI / RTX 4080 SUPER 的 Ref2VA 9/9 INT8 真机基线（生成链路与产物登记）。
 - [x] 完成 Ref2VA Qwen3.5 三种生成模式的角色替换语义验收。
+- [x] 完成自动清理误删、工作流执行限制、存储统计/容量预留、SSE 断线历史对账与流式响应头的 7 项修复；覆盖权限/I/O 异常、直接 API/Retry、重复文件、并发上传、心跳重连和 Range/HEAD 回归。
 - [ ] 完成 Ref2VA Raw / Ollama 角色替换问题定位与语义验收。
 - [ ] 完成 BF16 代表性真机验收，或根据现场结果标记不可用原因。
 - [x] 完成全量 pytest、构建和仓库检查；CI 与 PR 收尾仍待完成。
