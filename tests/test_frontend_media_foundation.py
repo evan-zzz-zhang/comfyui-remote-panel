@@ -42,3 +42,14 @@ def test_generic_progress_does_not_monotonically_pin_stale_values() -> None:
 
     assert 'newPercent < oldPercent' not in runtime
     assert 'if (!hasProgress(next.progress_percent) && hasProgress(previous.progress_percent))' in runtime
+
+
+def test_default_h3_entry_uses_the_virtual_fl2va_preset() -> None:
+    app = _read("app.js")
+
+    assert 'state.presets.has("h3-fl2va-group") ? "h3-fl2va-group"' in app
+    assert 'state.presets.has("h3-fl2va-v4step600")' not in app
+
+    refinements = _read("ux_refinements.js")
+    assert 'preset.id === "h3-fl2va-group"' in refinements
+    assert 'preset.id === "h3-fl2va-v4step600"' not in refinements

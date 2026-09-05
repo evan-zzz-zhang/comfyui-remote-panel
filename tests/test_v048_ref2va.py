@@ -17,7 +17,7 @@ from comfyui_remote_panel.workflow_registry import (
     ref2va_asset_key,
     resolve_ref2va_asset,
 )
-from comfyui_remote_panel.v048_ref2va import _canonical_key, _virtual_metadata
+from comfyui_remote_panel.v048_ref2va import _apply_ref2va_progress, _canonical_key, _virtual_metadata
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -221,6 +221,34 @@ def test_ref2va_ollama_progress_metadata_tracks_native_standardizer(mode):
     assert manifest["progress_phase"]["136"] == "standardize"
 
 
+def test_ref2va_progress_maps_standardization_and_sampling_for_non_raw_backends():
+    result = {"progress_phase": "standardize"}
+    _apply_ref2va_progress(
+        result,
+        {"status": "running", "stage": "标准化提示词", "progress_value": 0, "progress_max": 1},
+        "ollama",
+    )
+    assert result["progress_percent"] == 8
+
+    result = {"progress_phase": "sampling"}
+    _apply_ref2va_progress(
+        result,
+        {"status": "running", "stage": "采样", "progress_value": 4, "progress_max": 8},
+        "qwen35",
+    )
+    assert result["progress_percent"] == 50
+
+
+def test_ref2va_raw_progress_starts_sampling_at_ten_percent():
+    result = {"progress_phase": "sampling"}
+    _apply_ref2va_progress(
+        result,
+        {"status": "running", "stage": "采样", "progress_value": 0, "progress_max": 20},
+        "raw",
+    )
+    assert result["progress_percent"] == 10
+
+
 def test_ref2va_representative_visual_prefers_image_then_video_first_frame():
     presets = load_presets(ROOT / "workflows")
     image = presets["ref2va_original_ollama"].build_prompt(values(), "image", {"image_0": "image.png", "video_0": "clip.mp4"})
@@ -229,6 +257,7 @@ def test_ref2va_representative_visual_prefers_image_then_video_first_frame():
 
     video = presets["ref2va_original_ollama"].build_prompt(values(), "video", {"video_0": "clip.mp4"})
     assert video["136"]["inputs"]["ref_videos.ref_video_0"] == ["9300", 0]
+    assert video["136"]["inputs"]["ref_video_fps.ref_video_fps_0"] == ["9300", 2]
     assert video["9300"] == {"class_type": "GetVideoComponents", "inputs": {"video": ["9200", 0]}}
 
     text = presets["ref2va_original_ollama"].build_prompt(values(), "text", {})
@@ -238,32 +267,50 @@ def test_ref2va_representative_visual_prefers_image_then_video_first_frame():
     assert "first_frame" not in raw["136"]["inputs"]
 
 
-@pytest.mark.parametrize(
-    "media, expected_source, expected_image_node",
-    [
-        ({"image_0": "image.png", "video_0": "clip.mp4"}, ["9100", 0], None),
-        ({"video_0": "clip.mp4"}, ["9500", 0], "9500"),
-        ({}, None, None),
-    ],
-)
-def test_ref2va_qwen_writer_keeps_representative_visual_contract(
-    media, expected_source, expected_image_node
-):
+@pytest.mark.parametrize("media", [{"image_0": "image.png", "video_0": "clip.mp4"}, {"video_0": "clip.mp4"}, {}])
+def test_ref2va_qwen_writer_uses_full_reference_collection(media):
     preset = load_presets(ROOT / "workflows")["ref2va_v4step600_qwen35"]
     graph = preset.build_prompt(values(), "qwen-visual", media)
     inputs = graph["176"]["inputs"]
-    assert inputs.get("first_frame") == expected_source
-    assert "last_frame" not in inputs
+    if media:
+        assert graph["176"]["class_type"] == "H3Ref2VAPromptPipelineQwen35V2"
+        assert inputs["qwen_clip"] == ["168", 0]
+        assert inputs["reference_bundle"] == ["9700", 0]
+        assert inputs["enable_standardization"] is True
+        if "image_0" in media and "video_0" in media:
+            assert inputs["raw_user_request"] == ["139", 0]
+            assert "<Picture 1> is explicitly authorized to provide identity" in graph["139"]["inputs"]["value"]
+            assert "<Video 1> is explicitly authorized to provide motion" in graph["139"]["inputs"]["value"]
+            assert "<Audio 1> has no authorized content transfer" in graph["139"]["inputs"]["value"]
+        else:
+            assert inputs["raw_user_request"] == ["138", 0]
+        assert graph["9700"]["class_type"] == "H3Ref2VAAssetRegistryQwen35V2"
+        assert graph["9700"]["inputs"].get("ref_images.ref_image_0") == (
+            ["9100", 0] if "image_0" in media else None
+        )
+        assert graph["9700"]["inputs"]["ref_videos.ref_video_0"] == ["9600", 0]
+        assert graph["9700"]["inputs"]["ref_video_fps.ref_video_fps_0"] == ["9600", 2]
+        assert graph["9700"]["inputs"]["ref_video_normalize_proofs.ref_video_normalize_proof_0"] == ["9600", 4]
+        assert graph["9700"]["inputs"]["ref_video_audios.ref_video_audio_0"] == ["9600", 1]
+        assert graph["177"]["inputs"]["source"] == ["176", 1]
+        assert graph["9600"] == {
+            "class_type": "H3Ref2VAReferenceVideoNormalize",
+            "inputs": {
+                "images": ["9300", 0],
+                "source_fps": ["9300", 2],
+                "target_duration_seconds": ["132", 0],
+                "audio": ["9300", 1],
+            },
+        }
+        assert graph["183"]["class_type"] == "H3Ref2VARunMetadataPackV2"
+    else:
+        assert graph["176"]["class_type"] == "H3OfficialSkillPromptWriterQwen"
+        assert inputs.get("first_frame") is None
+        assert "last_frame" not in inputs
     assert graph["136"]["inputs"].get("ref_images.ref_image_0") == (
         ["9100", 0] if "image_0" in media else None
     )
-    if expected_image_node:
-        assert graph[expected_image_node] == {
-            "class_type": "ImageFromBatch",
-            "inputs": {"images": ["9300", 0], "batch_index": 0, "length": 1},
-        }
-    else:
-        assert not any(node.get("class_type") == "ImageFromBatch" for node in graph.values())
+    assert not any(node.get("class_type") == "ImageFromBatch" for node in graph.values())
 
 
 def test_ref2va_qwen_keeps_h3_encoder_separate_and_captures_metadata():

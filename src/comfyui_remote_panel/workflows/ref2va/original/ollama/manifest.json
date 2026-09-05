@@ -142,7 +142,8 @@
       "loader_input": "file",
       "components": "GetVideoComponents",
       "input_prefix": "ref_videos.ref_video_",
-      "audio_input_prefix": "ref_video_audios.ref_video_audio_"
+      "audio_input_prefix": "ref_video_audios.ref_video_audio_",
+      "fps_input_prefix": "ref_video_fps.ref_video_fps_"
     },
     "audios": {
       "max": 3,

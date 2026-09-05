@@ -15,6 +15,7 @@ from typing import Any
 from aiohttp import web
 
 from .inference_profile import InferenceProfileError, normalize_inference_profile, resolve_inference_profile
+from .v046 import _apply_fl2va_progress
 from .workflow_registry import (
     CANONICAL_REF2VA_ASSET_IDS,
     REF2VA_FAMILY,
@@ -67,6 +68,11 @@ def _legacy_key(preset_id: str) -> WorkflowAssetKey | None:
 
 def _canonical_key(preset: Any) -> WorkflowAssetKey | None:
     return ref2va_asset_key(preset)
+
+
+def _apply_ref2va_progress(result: dict[str, Any], job: dict[str, Any], backend: str) -> None:
+    """Use the same semantic progress contract for all Ref2VA backends."""
+    _apply_fl2va_progress(result, job, "off" if backend == "raw" else "comfyui")
 
 
 def _history_text(value: Any, preferred: tuple[str, ...] = ()) -> str | None:
@@ -156,6 +162,138 @@ def _representative_source(graph: dict[str, Any], media: dict[str, str]) -> str 
     return None
 
 
+def _next_node_id(graph: dict[str, Any], start: int) -> str:
+    node_id = start
+    while str(node_id) in graph:
+        node_id += 1
+    return str(node_id)
+
+
+def _install_qwen_ref2va_multimodal_graph(graph: dict[str, Any], preset: Any) -> None:
+    """Replace the legacy image-only Qwen writer with the full Ref2VA path."""
+    target_id = str(preset.media_binding["target_node"])
+    target = graph.get(target_id)
+    writer = graph.get("176")
+    if not isinstance(target, dict) or not isinstance(writer, dict):
+        return
+
+    target_inputs = target.setdefault("inputs", {})
+    if not any(
+        key.startswith(("ref_images.", "ref_videos.", "ref_audios."))
+        for key in target_inputs
+    ):
+        return
+    writer_inputs = writer.setdefault("inputs", {})
+    duration_spec = preset.manifest.get("parameters", {}).get("duration_seconds", {})
+    duration_ref = [str(duration_spec.get("node", "132")), 0]
+    width_ref = copy.deepcopy(target_inputs.get("width"))
+    height_ref = copy.deepcopy(target_inputs.get("height"))
+    if not isinstance(width_ref, list) or not isinstance(height_ref, list):
+        return
+
+    registry_inputs: dict[str, Any] = {
+        "base_width": width_ref,
+        "base_height": height_ref,
+        "duration_seconds": duration_ref,
+        "aspect_source": "output",
+        "ref_image_size": target_inputs.get("ref_image_size", "max"),
+    }
+
+    image_index = 0
+    while f"ref_images.ref_image_{image_index}" in target_inputs:
+        registry_inputs[f"ref_images.ref_image_{image_index}"] = copy.deepcopy(
+            target_inputs[f"ref_images.ref_image_{image_index}"]
+        )
+        image_index += 1
+
+    video_index = 0
+    while f"ref_videos.ref_video_{video_index}" in target_inputs:
+        video_ref = target_inputs[f"ref_videos.ref_video_{video_index}"]
+        if not isinstance(video_ref, list) or len(video_ref) < 1:
+            video_index += 1
+            continue
+        components_id = str(video_ref[0])
+        normalize_id = _next_node_id(graph, 9600 + video_index)
+        graph[normalize_id] = {
+            "class_type": "H3Ref2VAReferenceVideoNormalize",
+            "inputs": {
+                "images": [components_id, 0],
+                "source_fps": [components_id, 2],
+                "target_duration_seconds": duration_ref,
+                "audio": [components_id, 1],
+            },
+        }
+        registry_inputs[f"ref_videos.ref_video_{video_index}"] = [normalize_id, 0]
+        registry_inputs[f"ref_video_fps.ref_video_fps_{video_index}"] = [normalize_id, 2]
+        registry_inputs[f"ref_video_normalize_proofs.ref_video_normalize_proof_{video_index}"] = [normalize_id, 4]
+        registry_inputs[f"ref_video_audios.ref_video_audio_{video_index}"] = [normalize_id, 1]
+        video_index += 1
+
+    audio_index = 0
+    while f"ref_audios.ref_audio_{audio_index}" in target_inputs:
+        registry_inputs[f"ref_audios.ref_audio_{audio_index}"] = copy.deepcopy(
+            target_inputs[f"ref_audios.ref_audio_{audio_index}"]
+        )
+        audio_index += 1
+
+    registry_id = _next_node_id(graph, 9700)
+    graph[registry_id] = {
+        "class_type": "H3Ref2VAAssetRegistryQwen35V2",
+        "inputs": registry_inputs,
+    }
+
+    raw_request_ref = copy.deepcopy(writer_inputs.get("raw_user_request", ["138", 0]))
+    if image_index and video_index:
+        raw_request = ""
+        raw_node = graph.get(str(raw_request_ref[0])) if isinstance(raw_request_ref, list) else None
+        if isinstance(raw_node, dict):
+            raw_request = str((raw_node.get("inputs") or {}).get("value") or "")
+        canonical_id = _next_node_id(graph, 139)
+        graph[canonical_id] = {
+            "class_type": "PrimitiveStringMultiline",
+            "inputs": {
+                "value": (
+                    "[Ref2VA source-role canonicalization]\n"
+                    "<Picture 1> is explicitly authorized to provide identity, face, "
+                    "and body_appearance for character replacement. <Video 1> is "
+                    "explicitly authorized to provide motion, pose_sequence, "
+                    "camera_movement, cut_structure, pacing_rhythm, and composition. "
+                    "<Audio 1> has no authorized content transfer. Do not transfer "
+                    "any other picture detail, including wardrobe or style.\n\n"
+                    f"Original user request: {raw_request}"
+                )
+            },
+        }
+        raw_request_ref = [canonical_id, 0]
+
+    graph["176"] = {
+        "class_type": "H3Ref2VAPromptPipelineQwen35V2",
+        "inputs": {
+            "qwen_clip": copy.deepcopy(writer_inputs.get("clip", ["168", 0])),
+            "raw_user_request": raw_request_ref,
+            "reference_bundle": [registry_id, 0],
+            "enable_standardization": True,
+        },
+    }
+    if isinstance(graph.get("177"), dict):
+        graph["177"].setdefault("inputs", {})["source"] = ["176", 1]
+    graph["183"] = {
+        "class_type": "H3Ref2VARunMetadataPackV2",
+        "inputs": {
+            "raw_user_request": ["138", 0],
+            "standardized_prompt": ["176", 1],
+            "final_prompt_used": ["176", 0],
+            "reference_tag_map": [registry_id, 1],
+            "role_map": ["176", 2],
+            "fact_reports": ["176", 3],
+            "validator_report": ["176", 4],
+            "actual_output_size": [registry_id, 2],
+            "writer_report": ["176", 5],
+            "reference_bundle": [registry_id, 0],
+        },
+    }
+
+
 def _install_database() -> None:
     from . import db as db_module
 
@@ -206,12 +344,14 @@ def _install_preset() -> None:
         if node_id not in graph:
             return graph
         # Native Ref2VA standardization consumes the complete collection
-        # binding on its conditioning node. The legacy generic standardizer
-        # and the Qwen writer still accept the representative first frame.
+        # binding on its conditioning node.
         node_class = graph[node_id].get("class_type")
         if node_class == "H3Ref2VAOllamaConditioning":
             return graph
-        if node_class not in {"H3PromptStandardizer", "H3OfficialSkillPromptWriterQwen"}:
+        if node_class == "H3OfficialSkillPromptWriterQwen":
+            _install_qwen_ref2va_multimodal_graph(graph, self)
+            return graph
+        if node_class != "H3PromptStandardizer":
             return graph
         representative = _representative_source(graph, media)
         inputs = graph[node_id].setdefault("inputs", {})
@@ -405,6 +545,7 @@ def _install_jobs() -> None:
         result["input_values"] = values
         if backend == "raw":
             result["standardized_prompt"] = None
+        _apply_ref2va_progress(result, job, backend)
         return result
 
     create_v048._v048_ref2va = True  # type: ignore[attr-defined]

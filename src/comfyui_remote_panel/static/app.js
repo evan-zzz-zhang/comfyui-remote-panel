@@ -266,7 +266,7 @@ async function loadPresets() {
   state.presets = new Map(result.items.map(preset => [preset.id, preset]));
   const select = $("#preset-select");
   select.innerHTML = result.items.map(preset => `<option value="${escapeHtml(preset.id)}">${escapeHtml(preset.name)}</option>`).join("");
-  applyPreset(state.presets.has("h3-fl2va-v4step600") ? "h3-fl2va-v4step600" : result.items[0]?.id);
+  applyPreset(state.presets.has("h3-fl2va-group") ? "h3-fl2va-group" : result.items[0]?.id);
 }
 
 async function loadWorkflows() {

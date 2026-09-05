@@ -313,6 +313,9 @@ class Preset:
             prompt[components_id] = {"class_type": video["components"], "inputs": {"video": [load_id, 0]}}
             prompt[target]["inputs"][f"{video['input_prefix']}{index}"] = [components_id, 0]
             prompt[target]["inputs"][f"{video['audio_input_prefix']}{index}"] = [components_id, 1]
+            fps_input_prefix = video.get("fps_input_prefix")
+            if fps_input_prefix:
+                prompt[target]["inputs"][f"{fps_input_prefix}{index}"] = [components_id, 2]
             reference_sources["video"] = reference_sources["video"] or components_id
         for index, role in enumerate(audio_roles):
             node_id = str(9400 + index)

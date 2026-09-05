@@ -12,9 +12,11 @@
 - [x] 增加 Raw、Ollama、Qwen3.5 4B 路由、标准化提示词捕获与延迟恢复骨架。
 - [x] 增加 Auto / INT8 / FP16-BF16 profile metadata 与精确 runtime selector 比较路径。
 - [x] 增加 Ref2VA 独立前端 selector、localStorage key 与 `values_json` 表单提交路径。
-- [ ] 完成目标 Windows / ComfyUI / RTX 4080 SUPER 的 Ref2VA 9/9 INT8 真机验收。
+- [x] 完成目标 Windows / ComfyUI / RTX 4080 SUPER 的 Ref2VA 9/9 INT8 真机基线（生成链路与产物登记）。
+- [x] 完成 Ref2VA Qwen3.5 三种生成模式的角色替换语义验收。
+- [ ] 完成 Ref2VA Raw / Ollama 角色替换问题定位与语义验收。
 - [ ] 完成 BF16 代表性真机验收，或根据现场结果标记不可用原因。
-- [ ] 完成全量 pytest、构建、仓库检查、CI 与 PR 收尾。
+- [x] 完成全量 pytest、构建和仓库检查；CI 与 PR 收尾仍待完成。
 
 ## v0.4.7 FL2VA Workflow Family & Inference Profile — Completed
 
