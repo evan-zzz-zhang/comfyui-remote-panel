@@ -133,6 +133,71 @@ async def test_all_missing_outputs_purge_multi_output_job(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [PermissionError("denied"), OSError("temporary I/O failure")])
+async def test_output_probe_errors_keep_job_and_all_files(tmp_path, monkeypatch, failure):
+    service, db, files = await _service(tmp_path)
+    job = await _job(db, files, "job-uncertain")
+    output = await _output(db, files, "job-uncertain", "output.mp4")
+
+    def fail_probe(path):
+        raise failure
+
+    monkeypatch.setattr(files, "validate_artifact_file", fail_probe)
+    await service.reconcile_output_artifacts_v045()
+
+    assert await db.get_job(job["id"]) is not None
+    assert output.exists()
+    assert (files.input_root / "job-uncertain-first.png").exists()
+    outputs = [item for item in await db.list_artifacts(job["id"]) if item["direction"] == "output"]
+    assert len(outputs) == 1
+
+
+@pytest.mark.asyncio
+async def test_missing_and_uncertain_outputs_keep_entire_job(tmp_path, monkeypatch):
+    service, db, files = await _service(tmp_path)
+    job = await _job(db, files, "job-mixed")
+    missing = await _output(db, files, "job-mixed", "missing.mp4", exists=False, ordinal=0)
+    uncertain = await _output(db, files, "job-mixed", "uncertain.mp4", exists=True, ordinal=1)
+
+    def probe(path):
+        if path == missing:
+            raise FileNotFoundError(path)
+        raise OSError("temporary I/O failure")
+
+    monkeypatch.setattr(files, "validate_artifact_file", probe)
+    await service.reconcile_output_artifacts_v045()
+
+    assert await db.get_job(job["id"]) is not None
+    assert uncertain.exists()
+    outputs = [item for item in await db.list_artifacts(job["id"]) if item["direction"] == "output"]
+    assert [Path(item["path"]) for item in outputs] == [missing, uncertain]
+
+
+@pytest.mark.asyncio
+async def test_output_restored_before_auto_purge_aborts_cleanup(tmp_path, monkeypatch):
+    service, db, files = await _service(tmp_path)
+    job = await _job(db, files, "job-restored")
+    output = await _output(db, files, "job-restored", "restored.mp4", exists=False)
+    calls = 0
+
+    def probe(path):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            output.write_bytes(b"restored")
+            raise FileNotFoundError(path)
+        return path
+
+    monkeypatch.setattr(files, "validate_artifact_file", probe)
+    await service.reconcile_output_artifacts_v045()
+
+    assert calls == 2
+    assert await db.get_job(job["id"]) is not None
+    assert output.exists()
+    assert (files.input_root / "job-restored-first.png").exists()
+
+
+@pytest.mark.asyncio
 async def test_jobs_without_registered_outputs_and_active_jobs_are_not_removed(tmp_path):
     service, db, files = await _service(tmp_path)
     await _job(db, files, "failed-no-output", status="failed")
