@@ -224,7 +224,9 @@ def _install_job_service() -> None:
             )
         return mode
 
-    async def require_enabled(self, preset_id: str, label: str) -> None:
+    async def require_enabled(self, preset_id: str, label: str, *, is_test: bool = False) -> None:
+        if is_test:
+            return
         get_workflow = getattr(self.db, "get_workflow", None)
         if not callable(get_workflow):
             return
@@ -318,6 +320,7 @@ def _install_job_service() -> None:
             await require_enabled(
                 self, target_id,
                 f"{mode} + Qwen3.5 标准化" if backend == "qwen35" else f"{mode} + {backend} 标准化",
+                is_test=is_test,
             )
             await resolve_profile(target)
             routed["_v047_prompt_backend"] = backend
@@ -343,7 +346,7 @@ def _install_job_service() -> None:
 
         if preset_id in QWEN_FL2VA_PRESET_IDS:
             mode = QWEN_PRESET_TO_GENERATION_MODE[preset_id]
-            await require_enabled(self, preset_id, f"{mode} + Qwen3.5 标准化")
+            await require_enabled(self, preset_id, f"{mode} + Qwen3.5 标准化", is_test=is_test)
             routed.pop("generation_mode", None)
             routed.pop("prompt_standardization_mode", None)
             routed.pop("prompt_standardization", None)

@@ -378,7 +378,9 @@ def _install_jobs() -> None:
     original_reconcile = jobs_module.JobService.reconcile_once
     original_public = jobs_module.JobService.public_job
 
-    async def require_enabled(self, preset_id: str) -> None:
+    async def require_enabled(self, preset_id: str, *, is_test: bool = False) -> None:
+        if is_test:
+            return
         getter = getattr(self.db, "get_workflow", None)
         if not callable(getter):
             return
@@ -425,7 +427,7 @@ def _install_jobs() -> None:
                 )
             except ValueError as exc:
                 raise preset_module.PresetError(str(exc)) from exc
-            await require_enabled(self, target.id)
+            await require_enabled(self, target.id, is_test=is_test)
             await resolve_profile(self, routed, target)
             routed["_v048_generation_mode"] = mode
             routed["_v048_prompt_backend"] = backend
@@ -440,12 +442,14 @@ def _install_jobs() -> None:
         if key is not None:
             routed["_v048_generation_mode"] = key.generation_mode
             routed["_v048_prompt_backend"] = key.prompt_backend
+            await require_enabled(self, preset.id, is_test=is_test)
             await resolve_profile(self, routed, preset)
         elif legacy is not None:
             routed["_v048_generation_mode"] = legacy.generation_mode
             routed["_v048_prompt_backend"] = legacy.prompt_backend
             routed["_v048_inference_profile"] = "auto"
             routed["_v048_effective_inference_profile"] = "int8"
+            await require_enabled(self, preset_id, is_test=is_test)
         return await original_create(self, routed, uploaded, job_id, is_test=is_test)
 
     async def retry_v048(self, job_id: str):

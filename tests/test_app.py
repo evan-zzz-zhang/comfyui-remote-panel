@@ -168,6 +168,41 @@ async def test_create_uses_same_panel_and_prompt_id(panel_client, comfy_server):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("request_preset", "disabled_preset", "values"),
+    [
+        ("h3-fl2va-v4step600", "h3-fl2va-v4step600", {}),
+        (
+            "h3-fl2va-group",
+            "fl2va_v4step600_raw",
+            {"generation_mode": "v4_600step", "prompt_backend": "raw"},
+        ),
+        ("ref2va_v4step600_raw", "ref2va_v4step600_raw", {}),
+        (
+            "h3-ref2va-group",
+            "ref2va_v4step600_raw",
+            {"generation_mode": "v4step600", "prompt_backend": "raw"},
+        ),
+    ],
+)
+async def test_disabled_physical_and_virtual_workflows_reject_before_submission(
+    panel_client, comfy_server, request_preset, disabled_preset, values,
+):
+    changed = await panel_client.app["db"].set_workflow_status(disabled_preset, "disabled")
+    assert changed is not None
+    form = FormData(default_to_multipart=True)
+    form.add_field("preset_id", request_preset)
+    form.add_field("values_json", json.dumps(values))
+
+    response = await panel_client.post("/api/jobs", data=form, headers=LOGIN)
+
+    assert response.status == 400, await response.text()
+    assert "禁用" in (await response.json())["error"]["message"]
+    assert not comfy_server.app["submitted"]
+    await panel_client.app["db"].set_workflow_status(disabled_preset, "enabled")
+
+
+@pytest.mark.asyncio
 async def test_fl2va_standardizer_rejects_empty_prompt_with_image(panel_client, comfy_server):
     image_data = io.BytesIO()
     Image.new("RGB", (24, 12), "red").save(image_data, format="PNG")
@@ -657,6 +692,69 @@ async def test_generic_saveimage_workflow_crud_submit_and_artifact(panel_client,
     downloaded = await panel_client.get(f"/api/jobs/{job['id']}/artifacts/{artifact['id']}", headers=LOGIN)
     assert downloaded.status == 200
     assert await downloaded.read() == b"png-result"
+
+
+@pytest.mark.asyncio
+async def test_generic_draft_test_is_allowed_but_normal_submit_is_not(panel_client, comfy_server):
+    created = await panel_client.post(
+        "/api/workflows", headers=LOGIN,
+        json={"workflow": save_image_workflow(), "config": remote_config()},
+    )
+    assert created.status == 201, await created.text()
+    workflow_id = (await created.json())["id"]
+
+    normal = FormData(default_to_multipart=True)
+    normal.add_field("preset_id", workflow_id)
+    normal.add_field("values_json", json.dumps({"positive_prompt": "draft"}))
+    rejected = await panel_client.post("/api/jobs", data=normal, headers=LOGIN)
+    assert rejected.status == 400, await rejected.text()
+    assert not comfy_server.app["submitted"]
+
+    tested = await panel_client.post(
+        f"/api/workflows/{workflow_id}/test",
+        headers=LOGIN,
+        json={"positive_prompt": "draft test"},
+    )
+    assert tested.status == 201, await tested.text()
+    assert comfy_server.app["submitted"]
+
+
+@pytest.mark.asyncio
+async def test_retry_submission_rechecks_workflow_enabled_state(panel_client, comfy_server):
+    created = await panel_client.post(
+        "/api/workflows", headers=LOGIN,
+        json={"workflow": save_image_workflow(), "config": remote_config()},
+    )
+    assert created.status == 201, await created.text()
+    workflow_id = (await created.json())["id"]
+    enabled = await panel_client.post(
+        f"/api/workflows/{workflow_id}/status", headers=LOGIN, json={"status": "enabled"}
+    )
+    assert enabled.status == 200, await enabled.text()
+
+    form = FormData(default_to_multipart=True)
+    form.add_field("preset_id", workflow_id)
+    form.add_field("values_json", json.dumps({"positive_prompt": "original"}))
+    original_response = await panel_client.post("/api/jobs", data=form, headers=LOGIN)
+    assert original_response.status == 201, await original_response.text()
+    original = await original_response.json()
+    await panel_client.app["db"].update_job(original["id"], status="failed")
+
+    disabled = await panel_client.post(
+        f"/api/workflows/{workflow_id}/status", headers=LOGIN, json={"status": "disabled"}
+    )
+    assert disabled.status == 200, await disabled.text()
+    draft_response = await panel_client.post(f"/api/jobs/{original['id']}/retry", headers=LOGIN)
+    assert draft_response.status == 200, await draft_response.text()
+    draft = await draft_response.json()
+    retry = FormData(default_to_multipart=True)
+    retry.add_field("preset_id", draft["preset_id"])
+    retry.add_field("retry_source_id", draft["retry_source_id"])
+    retry.add_field("values_json", json.dumps(draft.get("values") or {}))
+
+    rejected = await panel_client.post("/api/jobs", data=retry, headers=LOGIN)
+    assert rejected.status == 400, await rejected.text()
+    assert len(comfy_server.app["submitted"]) == 1
 
 
 def test_error_summary_removes_local_paths_and_addresses():

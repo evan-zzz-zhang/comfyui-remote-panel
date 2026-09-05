@@ -227,7 +227,9 @@ def _install_job_service() -> None:
     original_public_job = jobs_module.JobService.public_job
     original_apply_history = jobs_module.JobService._apply_history
 
-    async def require_enabled(self, preset_id: str) -> None:
+    async def require_enabled(self, preset_id: str, *, is_test: bool = False) -> None:
+        if is_test:
+            return
         get_workflow = getattr(self.db, "get_workflow", None)
         if not callable(get_workflow):
             return
@@ -264,10 +266,10 @@ def _install_job_service() -> None:
             except ValueError as exc:
                 raise preset_module.PresetError(str(exc)) from exc
             target_id = GENERATION_MODES[mode]
-            await require_enabled(self, target_id)
+            await require_enabled(self, target_id, is_test=is_test)
             routed["preset_id"] = target_id
         elif preset_id in FL2VA_PRESET_IDS:
-            await require_enabled(self, preset_id)
+            await require_enabled(self, preset_id, is_test=is_test)
 
         routed.pop("generation_mode", None)
         return await original_create(

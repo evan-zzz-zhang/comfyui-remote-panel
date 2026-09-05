@@ -419,6 +419,10 @@ def install() -> None:
         preset = self.presets.get(preset_id)
         if preset is None:
             raise preset_module.PresetError("未知工作流预设")
+        if not is_test:
+            workflow = await self.db.get_workflow(str(preset_id))
+            if workflow is not None and workflow.get("status") != "enabled":
+                raise preset_module.PresetError("工作流已禁用")
         if not preset.available:
             await self.comfy.validate_preset(preset)
         if not preset.available:
