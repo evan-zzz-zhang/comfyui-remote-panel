@@ -50,6 +50,18 @@ def json_error(message: str, status: int, code: str = "request_error") -> web.Re
     return web.json_response({"error": {"code": code, "message": message}}, status=status)
 
 
+def _apply_security_headers(request: web.Request, response: web.StreamResponse) -> None:
+    response.headers.update({
+        "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    })
+    if request.path != "/healthz" and not request.path.startswith("/static/"):
+        response.headers.setdefault("Cache-Control", "no-store")
+
+
 def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web.Application:
     auth_provider = auth_provider or create_auth_provider(config)
     @web.middleware
@@ -61,15 +73,7 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
         except Exception:
             log.exception("unhandled panel request error")
             response = json_error("服务器内部错误", 500, "internal_error")
-        response.headers.update({
-            "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
-            "X-Content-Type-Options": "nosniff",
-            "Referrer-Policy": "no-referrer",
-            "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-            "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
-        })
-        if request.path != "/healthz" and not request.path.startswith("/static/"):
-            response.headers.setdefault("Cache-Control", "no-store")
+        _apply_security_headers(request, response)
         return response
 
     @web.middleware
@@ -296,7 +300,7 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
             return json_error(str(exc), 409, "control_unavailable")
         return web.json_response(result, status=202)
 
-    async def events(_: web.Request) -> web.StreamResponse:
+    async def events(request: web.Request) -> web.StreamResponse:
         subscription = app["events"].open_subscription()
         snapshot_sequence = app["events"].sequence
         pending: asyncio.Task | None = None
@@ -309,7 +313,8 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
                 "Connection": "keep-alive",
                 "X-Accel-Buffering": "no",
             })
-            await response.prepare(_)
+            _apply_security_headers(request, response)
+            await response.prepare(request)
             jobs = await app["db"].list_jobs(1, 100)
             snapshot = {"jobs": [app["jobs"].public_job(job) for job in jobs["items"]], "metrics": app["metrics"].snapshot}
             await _write_sse(response, "snapshot", snapshot)
@@ -657,6 +662,7 @@ async def _stream_file(request: web.Request, path: Path, download_name: str | No
     if status == 206:
         headers["Content-Range"] = f"bytes {start}-{end}/{size}"
     response = web.StreamResponse(status=status, headers=headers)
+    _apply_security_headers(request, response)
     await response.prepare(request)
     if request.method != "HEAD":
         handle = await asyncio.to_thread(path.open, "rb")

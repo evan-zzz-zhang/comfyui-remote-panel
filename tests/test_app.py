@@ -126,6 +126,10 @@ async def test_sse_heartbeat_does_not_cancel_pending_event_read(panel_client, mo
     response = await panel_client.get("/api/events", headers=LOGIN)
     try:
         assert response.status == 200
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
+        assert response.headers["Referrer-Policy"] == "no-referrer"
+        assert response.headers["Permissions-Policy"] == "camera=(), microphone=(), geolocation=()"
+        assert response.headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"
         saw_snapshot = False
         while True:
             line = await asyncio.wait_for(response.content.readline(), timeout=1)
@@ -647,13 +651,23 @@ async def test_video_single_range(panel_client):
     await db.add_file(job_id, "output", path, 10)
     response = await panel_client.get(f"/api/jobs/{job_id}/video", headers={**LOGIN, "Range": "bytes=2-5"})
     assert response.status == 206
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+    assert response.headers["Cache-Control"] == "no-store"
     assert response.headers["Content-Range"] == "bytes 2-5/10"
     assert await response.read() == b"2345"
     invalid = await panel_client.get(f"/api/jobs/{job_id}/video", headers={**LOGIN, "Range": "bytes=99-100"})
     assert invalid.status == 416
+    assert invalid.headers["X-Content-Type-Options"] == "nosniff"
     assert invalid.headers["Content-Range"] == "bytes */10"
+    head = await panel_client.head(f"/api/jobs/{job_id}/video", headers=LOGIN)
+    assert head.status == 200
+    assert head.headers["X-Content-Type-Options"] == "nosniff"
+    assert head.headers["Cache-Control"] == "no-store"
+    assert await head.read() == b""
     download = await panel_client.get(f"/api/jobs/{job_id}/video?download=1", headers=LOGIN)
     assert download.status == 200
+    assert download.headers["X-Content-Type-Options"] == "nosniff"
     assert download.headers["Content-Disposition"].startswith('attachment; filename="h3-fl2va-v4step600-')
     assert download.headers["Content-Disposition"].endswith('-000000.mp4"')
 
