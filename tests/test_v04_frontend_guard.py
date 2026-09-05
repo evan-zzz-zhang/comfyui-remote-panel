@@ -56,7 +56,7 @@ def test_v04_seed_is_recovered_for_imported_workflows_but_stays_advanced():
     assert "seedBindingFromInspection" in script
     assert 'semantic: "seed"' in script
     assert ".v04-seed-quick" not in script
-    assert 'policyField.innerHTML = `<span>Seed 策略</span>' in script
+    assert 'policyField.innerHTML = `<span>种子策略</span>' in script
     assert 'grid.append(policyField)' in script
 
 

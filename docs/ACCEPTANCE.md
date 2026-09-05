@@ -268,3 +268,129 @@ fl2va_original_raw / fl2va_original_ollama / fl2va_original_qwen35
 
 **结论：v0.4.7 FL2VA canonical 3 × 3 手机面板实机验收通过；全量自动化检查与
 分支/CI 收尾仍未完成。**
+
+## v0.4.8 Ref2VA Workflow Family — automated baseline
+
+The v0.4.8 implementation adds nine Ref2VA canonical assets and keeps the three
+legacy Ref2VA IDs available to the workflow manager and historical Retry path.
+Automated/static checks cover the resolver, legacy mapping, one-time status
+inheritance, sampling contracts, collection bindings, representative image and
+video-first-frame selection, Qwen metadata wiring, inference-profile variants,
+and the isolated browser `values_json` routing controls.
+
+The target Windows / ComfyUI / RTX 4080 SUPER 9/9 INT8 matrix and the BF16
+representative runs remain pending. No real-GPU success is claimed by this
+baseline.
+
+## 2026-09-04 至 2026-09-05 v0.4.8 Ref2VA 3 × 3 真机问题基线
+
+本轮使用同一组参考图 + 参考视频、5 秒、9:16、0.4 MP、INT8 配置完成
+`original / lightx2v / v4step600` × `Raw / Ollama / Qwen3.5` 测试。输入媒体
+规格为：参考图源尺寸 1448 × 1086（处理后 816 × 612）；参考视频 720 × 1280、
+30 FPS、2.6 秒、含 AAC 音频。用户提示词为统一的中文角色替换指令；原始文本
+仅保留在任务记录中，不写入公共文档。
+
+| 生成模式 | Raw | Ollama | Qwen3.5 |
+| --- | --- | --- | --- |
+| `v4step600` | 通过；ComfyUI 199.21 秒 | 失败；2.14 秒 | 通过；233.59 秒 |
+| `lightx2v` | 通过；134.10 秒 | 失败；2.20 秒 | 通过；187.36 秒 |
+| `original` | 通过；415.74 秒 | 失败；2.25 秒 | 通过；450.28 秒 |
+
+Raw 与 Qwen 均登记了 5.167 秒、480 × 864、24 FPS 的 MP4 产物；三条 Ollama
+均无产物。Qwen 三条任务保存的标准提示词都只描述参考图中的静态角色，未描述
+参考视频的动作、镜头或声音，因此本轮 Qwen 结果不作为正确 Ref2VA 语义基线。
+
+### 本轮问题结论
+
+- Ollama 三种模式均在标准化节点前置校验失败，错误为
+  `REF2VA_SOURCE_FPS_REQUIRED`，不是 Ollama 服务或模型调用失败。
+- Qwen 当前仍使用只接收代表性首帧的旧 `H3OfficialSkillPromptWriterQwen`，
+  没有把完整参考素材集合交给标准化管线；同时代表性视觉选择优先参考图，
+  所以标准提示词只看到图片。
+- Panel 的输入产物登记保留了视频文件，但 `media_metadata_json` 当前只记录
+  图片尺寸；视频的 FPS、帧数、时长需由 ComfyUI / ffprobe 日志补齐。
+
+本节是失败/不正确结果的诊断基线，不宣称 Ref2VA 9/9 通过。原始任务数据位于
+本机 Panel 数据库，ComfyUI 原始错误位于其用户日志；不把用户媒体、生成视频或
+本地路径复制到仓库。
+
+## 2026-09-05 v0.4.8 Ref2VA 修复后代表性实测
+
+针对上述问题完成修复并在同一组参考图、参考视频和参数上重新提交 ComfyUI
+工作流。Ollama 的参考视频现在同时连接 `GetVideoComponents` 的 images、audio
+和 source FPS 输出；Qwen3.5 则改为使用完整参考素材集合，经过视频归一化、资产
+注册、角色/事实/语义校验后再送入 H3。原始用户请求仍单独写入运行元数据，避免
+把内部角色规范化文本伪装成用户输入。
+
+### 代表性真实运行结果
+
+- `v4step600 + Ollama`：ComfyUI 接受且执行成功，耗时 229.69 秒；标准化文本
+  同时出现 `<Picture 1>`、`<Video 1>`、`<Audio 1>`，并描述了视频动作、姿态
+  序列、镜头运动、剪辑结构和节奏；生成了 MP4。
+- `v4step600 + Qwen3.5`：修复后重新执行成功，耗时 370.78 秒；生成
+  480 × 864、24 FPS、约 5.167 秒的 MP4。标准化文本明确以 `<Picture 1>` 提供
+  角色身份、以 `<Video 1>` 提供动作和时间结构；生成链路已越过此前的语义校验
+  阻断并完成采样、解码和保存。
+
+本节证明两个已定位问题在代表性真实运行中均已打通，但不替代完整的 Ref2VA
+9/9 修复后矩阵；其余八项仍需在同一配置下重新跑完后才能更新最终基线。
+
+## 2026-09-05 v0.4.8 Ref2VA 3 × 3 完整真机基线（Qwen 角色替换通过）
+
+本轮完成 Ref2VA 九个 canonical 工作流的完整实测，统一使用同一份参考图、同一份
+参考视频、界面参数 5 秒 / `reference_video` 画幅 / 0.4 MP / INT8，以及“视频角色
+替换为图片角色”的用户请求。参考图原始尺寸为 1448 × 1086，实际预处理图为
+816 × 612；参考视频为 1080 × 1920、30 FPS、4.666 秒，含 AAC 48 kHz 双声道。
+所有任务均使用相同的 `image_0` 与 `video_0` 文件副本（哈希一致）。
+
+| 生成模式 | Raw | Ollama | Qwen3.5 4B |
+| --- | --- | --- | --- |
+| `v4step600` | 通过（6:10） | 通过（5:31） | 通过（9:16） |
+| `LightX2V` | 通过（3:48） | 通过（3:52） | 通过（6:31） |
+| `original` | 通过（11:48） | 通过（10:54） | 通过（20:15） |
+
+表中耗时为 Panel 任务 `started_at → finished_at` 的执行耗时。9/9 任务均登记了
+`video/mp4` 产物，统一为 480 × 864、24 FPS、约 5.167 秒；产物文件大小约
+1.03–1.52 MiB。Raw 不产生标准化提示词；Ollama 与 Qwen 均完成了标准化提示词记录。
+
+### 角色替换结果与问题记录
+
+- 用户复核确认 Qwen3.5 的 `v4step600 / LightX2V / original` 三个产物均达到角色替换预期，
+  因此 Qwen3.5 这条 Ref2VA 语义链路记为通过。
+- Raw 与 Ollama 的角色替换结果仍未达到预期，暂不记为语义验收通过。
+- 输入链路目前有成功证据：9 个任务均同时登记同一份参考图和参考视频，输出画幅
+  也与参考视频的 9:16 画幅一致。
+- Ollama 标准化文本存在独立语义问题：它把参考图描述成白底矩形物体，把参考视频
+  降级为弱时间参考，没有稳定提取图片角色身份。
+- Qwen 标准化文本已经正确表达“`<Picture 1>` 提供角色身份、`<Video 1>` 提供动作
+  和时间结构”；但 Qwen 与 Raw 的最终视觉结果仍未达到角色替换预期。
+
+因此当前证据表明：Qwen3.5 已经能够在同一输入条件下完成预期角色替换；Raw 与
+Ollama 的差异仍需单独定位。Ollama 还存在标准化器语义偏差，Raw 则可作为不经过
+标准化的控制组，后续重点检查两者的参考条件输入、角色绑定和模型条件权重。本节
+作为 9/9 性能与生成链路基线，同时记录 Qwen3.5 角色替换通过、Raw/Ollama 待排查。
+
+## 2026-09-05 v0.4.8 修复阶段自动化验收
+
+本轮完成上次审查范围内的 7 项可靠性修复，保持数据库结构和既有 API 返回格式不变，
+并保持创作页布局、Settings、手机 Prompt 焦点/键盘、工作流默认值、Seed 与高级参数
+绑定不变。Ref2VA 角色替换语义、BF16、Watchdog、多主机、媒体优化和架构重构不在本轮。
+
+覆盖结果：
+
+- 自动清理：权限不足、短暂 I/O 错误、路径校验不确定和多输出混合状态均不会误删；全部输出确认缺失后仍保留既有同步与 purge 行为，并在清理前重新核对任务状态。
+- 执行限制：Generic、FL2VA、Ref2VA 的物理 ID、虚拟入口、直接 API 和 Retry 均经过服务端启用状态校验；Configurator 显式草稿测试保持可用，普通请求不能伪造测试权限。
+- 存储：旧文件表与 artifact 表按统一路径去重；图片、多输出、旧任务和 artifact-only 记录覆盖；未知长度上传、Retry 复制、并发预留、失败/取消释放均通过模拟容量测试。
+- 历史同步：SSE 连续心跳后仍能收到事件；断线期间删除的已加载任务会在重连后消失；超过首屏 100 条的历史不因分页快照缺失而误删；存在性查询有 100 个 ID 上限。
+- HTTP：媒体流 200/206、HEAD、416、SSE、普通响应和错误响应均带安全头；视频播放、Range 拖动、下载和输入媒体缓存策略通过 HTTP 回归。
+
+本地验收结果为 **455 passed**，仓库安全检查、包构建、前端语法/i18n 检查和行为 smoke
+均通过。测试运行产生的既有 Windows asyncio 子进程清理 warning 不影响通过结论；尚未进行
+新的真实 GPU、手机切后台或断网现场验收，因此这些设备级项目仍标记为未验证。
+
+The same repair scope is covered by the automated suite: uncertain artifact probes are preserved,
+workflow enablement is enforced server-side, legacy and artifact storage records are deduplicated,
+upload/Retry capacity is reserved under concurrency, SSE reconnects reconcile loaded history, and
+security headers are present before media/SSE streams are prepared. The local Windows run reports
+455 passed tests plus passing repository safety, build, frontend syntax/i18n, and smoke checks.
+Raw/Ollama Ref2VA role semantics and BF16 representative acceptance remain intentionally open.

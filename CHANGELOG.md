@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.4.8 — Ref2VA Workflow Family (implementation in progress)
+
+### Highlights
+
+- Adds one `MiniMax H3 Ref2VA` virtual creation entry backed by nine canonical `3 generation modes × 3 prompt backends` workflows.
+- Preserves the Ref2VA collection contract: up to 9 images, 3 videos, and 3 audios remain independently bound to `MiniMaxH3ReferenceToVideo`.
+- Adds Raw, Ollama, and Qwen3.5 4B prompt routes with representative-image/video-first-frame capture and standardized-prompt history recovery.
+- Adds Auto, INT8, and FP16/BF16 model-profile metadata while retaining exact ComfyUI runtime selectors for variant lookup.
+- Keeps the three legacy Ref2VA workflow IDs, history snapshots, retained media, and Retry mapping intact. The new routes are not yet declared GPU-field-tested.
+
+### Repair hardening completed
+
+- Artifact reconciliation now distinguishes confirmed absence from permission, I/O, and path-validation uncertainty; automatic cleanup requires every registered output to be confirmed missing and rechecked before purge.
+- Workflow enable/disable state is enforced in the shared server-side submit path for physical and virtual entries, direct API calls, and Retry; Configurator draft tests remain an explicit server-side exception.
+- Storage accounting unions and deduplicates legacy file records with artifact records. Uploads and retained-media Retry copies reserve capacity as bytes are read, including unknown-length uploads and concurrent requests.
+- SSE subscriptions register before the snapshot watermark, keep pending event reads alive through heartbeats, and release pending reads on disconnect. Reconnect reconciliation uses a bounded existence endpoint and does not treat a truncated snapshot as deletion.
+- Security headers and no-store defaults are applied before custom SSE and media streams are prepared while preserving Range, HEAD, download, static-resource, and input-preview cache behavior.
+
+### Verification
+
+- 455 automated tests pass on Windows Python 3.12 in the local environment; repository safety, package build, frontend syntax/i18n checks, and frontend contract smoke checks pass.
+- Real GPU/mobile acceptance remains the existing v0.4.8 boundary: Qwen3.5 Ref2VA role-replacement acceptance is recorded, while Raw/Ollama role semantics and BF16 representative acceptance remain open.
+
 ## v0.4.6 — FL2VA Multi-Backend Prompt Standardization
 
 Comfy Remote v0.4.6 keeps one H3 FL2VA creation entry while adding Off / Ollama / ComfyUI prompt-standardization routing and tightening FL2VA runtime progress, timing, retry, and recovery behavior.

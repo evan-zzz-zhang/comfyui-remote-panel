@@ -10,6 +10,27 @@
   background: var(--surface-1) !important;
 }
 
+/* H3 advanced fields use the native hidden attribute for conditional visibility.
+   The base .field rule sets display:grid, so explicitly keep hidden fields out of layout. */
+#advanced-settings .field[hidden] {
+  display: none !important;
+}
+
+/* Retry is a lightweight request but may still cross Tailscale before the form can render.
+   The app disables the button while awaiting the draft; make that wait visible immediately. */
+#jobs-list button[data-action="retry"]:disabled {
+  position: relative;
+  color: transparent !important;
+}
+#jobs-list button[data-action="retry"]:disabled::after {
+  content: "载入中…";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-primary);
+}
+
 /* Main navigation already names these pages; do not repeat the same title below it. */
 #view-generate > .page-heading,
 #view-jobs > .page-heading,

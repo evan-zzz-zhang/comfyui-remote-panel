@@ -226,6 +226,8 @@ class Preset:
         for node_id, inputs in self.model_overrides.items():
             prompt[node_id]["inputs"].update(inputs)
         effective_profile = values.get("_v047_effective_inference_profile")
+        if not effective_profile:
+            effective_profile = values.get("_v048_effective_inference_profile")
         if effective_profile:
             self._apply_variant_model_overrides(prompt, effective_profile, variant_model_overrides)
         for name, spec in self.manifest["parameters"].items():
@@ -311,6 +313,9 @@ class Preset:
             prompt[components_id] = {"class_type": video["components"], "inputs": {"video": [load_id, 0]}}
             prompt[target]["inputs"][f"{video['input_prefix']}{index}"] = [components_id, 0]
             prompt[target]["inputs"][f"{video['audio_input_prefix']}{index}"] = [components_id, 1]
+            fps_input_prefix = video.get("fps_input_prefix")
+            if fps_input_prefix:
+                prompt[target]["inputs"][f"{fps_input_prefix}{index}"] = [components_id, 2]
             reference_sources["video"] = reference_sources["video"] or components_id
         for index, role in enumerate(audio_roles):
             node_id = str(9400 + index)

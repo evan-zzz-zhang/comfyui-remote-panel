@@ -111,6 +111,9 @@ def test_all_nine_presets_load_and_keep_their_real_defaults():
         "fl2va_original_raw", "fl2va_original_ollama", "fl2va_original_qwen35",
         "fl2va_v4step600_raw", "fl2va_v4step600_ollama", "fl2va_v4step600_qwen35",
         "fl2va_lightx2v_raw", "fl2va_lightx2v_ollama", "fl2va_lightx2v_qwen35",
+        "ref2va_original_raw", "ref2va_original_ollama", "ref2va_original_qwen35",
+        "ref2va_lightx2v_raw", "ref2va_lightx2v_ollama", "ref2va_lightx2v_qwen35",
+        "ref2va_v4step600_raw", "ref2va_v4step600_ollama", "ref2va_v4step600_qwen35",
     }
     expected = {
         "h3-fl2va": ("simple", "res_multistep", 20),
@@ -130,7 +133,7 @@ def test_all_nine_presets_load_and_keep_their_real_defaults():
 
 def test_packaged_presets_are_available_without_external_directory(tmp_path):
     presets = load_presets(tmp_path / "missing-workflows")
-    assert len(presets) == 18
+    assert len(presets) == 27
     assert BUILTIN_WORKFLOW_DIR.is_dir()
 
 

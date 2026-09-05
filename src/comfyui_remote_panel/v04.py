@@ -419,6 +419,10 @@ def install() -> None:
         preset = self.presets.get(preset_id)
         if preset is None:
             raise preset_module.PresetError("未知工作流预设")
+        if not is_test:
+            workflow = await self.db.get_workflow(str(preset_id))
+            if workflow is not None and workflow.get("status") != "enabled":
+                raise preset_module.PresetError("工作流已禁用")
         if not preset.available:
             await self.comfy.validate_preset(preset)
         if not preset.available:
@@ -428,6 +432,7 @@ def install() -> None:
         effective_uploads = list(uploaded)
         copied: list[dict[str, Any]] = []
         persisted = False
+        reservation = fields.get("_capacity_reservation")
         try:
             retry_source_id = fields.get("retry_source_id")
             if retry_source_id:
@@ -466,7 +471,7 @@ def install() -> None:
                         should_copy = not replaced
                     if compatible and should_copy and role not in supplied_roles:
                         copied_file = await self.files.copy_input_async(
-                            Path(file["path"]), job_id, file["role"]
+                            Path(file["path"]), job_id, file["role"], reservation=reservation
                         )
                         copied.append(copied_file)
                         effective_uploads.append(copied_file)
@@ -504,6 +509,12 @@ def install() -> None:
                 "_v047_prompt_backend",
                 "_v047_inference_profile",
                 "_v047_effective_inference_profile",
+                "_v047_variant_model_overrides",
+                "_v048_generation_mode",
+                "_v048_prompt_backend",
+                "_v048_inference_profile",
+                "_v048_effective_inference_profile",
+                "_v048_variant_model_overrides",
             ):
                 if metadata_key in fields:
                     normalized[metadata_key] = fields[metadata_key]
@@ -560,7 +571,15 @@ def install() -> None:
                 file["role"]: self.files.comfy_input_name(Path(file["path"]))
                 for file in effective_uploads
             }
-            prompt = preset.build_prompt(normalized, job_id, media_names)
+            variant_model_overrides = fields.get("_v048_variant_model_overrides")
+            if not isinstance(variant_model_overrides, dict):
+                variant_model_overrides = fields.get("_v047_variant_model_overrides")
+            prompt = preset.build_prompt(
+                normalized,
+                job_id,
+                media_names,
+                variant_model_overrides if isinstance(variant_model_overrides, dict) else None,
+            )
             await self.comfy.submit(job_id, prompt)
             _, job = await self.db.update_job_if_status(
                 job_id, {"submitting"}, status="queued", stage="等待执行", queue_position=None

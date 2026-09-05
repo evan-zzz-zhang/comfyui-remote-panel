@@ -364,8 +364,8 @@
           "dependencies": [{"category": "diffusion_models", "name": "MiniMax-H3/minimax_h3_fl2va_pruned_int8_convrot.safetensors", "node": "127", "input": "unet_name"}]
         },
         "fp16_bf16": {
-          "available": false,
-          "reason": "本机没有与 FL2VA 架构匹配的 FP16/BF16 主模型；已发现的 Ref2VA BF16 权重不可用于 FL2VA。"
+          "available": true,
+          "dependencies": [{"category": "diffusion_models", "name": "MiniMax-H3/minimax_h3_fl2va_pruned_bf16.safetensors", "node": "127", "input": "unet_name"}]
         }
       }
     },

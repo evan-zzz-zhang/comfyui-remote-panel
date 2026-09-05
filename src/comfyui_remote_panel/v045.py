@@ -176,26 +176,53 @@ def _install_job_service() -> None:
 
     async def reconcile_output_artifacts_v045(self) -> None:
         candidates = await self.db.output_artifact_jobs_v045()
+
+        async def probe(artifact: dict[str, Any]) -> tuple[str, Path]:
+            path = Path(str(artifact["path"]))
+            try:
+                await asyncio.to_thread(self.files.validate_artifact_file, path)
+            except FileNotFoundError:
+                return "missing", path
+            except (OSError, FileValidationError):
+                return "uncertain", path
+            return "present", path
+
         for candidate in candidates:
             job_id = str(candidate["id"])
             current = await self.db.get_job(job_id)
             if current is None or current.get("status") in jobs_module.ACTIVE_STATUSES:
                 continue
 
-            existing: list[dict[str, Any]] = []
-            missing: list[dict[str, Any]] = []
-            for artifact in candidate.get("outputs", []):
-                path = Path(str(artifact["path"]))
-                try:
-                    await asyncio.to_thread(self.files.validate_artifact_file, path)
-                except (FileNotFoundError, OSError, FileValidationError):
-                    missing.append(artifact)
-                else:
-                    existing.append(artifact)
+            states = {
+                id(artifact): await probe(artifact)
+                for artifact in candidate.get("outputs", [])
+            }
+            missing = [
+                artifact for artifact in candidate.get("outputs", [])
+                if states[id(artifact)][0] == "missing"
+            ]
+            existing = [
+                artifact for artifact in candidate.get("outputs", [])
+                if states[id(artifact)][0] == "present"
+            ]
+            uncertain = [
+                artifact for artifact in candidate.get("outputs", [])
+                if states[id(artifact)][0] == "uncertain"
+            ]
 
-            if not missing:
+            if not missing or uncertain:
                 continue
+
             if not existing:
+                current = await self.db.get_job(job_id)
+                if current is None or current.get("status") in jobs_module.ACTIVE_STATUSES:
+                    continue
+                rechecked = [await probe(artifact) for artifact in candidate.get("outputs", [])]
+                if any(state != "missing" for state, _ in rechecked):
+                    continue
+                current = await self.db.get_job(job_id)
+                if current is None or current.get("status") in jobs_module.ACTIVE_STATUSES:
+                    continue
                 try:
                     await self.purge(job_id)
                 except KeyError:

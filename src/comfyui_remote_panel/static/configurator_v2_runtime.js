@@ -121,69 +121,42 @@
     return policy === "auto" ? String(value?.target_megapixels ?? spec.target ?? 1.0) : "original";
   }
 
-  function seedControlValue(preset, overrides) {
-    return overrides?.seed_policy || preset?.seed_policy?.default || "randomize";
+  function seedStorageKey(preset) {
+    if (preset?.id === "h3-ref2va-group" || preset?.family === "ref2va") {
+      return "comfy-remote.ref2va.seed-policy";
+    }
+    if (preset?.id === "h3-fl2va-group" || preset?.family === "fl2va") {
+      return "comfy-remote.fl2va.seed-policy";
+    }
+    return "";
   }
 
-  function installH3Controls(preset, overrides = {}) {
-    const details = document.querySelector("#advanced-settings");
-    const grid = details?.querySelector(".advanced-grid");
-    if (!details || !grid) return;
-    grid.querySelectorAll(".v04-control").forEach(node => node.remove());
+  function validSeedPolicy(value) {
+    return ["randomize", "fixed", "increment"].includes(String(value || ""));
+  }
 
-    const supportsSeed = Boolean(preset?.seed_policy?.supported);
-    const seedInput = grid.querySelector('input[name="seed"]');
-    const seedLabel = seedInput?.closest("label.field");
-    if (supportsSeed && seedInput && seedLabel) {
-      const policy = seedControlValue(preset, overrides);
-      const policyLabel = document.createElement("label");
-      policyLabel.className = "field v04-control v04-seed-policy";
-      policyLabel.innerHTML = `<span>Seed 策略</span><select data-v04-seed-policy>
-        <option value="randomize">随机</option>
-        <option value="fixed">固定</option>
-        <option value="increment">递增</option>
-      </select>`;
-      seedLabel.before(policyLabel);
-      const select = policyLabel.querySelector("select");
-      select.value = policy;
-      const base = overrides?.seed_value ?? overrides?.seed ?? seedInput.value ?? "";
-      if (policy !== "randomize" && base !== "") seedInput.value = String(base);
-      const sync = () => {
-        const value = select.value;
-        seedLabel.classList.toggle("hidden", value === "randomize");
-        seedInput.placeholder = value === "increment" ? "起始 Seed" : "Seed";
-        if (value === "randomize") seedInput.value = "";
-        else if (!seedInput.value) seedInput.value = String(overrides?.seed_value ?? 0);
-      };
-      select.addEventListener("change", sync);
-      sync();
+  function rememberedSeedPolicy(preset) {
+    const key = seedStorageKey(preset);
+    if (!key) return "";
+    try {
+      const value = window.localStorage.getItem(key);
+      return validSeedPolicy(value) ? value : "";
+    } catch (_) {
+      return "";
     }
+  }
 
-    const specs = imageSlotSpecs(preset);
-    if (specs.length) {
-      const same = specs.every(item =>
-        item.policy === specs[0].policy
-        && Number(item.target ?? 1) === Number(specs[0].target ?? 1)
-        && item.allowAuto === specs[0].allowAuto
-      );
-      const visibleSpecs = same ? [{ ...specs[0], role: "image", label: "参考图" }] : specs;
-      for (const spec of visibleSpecs) {
-        const field = document.createElement("label");
-        field.className = "field v04-control v04-resolution";
-        const selected = requestedResolutionValue(spec, overrides);
-        field.innerHTML = `<span>${escapeHtml(spec.label)}分辨率</span><select data-v04-resolution="${escapeHtml(spec.role)}">${resolutionOptions(spec, selected)}</select>${spec.note ? `<small>${escapeHtml(spec.note)}</small>` : ""}`;
-        grid.append(field);
-      }
-    }
+  function rememberSeedPolicy(preset, value) {
+    const key = seedStorageKey(preset);
+    if (!key || !validSeedPolicy(value)) return;
+    try { window.localStorage.setItem(key, value); } catch (_) {}
+  }
 
-    let hidden = details.querySelector('input[name="values_json"].v04-control');
-    if (!hidden) {
-      hidden = document.createElement("input");
-      hidden.type = "hidden";
-      hidden.name = "values_json";
-      hidden.className = "v04-control";
-      details.append(hidden);
-    }
+  function seedControlValue(preset, overrides, live) {
+    const explicit = overrides?.seed_policy ?? overrides?.values?.seed_policy;
+    if (validSeedPolicy(explicit)) return explicit;
+    if (validSeedPolicy(live)) return live;
+    return rememberedSeedPolicy(preset) || preset?.seed_policy?.default || "randomize";
   }
 
   function installGenericControls(preset, overrides = {}) {
@@ -273,10 +246,11 @@
   }
 
   function installCreationControls(preset, overrides = {}) {
-    if (!preset) return;
-    if (preset.family === "generic") installGenericControls(preset, overrides);
-    else installH3Controls(preset, overrides);
+    if (preset?.family === "generic") installGenericControls(preset, overrides);
   }
+
+  const CreationControls = window.ComfyRemoteCreationControls = window.ComfyRemoteCreationControls || {};
+  CreationControls.install = installCreationControls;
 
   const baseApplyPresetForMedia = applyPreset;
   applyPreset = function(...args) {

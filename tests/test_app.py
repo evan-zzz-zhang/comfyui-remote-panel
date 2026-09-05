@@ -12,6 +12,7 @@ from aiohttp import FormData, web
 from PIL import Image
 
 from comfyui_remote_panel.app import _write_sse, create_app
+import comfyui_remote_panel.app as app_module
 from comfyui_remote_panel.config import Config
 from comfyui_remote_panel.jobs import safe_summary
 from test_workflow_config import remote_config, save_image_workflow
@@ -98,6 +99,59 @@ async def test_health_is_only_anonymous_route(panel_client):
 
 
 @pytest.mark.asyncio
+async def test_job_existence_endpoint_is_bounded_and_excludes_hidden(panel_client):
+    await panel_client.app["db"].create_job({
+        "id": "visible-job", "preset_id": "preset", "status": "succeeded", "mode": "纯文字",
+        "prompt": "test", "duration_seconds": 5, "aspect_ratio": "9:16", "megapixels": 0.4, "seed": 1,
+    }, [])
+    await panel_client.app["db"].create_job({
+        "id": "hidden-job", "preset_id": "preset", "status": "hidden", "mode": "纯文字",
+        "prompt": "test", "duration_seconds": 5, "aspect_ratio": "9:16", "megapixels": 0.4, "seed": 1,
+    }, [])
+
+    response = await panel_client.get(
+        "/api/jobs/existence?ids=visible-job,hidden-job,missing-job", headers=LOGIN
+    )
+
+    assert response.status == 200
+    assert await response.json() == {"ids": ["visible-job"]}
+    too_many = ",".join(f"job-{index}" for index in range(101))
+    assert (await panel_client.get(f"/api/jobs/existence?ids={too_many}", headers=LOGIN)).status == 400
+
+
+@pytest.mark.asyncio
+async def test_sse_heartbeat_does_not_cancel_pending_event_read(panel_client, monkeypatch):
+    monkeypatch.setattr(app_module, "_SSE_HEARTBEAT_SECONDS", 0.02)
+    panel_client.app["metrics"].snapshot = {"test": True}
+    response = await panel_client.get("/api/events", headers=LOGIN)
+    try:
+        assert response.status == 200
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
+        assert response.headers["Referrer-Policy"] == "no-referrer"
+        assert response.headers["Permissions-Policy"] == "camera=(), microphone=(), geolocation=()"
+        assert response.headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"
+        saw_snapshot = False
+        while True:
+            line = await asyncio.wait_for(response.content.readline(), timeout=1)
+            assert line
+            saw_snapshot = saw_snapshot or line.startswith(b"event: snapshot")
+            if saw_snapshot and line == b"\n":
+                break
+        await asyncio.sleep(0.06)
+        panel_client.app["events"].publish("heartbeat-test", {"id": "still-connected"})
+        await asyncio.sleep(0.06)
+        received = b""
+        for _ in range(100):
+            line = await asyncio.wait_for(response.content.readline(), timeout=1)
+            received += line
+            if b"event: heartbeat-test" in received:
+                break
+        assert b"event: heartbeat-test" in received
+    finally:
+        response.close()
+
+
+@pytest.mark.asyncio
 async def test_panel_opens_when_comfyui_is_offline(tmp_path, aiohttp_client):
     config = Config(
         host="127.0.0.1", port=8190, public_origin="https://device.example.ts.net",
@@ -117,7 +171,10 @@ async def test_panel_opens_when_comfyui_is_offline(tmp_path, aiohttp_client):
     presets = await client.get("/api/presets", headers=LOGIN)
     assert presets.status == 200
     items = (await presets.json())["items"]
-    assert not any(item["family"] == "fl2va" for item in items)
+    fl2va_items = [item for item in items if item["family"] == "fl2va"]
+    assert [(item["id"], item["name"]) for item in fl2va_items] == [
+        ("h3-fl2va-group", "MiniMax H3 FL2VA")
+    ]
     workflows = await client.get("/api/workflows", headers=LOGIN)
     workflow_ids = {item["id"] for item in (await workflows.json())["items"]}
     assert "fl2va_original_raw" in workflow_ids
@@ -162,6 +219,41 @@ async def test_create_uses_same_panel_and_prompt_id(panel_client, comfy_server):
     assert submitted["prompt"]["156"]["inputs"] == {}
     assert submitted["prompt"]["136"]["inputs"]["first_frame"] == ["156", 0]
     assert submitted["prompt"]["136"]["inputs"]["last_frame"] == ["156", 1]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("request_preset", "disabled_preset", "values"),
+    [
+        ("h3-fl2va-v4step600", "h3-fl2va-v4step600", {}),
+        (
+            "h3-fl2va-group",
+            "fl2va_v4step600_raw",
+            {"generation_mode": "v4_600step", "prompt_backend": "raw"},
+        ),
+        ("ref2va_v4step600_raw", "ref2va_v4step600_raw", {}),
+        (
+            "h3-ref2va-group",
+            "ref2va_v4step600_raw",
+            {"generation_mode": "v4step600", "prompt_backend": "raw"},
+        ),
+    ],
+)
+async def test_disabled_physical_and_virtual_workflows_reject_before_submission(
+    panel_client, comfy_server, request_preset, disabled_preset, values,
+):
+    changed = await panel_client.app["db"].set_workflow_status(disabled_preset, "disabled")
+    assert changed is not None
+    form = FormData(default_to_multipart=True)
+    form.add_field("preset_id", request_preset)
+    form.add_field("values_json", json.dumps(values))
+
+    response = await panel_client.post("/api/jobs", data=form, headers=LOGIN)
+
+    assert response.status == 400, await response.text()
+    assert "禁用" in (await response.json())["error"]["message"]
+    assert not comfy_server.app["submitted"]
+    await panel_client.app["db"].set_workflow_status(disabled_preset, "enabled")
 
 
 @pytest.mark.asyncio
@@ -559,13 +651,23 @@ async def test_video_single_range(panel_client):
     await db.add_file(job_id, "output", path, 10)
     response = await panel_client.get(f"/api/jobs/{job_id}/video", headers={**LOGIN, "Range": "bytes=2-5"})
     assert response.status == 206
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+    assert response.headers["Cache-Control"] == "no-store"
     assert response.headers["Content-Range"] == "bytes 2-5/10"
     assert await response.read() == b"2345"
     invalid = await panel_client.get(f"/api/jobs/{job_id}/video", headers={**LOGIN, "Range": "bytes=99-100"})
     assert invalid.status == 416
+    assert invalid.headers["X-Content-Type-Options"] == "nosniff"
     assert invalid.headers["Content-Range"] == "bytes */10"
+    head = await panel_client.head(f"/api/jobs/{job_id}/video", headers=LOGIN)
+    assert head.status == 200
+    assert head.headers["X-Content-Type-Options"] == "nosniff"
+    assert head.headers["Cache-Control"] == "no-store"
+    assert await head.read() == b""
     download = await panel_client.get(f"/api/jobs/{job_id}/video?download=1", headers=LOGIN)
     assert download.status == 200
+    assert download.headers["X-Content-Type-Options"] == "nosniff"
     assert download.headers["Content-Disposition"].startswith('attachment; filename="h3-fl2va-v4step600-')
     assert download.headers["Content-Disposition"].endswith('-000000.mp4"')
 
@@ -654,6 +756,69 @@ async def test_generic_saveimage_workflow_crud_submit_and_artifact(panel_client,
     downloaded = await panel_client.get(f"/api/jobs/{job['id']}/artifacts/{artifact['id']}", headers=LOGIN)
     assert downloaded.status == 200
     assert await downloaded.read() == b"png-result"
+
+
+@pytest.mark.asyncio
+async def test_generic_draft_test_is_allowed_but_normal_submit_is_not(panel_client, comfy_server):
+    created = await panel_client.post(
+        "/api/workflows", headers=LOGIN,
+        json={"workflow": save_image_workflow(), "config": remote_config()},
+    )
+    assert created.status == 201, await created.text()
+    workflow_id = (await created.json())["id"]
+
+    normal = FormData(default_to_multipart=True)
+    normal.add_field("preset_id", workflow_id)
+    normal.add_field("values_json", json.dumps({"positive_prompt": "draft"}))
+    rejected = await panel_client.post("/api/jobs", data=normal, headers=LOGIN)
+    assert rejected.status == 400, await rejected.text()
+    assert not comfy_server.app["submitted"]
+
+    tested = await panel_client.post(
+        f"/api/workflows/{workflow_id}/test",
+        headers=LOGIN,
+        json={"positive_prompt": "draft test"},
+    )
+    assert tested.status == 201, await tested.text()
+    assert comfy_server.app["submitted"]
+
+
+@pytest.mark.asyncio
+async def test_retry_submission_rechecks_workflow_enabled_state(panel_client, comfy_server):
+    created = await panel_client.post(
+        "/api/workflows", headers=LOGIN,
+        json={"workflow": save_image_workflow(), "config": remote_config()},
+    )
+    assert created.status == 201, await created.text()
+    workflow_id = (await created.json())["id"]
+    enabled = await panel_client.post(
+        f"/api/workflows/{workflow_id}/status", headers=LOGIN, json={"status": "enabled"}
+    )
+    assert enabled.status == 200, await enabled.text()
+
+    form = FormData(default_to_multipart=True)
+    form.add_field("preset_id", workflow_id)
+    form.add_field("values_json", json.dumps({"positive_prompt": "original"}))
+    original_response = await panel_client.post("/api/jobs", data=form, headers=LOGIN)
+    assert original_response.status == 201, await original_response.text()
+    original = await original_response.json()
+    await panel_client.app["db"].update_job(original["id"], status="failed")
+
+    disabled = await panel_client.post(
+        f"/api/workflows/{workflow_id}/status", headers=LOGIN, json={"status": "disabled"}
+    )
+    assert disabled.status == 200, await disabled.text()
+    draft_response = await panel_client.post(f"/api/jobs/{original['id']}/retry", headers=LOGIN)
+    assert draft_response.status == 200, await draft_response.text()
+    draft = await draft_response.json()
+    retry = FormData(default_to_multipart=True)
+    retry.add_field("preset_id", draft["preset_id"])
+    retry.add_field("retry_source_id", draft["retry_source_id"])
+    retry.add_field("values_json", json.dumps(draft.get("values") or {}))
+
+    rejected = await panel_client.post("/api/jobs", data=retry, headers=LOGIN)
+    assert rejected.status == 400, await rejected.text()
+    assert len(comfy_server.app["submitted"]) == 1
 
 
 def test_error_summary_removes_local_paths_and_addresses():

@@ -38,7 +38,11 @@
   }
 
   function workflowDisplayName(id, fallback = id) {
-    return state.workflowItems.get(id)?.name || state.presets.get(id)?.name || fallback;
+    const preset = state.presets.get(id);
+    const family = preset?.family || state.workflowItems.get(id)?.manifest?.family;
+    if (family === "fl2va") return "MiniMax H3 FL2VA";
+    if (family === "ref2va") return "MiniMax H3 Ref2VA";
+    return state.workflowItems.get(id)?.name || preset?.name || fallback;
   }
 
   function outputKind(preset) {
@@ -236,6 +240,10 @@
     } else {
       renderGenericForm(preset, overrides);
     }
+    if (h3) {
+      const mounted = window.H3CreationRuntime?.mount?.(preset, overrides);
+      if (!mounted) window.syncH3CreationUI?.(preset, overrides);
+    } else window.ComfyRemoteH3AdvancedSettings?.unmount?.();
     updateSettingsSummary();
   }
 

@@ -5,12 +5,11 @@ from typing import Any
 from aiohttp import web
 
 
-_SCRIPT_TAG = '<script src="/static/v042_ui.js?v=0.4.5.0" defer></script>'
 _PATCH_TAG = '<script src="/static/v042_patch.js?v=0.4.2.4" defer></script>'
 
 
 def install() -> None:
-    """Inject the v0.4.2 FL2VA UI after the accepted v0.4.1 frontend."""
+    """Keep the task-detail patch available; H3 creation is owned by the v0.4.8 runtime."""
 
     from . import app as app_module
 
@@ -33,7 +32,7 @@ def install() -> None:
             ):
                 html = response.text
                 if html:
-                    missing = [tag for tag in (_SCRIPT_TAG, _PATCH_TAG) if tag not in html]
+                    missing = [tag for tag in (_PATCH_TAG,) if tag not in html]
                     if missing:
                         html = html.replace("</body>", "  " + "\n  ".join(missing) + "\n</body>")
                         replacement = web.Response(

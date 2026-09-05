@@ -69,6 +69,9 @@ async def test_input_media_preview_requires_auth_and_enforces_ownership(tmp_path
 
     response = await client.get(url, headers=LOGIN)
     assert response.status == 200
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+    assert response.headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"
     assert response.headers["Cache-Control"] == "private, no-cache"
     assert response.headers["Content-Type"].startswith("image/png")
     assert response.headers.get("ETag")

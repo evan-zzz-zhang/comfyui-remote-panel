@@ -1,6 +1,4 @@
 (() => {
-  const STANDARDIZER_SELECTOR = "[data-v042-prompt-standardization]";
-  const V046_SELECTOR = "[data-v046-prompt-standardization-mode]";
   const PROMPT_ROW_LABELS = new Set(["提示词", "正面提示词", "prompt", "positive_prompt"]);
 
   function installStyles() {
@@ -8,50 +6,9 @@
     const style = document.createElement("style");
     style.id = "v042-patch-style";
     style.textContent = `
-      [data-v042-standardizer-field] .v042-switch { display: none !important; }
-      [data-v042-standardizer-switch] { justify-self: end; }
       .v042-standardized-prompt-row small { white-space: pre-wrap; word-break: break-word; }
     `;
     document.head.append(style);
-  }
-
-  function syncSwitchButton(field) {
-    if (!field) return;
-    if (field.querySelector(V046_SELECTOR)) {
-      field.querySelectorAll("[data-v042-standardizer-switch]").forEach(button => button.remove());
-      return;
-    }
-
-    const checkbox = field.querySelector(`input${STANDARDIZER_SELECTOR}`);
-    if (!checkbox) return;
-    const legacy = checkbox.closest(".v042-switch");
-    if (legacy) legacy.style.setProperty("display", "none", "important");
-
-    let button = field.querySelector("[data-v042-standardizer-switch]");
-    if (!button) {
-      button = document.createElement("button");
-      button.type = "button";
-      button.className = "toggle-button";
-      button.dataset.v042StandardizerSwitch = "true";
-      button.setAttribute("role", "switch");
-      button.setAttribute("aria-label", "使用 H3 提示词标准化");
-      field.append(button);
-      button.addEventListener("click", event => {
-        event.preventDefault();
-        event.stopPropagation();
-        checkbox.checked = !checkbox.checked;
-        checkbox.dispatchEvent(new Event("change", { bubbles: true }));
-        syncSwitchButton(field);
-      });
-    }
-
-    const enabled = Boolean(checkbox.checked);
-    button.classList.toggle("on", enabled);
-    button.setAttribute("aria-checked", enabled ? "true" : "false");
-  }
-
-  function syncStandardizerControls() {
-    document.querySelectorAll("[data-v042-standardizer-field]").forEach(syncSwitchButton);
   }
 
   async function copyText(value) {
@@ -167,11 +124,6 @@
     return result;
   };
 
-  document.addEventListener("change", event => {
-    const checkbox = event.target?.matches?.(`input${STANDARDIZER_SELECTOR}`) ? event.target : null;
-    if (checkbox) syncSwitchButton(checkbox.closest("[data-v042-standardizer-field]"));
-  });
-
   document.addEventListener("click", event => {
     const details = event.target.closest?.("[data-task-details]");
     if (!details) return;
@@ -181,11 +133,5 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     installStyles();
-    syncStandardizerControls();
-    const advanced = document.querySelector("#advanced-settings");
-    if (advanced) {
-      new MutationObserver(() => queueMicrotask(syncStandardizerControls))
-        .observe(advanced, { childList: true, subtree: true });
-    }
   });
 })();

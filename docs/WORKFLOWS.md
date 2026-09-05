@@ -21,6 +21,12 @@ ComfyUI workflow
 → Use on the Create page
 ```
 
+### H3 Ref2VA runtime notes
+
+- The Create page selects the virtual `h3-fl2va-group` entry by default; physical asset IDs remain implementation details.
+- When a Ref2VA job uses the source video's aspect, the selected ratio is derived from that video. A value such as `9:16` in a generated prompt is an aspect ratio, not a timestamp.
+- Ollama prompt standardization must use the current H3 Prompt Writer plugin. After updating that plugin, restart ComfyUI so its validator changes are loaded.
+
 Core rules:
 
 - `width`, `height`, and `batch_size` are not mandatory.

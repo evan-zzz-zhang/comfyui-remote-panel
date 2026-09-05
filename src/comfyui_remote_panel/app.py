@@ -38,6 +38,8 @@ MAX_TEXT_FIELD_CHARS = 1_000
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 RANGE_PATTERN = re.compile(r"^bytes=(\d*)-(\d*)$")
 log = logging.getLogger(__name__)
+_SSE_HEARTBEAT_SECONDS = 15
+_JOB_EXISTENCE_LIMIT = 100
 
 
 class TextFieldTooLarge(ValueError):
@@ -46,6 +48,18 @@ class TextFieldTooLarge(ValueError):
 
 def json_error(message: str, status: int, code: str = "request_error") -> web.Response:
     return web.json_response({"error": {"code": code, "message": message}}, status=status)
+
+
+def _apply_security_headers(request: web.Request, response: web.StreamResponse) -> None:
+    response.headers.update({
+        "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    })
+    if request.path != "/healthz" and not request.path.startswith("/static/"):
+        response.headers.setdefault("Cache-Control", "no-store")
 
 
 def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web.Application:
@@ -59,15 +73,7 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
         except Exception:
             log.exception("unhandled panel request error")
             response = json_error("服务器内部错误", 500, "internal_error")
-        response.headers.update({
-            "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
-            "X-Content-Type-Options": "nosniff",
-            "Referrer-Policy": "no-referrer",
-            "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-            "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
-        })
-        if request.path != "/healthz" and not request.path.startswith("/static/"):
-            response.headers.setdefault("Cache-Control", "no-store")
+        _apply_security_headers(request, response)
         return response
 
     @web.middleware
@@ -121,19 +127,28 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
             return json_error("任务不存在", 404, "not_found")
         return web.json_response(app["jobs"].public_job(job))
 
+    async def existing_jobs(request: web.Request) -> web.Response:
+        raw_ids = request.query.get("ids", "")
+        job_ids = [item for item in raw_ids.split(",") if item]
+        if not job_ids or len(set(job_ids)) > _JOB_EXISTENCE_LIMIT:
+            return json_error("任务存在性查询数量无效", 400, "invalid_query")
+        existing = await app["db"].existing_job_ids(job_ids)
+        return web.json_response({"ids": [job_id for job_id in job_ids if job_id in existing]})
+
     async def create_job(request: web.Request) -> web.Response:
         if not request.content_type.startswith("multipart/"):
             return json_error("请求必须使用 multipart/form-data", 415)
         job_id = new_job_id()
         uploaded: list[dict[str, Any]] = []
         fields: dict[str, Any] = {}
+        reservation = None
         allowed_text = {"preset_id", "prompt", "duration_seconds", "aspect_ratio", "megapixels", "seed", "scheduler", "sampler", "steps", "retry_source_id", "retry_keep_roles", "values_json"}
         fixed_files = {"first_frame": "first", "last_frame": "last"}
         repeated_files = {"ref_images": ("image", 9), "ref_videos": ("video", 3), "ref_audios": ("audio", 3)}
         slot_files = {**{f"image_{index}": f"image_{index}" for index in range(9)}, **{f"video_{index}": f"video_{index}" for index in range(3)}, **{f"audio_{index}": f"audio_{index}" for index in range(3)}}
         repeated_counts = {name: 0 for name in repeated_files}
         try:
-            await app["files"].ensure_capacity(
+            reservation = await app["files"].reserve_capacity(
                 request.content_length or 0, await app["db"].tracked_size(),
                 config.minimum_free_bytes, config.output_reserve_bytes, config.max_tracked_bytes,
             )
@@ -145,13 +160,13 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
                         raise PresetError("同一帧只能上传一张图片")
                     if not part.filename:
                         continue
-                    uploaded.append(await app["files"].save_upload(job_id, role, part))
+                    uploaded.append(await app["files"].save_upload(job_id, role, part, reservation))
                 elif part.name in slot_files:
                     role = slot_files[part.name]
                     if any(item["role"] == role for item in uploaded):
                         raise PresetError(f"素材槽位重复：{role}")
                     if part.filename:
-                        uploaded.append(await app["files"].save_upload(job_id, role, part))
+                        uploaded.append(await app["files"].save_upload(job_id, role, part, reservation))
                 elif part.name in repeated_files:
                     if not part.filename:
                         continue
@@ -160,7 +175,7 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
                     if index >= maximum:
                         raise PresetError(f"{part.name} 上传数量超过 {maximum}")
                     repeated_counts[part.name] += 1
-                    uploaded.append(await app["files"].save_upload(job_id, f"{prefix}_{index}", part))
+                    uploaded.append(await app["files"].save_upload(job_id, f"{prefix}_{index}", part, reservation))
                 elif part.name in allowed_text:
                     if part.name in fields:
                         raise PresetError(f"字段重复：{part.name}")
@@ -186,6 +201,7 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
             else:
                 raise PresetError("种子必须是整数")
             fields["seed"] = seed_text or None
+            fields["_capacity_reservation"] = reservation
             job = await app["jobs"].create(fields, uploaded, job_id)
             return web.json_response(app["jobs"].public_job(job), status=201)
         except StorageCapacityError as exc:
@@ -200,6 +216,9 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
         except ComfyError as exc:
             app["files"].cleanup_untracked(uploaded)
             return json_error(str(exc), 503, "comfyui_unavailable")
+        finally:
+            if reservation is not None:
+                await reservation.release()
 
     async def cancel_job(request: web.Request) -> web.Response:
         try:
@@ -281,31 +300,46 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
             return json_error(str(exc), 409, "control_unavailable")
         return web.json_response(result, status=202)
 
-    async def events(_: web.Request) -> web.StreamResponse:
-        if not app["metrics"].snapshot:
-            await app["metrics"].collect()
-        response = web.StreamResponse(status=200, headers={
-            "Content-Type": "text/event-stream; charset=utf-8",
-            "Cache-Control": "no-cache, no-store",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        })
-        await response.prepare(_)
-        jobs = await app["db"].list_jobs(1, 100)
-        snapshot = {"jobs": [app["jobs"].public_job(job) for job in jobs["items"]], "metrics": app["metrics"].snapshot}
-        await _write_sse(response, "snapshot", snapshot)
-        iterator = app["events"].subscribe().__aiter__()
+    async def events(request: web.Request) -> web.StreamResponse:
+        subscription = app["events"].open_subscription()
+        snapshot_sequence = app["events"].sequence
+        pending: asyncio.Task | None = None
         try:
+            if not app["metrics"].snapshot:
+                await app["metrics"].collect()
+            response = web.StreamResponse(status=200, headers={
+                "Content-Type": "text/event-stream; charset=utf-8",
+                "Cache-Control": "no-cache, no-store",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            })
+            _apply_security_headers(request, response)
+            await response.prepare(request)
+            jobs = await app["db"].list_jobs(1, 100)
+            snapshot = {"jobs": [app["jobs"].public_job(job) for job in jobs["items"]], "metrics": app["metrics"].snapshot}
+            await _write_sse(response, "snapshot", snapshot)
+            iterator = subscription.__aiter__()
+            pending = asyncio.create_task(iterator.__anext__())
             while True:
-                try:
-                    event = await asyncio.wait_for(iterator.__anext__(), timeout=15)
-                    await _write_sse(response, event["type"], event["data"])
-                except asyncio.TimeoutError:
+                done, _ = await asyncio.wait({pending}, timeout=_SSE_HEARTBEAT_SECONDS)
+                if not done:
                     await response.write(b": heartbeat\n\n")
+                    continue
+                try:
+                    event = pending.result()
+                except StopAsyncIteration:
+                    break
+                pending = asyncio.create_task(iterator.__anext__())
+                if int(event.get("sequence", 0)) <= snapshot_sequence:
+                    continue
+                await _write_sse(response, event["type"], event["data"])
         except (ConnectionResetError, asyncio.CancelledError, StopAsyncIteration):
             pass
         finally:
-            await iterator.aclose()
+            if pending is not None and not pending.done():
+                pending.cancel()
+                await asyncio.gather(pending, return_exceptions=True)
+            await subscription.aclose()
         return response
 
     async def video(request: web.Request) -> web.StreamResponse:
@@ -497,6 +531,7 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
     app.router.add_get("/api/jobs", list_jobs)
     app.router.add_post("/api/jobs", create_job)
     app.router.add_get("/api/presets", list_presets)
+    app.router.add_get("/api/jobs/existence", existing_jobs)
     app.router.add_get("/api/jobs/{job_id}", get_job)
     app.router.add_post("/api/jobs/{job_id}/cancel", cancel_job)
     app.router.add_post("/api/jobs/{job_id}/retry", retry_job)
@@ -627,6 +662,7 @@ async def _stream_file(request: web.Request, path: Path, download_name: str | No
     if status == 206:
         headers["Content-Range"] = f"bytes {start}-{end}/{size}"
     response = web.StreamResponse(status=status, headers=headers)
+    _apply_security_headers(request, response)
     await response.prepare(request)
     if request.method != "HEAD":
         handle = await asyncio.to_thread(path.open, "rb")
