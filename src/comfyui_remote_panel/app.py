@@ -19,7 +19,7 @@ from .comfy import ComfyClient, ComfyError
 from .config import Config
 from .db import TERMINAL_STATUSES, Database
 from .events import EventBus
-from .files import FileStore, FileValidationError, StorageCapacityError
+from .files import FileStore, FileValidationError, StorageCapacityError, finish_file_operation
 from .jobs import JobService, new_job_id
 from .lifecycle import ComfyLifecycle, LifecycleError
 from .metrics import MetricsService
@@ -149,7 +149,7 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
         repeated_counts = {name: 0 for name in repeated_files}
         try:
             reservation = await app["files"].reserve_capacity(
-                request.content_length or 0, await app["db"].tracked_size(),
+                request.content_length or 0, app["db"].tracked_size,
                 config.minimum_free_bytes, config.output_reserve_bytes, config.max_tracked_bytes,
             )
             reader = await request.multipart()
@@ -205,20 +205,23 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
             job = await app["jobs"].create(fields, uploaded, job_id)
             return web.json_response(app["jobs"].public_job(job), status=201)
         except StorageCapacityError as exc:
-            app["files"].cleanup_untracked(uploaded)
             return json_error(str(exc), 507, "insufficient_storage")
         except TextFieldTooLarge as exc:
-            app["files"].cleanup_untracked(uploaded)
             return json_error(str(exc), 413, "field_too_large")
         except (ValueError, PresetError, FileValidationError) as exc:
-            app["files"].cleanup_untracked(uploaded)
             return json_error(str(exc), 400, "validation_error")
         except ComfyError as exc:
-            app["files"].cleanup_untracked(uploaded)
             return json_error(str(exc), 503, "comfyui_unavailable")
         finally:
-            if reservation is not None:
-                await reservation.release()
+            async def cleanup_request() -> None:
+                # A cancelled submit may already have reached ComfyUI. Database
+                # ownership, not the HTTP outcome, decides whether inputs live.
+                if await app["db"].get_job(job_id) is None:
+                    app["files"].cleanup_untracked(uploaded)
+                if reservation is not None:
+                    await reservation.release()
+
+            await finish_file_operation(cleanup_request())
 
     async def cancel_job(request: web.Request) -> web.Response:
         try:

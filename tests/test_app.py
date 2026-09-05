@@ -829,3 +829,52 @@ def test_error_summary_removes_local_paths_and_addresses():
     assert "127.0.0.1" not in summary
     assert "[本机路径]" in summary
     assert "[本机地址]" in summary
+
+
+@pytest.mark.parametrize("stage", ["reading", "disconnect", "database", "submitted"])
+async def test_upload_cancellation_respects_database_ownership(panel_client, monkeypatch, stage):
+    payload = io.BytesIO()
+    Image.new("RGB", (32, 32), "red").save(payload, format="PNG")
+
+    class Part:
+        def __init__(self, name, data, filename=None):
+            self.name, self.data, self.filename = name, data, filename
+
+        async def read_chunk(self, _):
+            data, self.data = self.data, b""
+            return data
+
+        def get_charset(self, default):
+            return default
+
+    async def parts():
+        yield Part("first_frame", payload.getvalue(), "reference.png")
+        if stage == "reading":
+            raise asyncio.CancelledError()
+        if stage == "disconnect":
+            raise ConnectionResetError()
+        yield Part("prompt", b"test")
+
+    app = panel_client.app
+    if stage == "database":
+        monkeypatch.setattr(app["db"], "create_job", AsyncMock(side_effect=asyncio.CancelledError()))
+    if stage == "submitted":
+        monkeypatch.setattr(app["comfy"], "submit", AsyncMock(side_effect=asyncio.CancelledError()))
+    request = Mock(content_type="multipart/form-data", content_length=len(payload.getvalue()) + 500)
+    request.multipart = AsyncMock(return_value=parts())
+    handler = next(route.handler for route in app.router.routes()
+                   if route.method == "POST" and route.resource.canonical == "/api/jobs")
+    with pytest.raises(ConnectionResetError if stage == "disconnect" else asyncio.CancelledError):
+        await handler(request)
+    files = app["files"]
+    jobs = (await app["db"].list_jobs())["items"]
+    assert not list(files.temp_root.iterdir())
+    assert files._reserved_capacity_bytes == 0
+    if stage == "submitted":
+        assert len(jobs) == 1
+        assert jobs[0]["status"] == "submitting"
+        assert all(Path(item["path"]).exists() for item in jobs[0]["files"])
+        assert list(files.input_root.iterdir())
+    else:
+        assert not jobs
+        assert not list(files.input_root.iterdir())

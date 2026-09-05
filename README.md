@@ -10,7 +10,7 @@
 
 Comfy Remote is a mobile-first remote creation panel for ComfyUI. It runs on the Windows computer that hosts ComfyUI and turns locally verified **ComfyUI API Workflows** into a phone-friendly interface for selecting workflows, adding media, editing prompts, submitting jobs, and reviewing results.
 
-The current v0.4.8 baseline builds on the accepted v0.4.7 FL2VA family with one Ref2VA creation entry, three generation modes, Raw/Ollama/Qwen3.5 prompt backends, INT8/FP16-BF16 profile routing, representative-image prompt standardization, and legacy workflow compatibility. It still avoids silently rewriting arbitrary workflows or exposing ComfyUI directly to the network. Real GPU acceptance for the new Ref2VA routes remains pending.
+The current v0.4.8 baseline builds on the accepted v0.4.7 FL2VA family with one Ref2VA creation entry, three generation modes, Raw/Ollama/Qwen3.5 prompt backends, INT8/FP16-BF16 profile routing, representative-image prompt standardization, and legacy workflow compatibility. It still avoids silently rewriting arbitrary workflows or exposing ComfyUI directly to the network. Ref2VA has a 9/9 INT8 generation baseline, and the owner has confirmed BF16 generation and a simple-character Ollama test. Raw language understanding and complex-character recognition remain model limitations; this does not establish a full BF16 combination matrix.
 
 ## What it does
 
@@ -24,7 +24,7 @@ The current v0.4.8 baseline builds on the accepted v0.4.7 FL2VA family with one 
 - Reconciles Jobs that have registered output artifacts with those managed local files. If an output is deleted or moved away, its stale artifact reference is removed; once all registered outputs for that Job are gone, the Job is removed from history. Jobs that never registered an output are not deleted merely for having no result file.
 - Treats uncertain filesystem probes (permission or transient I/O failures) as unknown rather than as deletion evidence, and only removes a Job after every registered output is confirmed missing.
 - Enforces workflow enable/disable state on the server-side execution path, including direct API and Retry submissions; Configurator draft tests use a separate explicit test-only path.
-- Accounts for deduplicated legacy files and artifacts, and reserves capacity for uploads and retained-media copies so concurrent submissions cannot reuse the same remaining quota.
+- Accounts for deduplicated legacy files and artifacts. Uploads and retained-media copies reserve pending disk writes, refresh quota usage during admission, and transfer reservations to database ownership on persistence. Cancellation waits for file workers and removes unregistered inputs while preserving inputs already owned by a job.
 - Keeps SSE event reads alive across heartbeats and reconciles loaded history after reconnects without treating an incomplete first-page snapshot as deletion; streaming responses receive the same security headers as ordinary responses.
 - Provides `randomize / fixed / increment` Seed Policy and reference-image resolution preprocessing while keeping Generic controls bound to real Workflow inputs.
 - Groups the bundled H3 FL2VA workflows behind one creation entry with `v4_600step`, `LightX2V`, and `original` generation modes while keeping the underlying physical workflow enable/disable state authoritative.

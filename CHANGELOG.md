@@ -8,13 +8,14 @@
 - Preserves the Ref2VA collection contract: up to 9 images, 3 videos, and 3 audios remain independently bound to `MiniMaxH3ReferenceToVideo`.
 - Adds Raw, Ollama, and Qwen3.5 4B prompt routes with representative-image/video-first-frame capture and standardized-prompt history recovery.
 - Adds Auto, INT8, and FP16/BF16 model-profile metadata while retaining exact ComfyUI runtime selectors for variant lookup.
-- Keeps the three legacy Ref2VA workflow IDs, history snapshots, retained media, and Retry mapping intact. The new routes are not yet declared GPU-field-tested.
+- Keeps the three legacy Ref2VA workflow IDs, history snapshots, retained media, and Retry mapping intact. Ref2VA has a 9/9 INT8 generation baseline; the owner also confirmed BF16 generation and simple-character Ollama success. Complex-character recognition remains a model limitation, and a full BF16 combination matrix is not claimed.
 
 ### Repair hardening completed
 
 - Artifact reconciliation now distinguishes confirmed absence from permission, I/O, and path-validation uncertainty; automatic cleanup requires every registered output to be confirmed missing and rechecked before purge.
 - Workflow enable/disable state is enforced in the shared server-side submit path for physical and virtual entries, direct API calls, and Retry; Configurator draft tests remain an explicit server-side exception.
 - Storage accounting unions and deduplicates legacy file records with artifact records. Uploads and retained-media Retry copies reserve capacity as bytes are read, including unknown-length uploads and concurrent requests.
+- Capacity follow-up: pending writes now count against disk admission, quota checks refresh database usage, and persistence atomically hands off reservations. Cancelled uploads/copies wait for workers, remove unregistered files, and preserve persisted job inputs.
 - SSE subscriptions register before the snapshot watermark, keep pending event reads alive through heartbeats, and release pending reads on disconnect. Reconnect reconciliation uses a bounded existence endpoint and does not treat a truncated snapshot as deletion.
 - Security headers and no-store defaults are applied before custom SSE and media streams are prepared while preserving Range, HEAD, download, static-resource, and input-preview cache behavior.
 

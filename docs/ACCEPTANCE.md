@@ -394,3 +394,31 @@ upload/Retry capacity is reserved under concurrency, SSE reconnects reconcile lo
 security headers are present before media/SSE streams are prepared. The local Windows run reports
 455 passed tests plus passing repository safety, build, frontend syntax/i18n, and smoke checks.
 Raw/Ollama Ref2VA role semantics and BF16 representative acceptance remain intentionally open.
+
+## 2026-09-06 用户真机反馈与容量修复补充
+
+用户反馈本轮真机操作未发现明显问题。Raw 的自然语言理解有限，是使用提示词标准化的原因；
+Ollama 简单角色测试成功，复杂角色识别暂按模型能力限制处理，本阶段不继续优化。
+用户确认 BF16 实测能够生成。该反馈不代表全部 BF16 模式/后端组合或复杂角色用例通过，
+也未逐项提供手机切后台、真实断网的验收矩阵。本节更新此前待验收状态，保留历史测试记录。
+
+本次代码修复只覆盖并发磁盘预留、慢请求的配额更新和取消清理：
+磁盘准入扣除其他请求尚未写入的预留，已写入空间不重复扣除；配额读取最新数据库占用，
+落库与释放对应预留在容量锁内交接；取消等待已启动的文件线程结束，清理未登记输入，
+已落库任务的输入继续保留。测试使用临时数据和模拟容量，不填满真实磁盘、不操作实际 ComfyUI。
+
+The owner reported no obvious issue during the latest device use, successful simple-character
+Ollama testing, and working BF16 generation. Raw language understanding and complex-character
+recognition are treated as model limitations for this phase. This is not a full BF16 matrix or
+an itemized mobile-background/network-disconnection acceptance report.
+The capacity follow-up covers pending disk writes, fresh quota accounting with atomic persistence
+handoff, and cancellation-safe file cleanup that preserves persisted job inputs.
+
+本次本地全量结果：**466 passed**；源码包与 wheel 构建（`--no-isolation`）、仓库安全、
+前端语法/i18n/行为 smoke 检查通过。保留 3 条既有 Windows asyncio 子进程释放 warning。
+新增 11 项回归覆盖并发磁盘准入、已落盘空间不重复预留、慢请求配额更新、取消中的上传/
+复制/校验线程、断连及落库前后文件归属。未重跑用户已反馈的 GPU 真机验收，也未推送或合并。
+
+补充：本次 `check_history.py` 扫描全部可达历史时未通过，报告历史中的
+`.venv.broken/pyvenv.cfg` 和 `tests/test_v046_sage_attention_status.py` 含 Windows 绝对路径；
+当前工作区 `check_repository.py` 通过。本轮未改写历史或处理既有提交身份信息。

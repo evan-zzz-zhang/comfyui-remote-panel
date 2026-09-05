@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import secrets
@@ -564,7 +565,13 @@ def install() -> None:
                 "_seed_max": int(seed_spec.get("maximum", 18446744073709551615)) if has_seed else 0,
                 **normalized,
             }
-            await self.db.create_job(record, effective_uploads)
+            if reservation is not None:
+                await reservation.persist(
+                    lambda: self.db.create_job(record, effective_uploads),
+                    sum(file["size_bytes"] for file in effective_uploads),
+                )
+            else:
+                await self.db.create_job(record, effective_uploads)
             persisted = True
             normalized = record["input_values"]
             media_names = {
@@ -584,8 +591,9 @@ def install() -> None:
             _, job = await self.db.update_job_if_status(
                 job_id, {"submitting"}, status="queued", stage="等待执行", queue_position=None
             )
-        except (preset_module.PresetError, jobs_module.FileValidationError, ValueError):
-            self.files.cleanup_untracked(copied)
+        except (asyncio.CancelledError, preset_module.PresetError, jobs_module.FileValidationError, ValueError):
+            if not persisted:
+                self.files.cleanup_untracked(copied)
             raise
         except Exception as exc:
             if not persisted:
