@@ -38,6 +38,8 @@ MAX_TEXT_FIELD_CHARS = 1_000
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 RANGE_PATTERN = re.compile(r"^bytes=(\d*)-(\d*)$")
 log = logging.getLogger(__name__)
+_SSE_HEARTBEAT_SECONDS = 15
+_JOB_EXISTENCE_LIMIT = 100
 
 
 class TextFieldTooLarge(ValueError):
@@ -120,6 +122,14 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
         if job is None:
             return json_error("任务不存在", 404, "not_found")
         return web.json_response(app["jobs"].public_job(job))
+
+    async def existing_jobs(request: web.Request) -> web.Response:
+        raw_ids = request.query.get("ids", "")
+        job_ids = [item for item in raw_ids.split(",") if item]
+        if not job_ids or len(set(job_ids)) > _JOB_EXISTENCE_LIMIT:
+            return json_error("任务存在性查询数量无效", 400, "invalid_query")
+        existing = await app["db"].existing_job_ids(job_ids)
+        return web.json_response({"ids": [job_id for job_id in job_ids if job_id in existing]})
 
     async def create_job(request: web.Request) -> web.Response:
         if not request.content_type.startswith("multipart/"):
@@ -287,30 +297,44 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
         return web.json_response(result, status=202)
 
     async def events(_: web.Request) -> web.StreamResponse:
-        if not app["metrics"].snapshot:
-            await app["metrics"].collect()
-        response = web.StreamResponse(status=200, headers={
-            "Content-Type": "text/event-stream; charset=utf-8",
-            "Cache-Control": "no-cache, no-store",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        })
-        await response.prepare(_)
-        jobs = await app["db"].list_jobs(1, 100)
-        snapshot = {"jobs": [app["jobs"].public_job(job) for job in jobs["items"]], "metrics": app["metrics"].snapshot}
-        await _write_sse(response, "snapshot", snapshot)
-        iterator = app["events"].subscribe().__aiter__()
+        subscription = app["events"].open_subscription()
+        snapshot_sequence = app["events"].sequence
+        pending: asyncio.Task | None = None
         try:
+            if not app["metrics"].snapshot:
+                await app["metrics"].collect()
+            response = web.StreamResponse(status=200, headers={
+                "Content-Type": "text/event-stream; charset=utf-8",
+                "Cache-Control": "no-cache, no-store",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            })
+            await response.prepare(_)
+            jobs = await app["db"].list_jobs(1, 100)
+            snapshot = {"jobs": [app["jobs"].public_job(job) for job in jobs["items"]], "metrics": app["metrics"].snapshot}
+            await _write_sse(response, "snapshot", snapshot)
+            iterator = subscription.__aiter__()
+            pending = asyncio.create_task(iterator.__anext__())
             while True:
-                try:
-                    event = await asyncio.wait_for(iterator.__anext__(), timeout=15)
-                    await _write_sse(response, event["type"], event["data"])
-                except asyncio.TimeoutError:
+                done, _ = await asyncio.wait({pending}, timeout=_SSE_HEARTBEAT_SECONDS)
+                if not done:
                     await response.write(b": heartbeat\n\n")
+                    continue
+                try:
+                    event = pending.result()
+                except StopAsyncIteration:
+                    break
+                pending = asyncio.create_task(iterator.__anext__())
+                if int(event.get("sequence", 0)) <= snapshot_sequence:
+                    continue
+                await _write_sse(response, event["type"], event["data"])
         except (ConnectionResetError, asyncio.CancelledError, StopAsyncIteration):
             pass
         finally:
-            await iterator.aclose()
+            if pending is not None and not pending.done():
+                pending.cancel()
+                await asyncio.gather(pending, return_exceptions=True)
+            await subscription.aclose()
         return response
 
     async def video(request: web.Request) -> web.StreamResponse:
@@ -502,6 +526,7 @@ def create_app(config: Config, auth_provider: AuthProvider | None = None) -> web
     app.router.add_get("/api/jobs", list_jobs)
     app.router.add_post("/api/jobs", create_job)
     app.router.add_get("/api/presets", list_presets)
+    app.router.add_get("/api/jobs/existence", existing_jobs)
     app.router.add_get("/api/jobs/{job_id}", get_job)
     app.router.add_post("/api/jobs/{job_id}/cancel", cancel_job)
     app.router.add_post("/api/jobs/{job_id}/retry", retry_job)

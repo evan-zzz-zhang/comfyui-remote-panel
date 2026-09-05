@@ -12,6 +12,7 @@ from aiohttp import FormData, web
 from PIL import Image
 
 from comfyui_remote_panel.app import _write_sse, create_app
+import comfyui_remote_panel.app as app_module
 from comfyui_remote_panel.config import Config
 from comfyui_remote_panel.jobs import safe_summary
 from test_workflow_config import remote_config, save_image_workflow
@@ -95,6 +96,55 @@ async def test_health_is_only_anonymous_route(panel_client):
     assert authorized.status == 200
     assert "frame-ancestors 'none'" in authorized.headers["Content-Security-Policy"]
     assert "Access-Control-Allow-Origin" not in authorized.headers
+
+
+@pytest.mark.asyncio
+async def test_job_existence_endpoint_is_bounded_and_excludes_hidden(panel_client):
+    await panel_client.app["db"].create_job({
+        "id": "visible-job", "preset_id": "preset", "status": "succeeded", "mode": "纯文字",
+        "prompt": "test", "duration_seconds": 5, "aspect_ratio": "9:16", "megapixels": 0.4, "seed": 1,
+    }, [])
+    await panel_client.app["db"].create_job({
+        "id": "hidden-job", "preset_id": "preset", "status": "hidden", "mode": "纯文字",
+        "prompt": "test", "duration_seconds": 5, "aspect_ratio": "9:16", "megapixels": 0.4, "seed": 1,
+    }, [])
+
+    response = await panel_client.get(
+        "/api/jobs/existence?ids=visible-job,hidden-job,missing-job", headers=LOGIN
+    )
+
+    assert response.status == 200
+    assert await response.json() == {"ids": ["visible-job"]}
+    too_many = ",".join(f"job-{index}" for index in range(101))
+    assert (await panel_client.get(f"/api/jobs/existence?ids={too_many}", headers=LOGIN)).status == 400
+
+
+@pytest.mark.asyncio
+async def test_sse_heartbeat_does_not_cancel_pending_event_read(panel_client, monkeypatch):
+    monkeypatch.setattr(app_module, "_SSE_HEARTBEAT_SECONDS", 0.02)
+    panel_client.app["metrics"].snapshot = {"test": True}
+    response = await panel_client.get("/api/events", headers=LOGIN)
+    try:
+        assert response.status == 200
+        saw_snapshot = False
+        while True:
+            line = await asyncio.wait_for(response.content.readline(), timeout=1)
+            assert line
+            saw_snapshot = saw_snapshot or line.startswith(b"event: snapshot")
+            if saw_snapshot and line == b"\n":
+                break
+        await asyncio.sleep(0.06)
+        panel_client.app["events"].publish("heartbeat-test", {"id": "still-connected"})
+        await asyncio.sleep(0.06)
+        received = b""
+        for _ in range(100):
+            line = await asyncio.wait_for(response.content.readline(), timeout=1)
+            received += line
+            if b"event: heartbeat-test" in received:
+                break
+        assert b"event: heartbeat-test" in received
+    finally:
+        response.close()
 
 
 @pytest.mark.asyncio

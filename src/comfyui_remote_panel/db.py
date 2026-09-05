@@ -483,6 +483,19 @@ class Database:
                 files = [dict(v) for v in db.execute("SELECT role, path, size_bytes FROM job_files WHERE job_id = ? ORDER BY id", (job_id,))]
         return self._job_from_row(row, files)
 
+    async def existing_job_ids(self, job_ids: list[str]) -> set[str]:
+        unique_ids = list(dict.fromkeys(str(job_id) for job_id in job_ids if str(job_id)))
+        if not unique_ids:
+            return set()
+        marks = ",".join("?" for _ in unique_ids)
+        async with self._lock:
+            with self._connect() as db:
+                rows = db.execute(
+                    f"SELECT id FROM jobs WHERE id IN ({marks}) AND status != ?",
+                    (*unique_ids, HIDDEN_STATUS),
+                ).fetchall()
+        return {str(row[0]) for row in rows}
+
     async def list_jobs(self, page: int = 1, page_size: int = 20, statuses: set[str] | None = None) -> dict[str, Any]:
         conditions = ["status != ?"]
         params: list[Any] = [HIDDEN_STATUS]
