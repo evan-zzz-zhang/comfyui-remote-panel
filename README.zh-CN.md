@@ -40,7 +40,7 @@ Comfy Remote 是一个手机优先的 ComfyUI 远程创作面板。它运行在 
 - Windows Portable ComfyUI 可识别已有启动脚本并保留实际启动参数，例如 `--enable-manager`、`--use-sage-attention`。
 - 默认推荐使用 Tailscale Serve 从手机访问；Panel 与 ComfyUI 仍只监听本机。
 - 公共文档提供 English / 简体中文；当前 Web Panel 保持已验收的中文稳定 UI 基线。
-- 内置九个 MiniMax H3 工作流作为 **Bundled / Verified examples**；没有 H3 节点或模型不会阻止 Panel 使用自己的 Workflow。
+- 内置 18 个 MiniMax H3 工作流作为 **Bundled / Verified examples**，覆盖 FL2VA 与 Ref2VA；没有 H3 节点或模型不会阻止 Panel 使用自己的 Workflow。
 
 ## Quick Start — Windows
 

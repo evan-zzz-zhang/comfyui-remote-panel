@@ -30,7 +30,7 @@ Start the ComfyUI installation you normally use on this Windows computer and con
 
 Comfy Remote does not install ComfyUI, models, or third-party Custom Nodes. It provides remote control and a mobile creation UI on top of an already working local ComfyUI environment.
 
-**MiniMax H3 is not required.** The six bundled H3 workflows are only Bundled / Verified examples. If you do not use H3, unavailable H3 workflows or H3 `WARN` results in Doctor can be ignored.
+**MiniMax H3 is not required.** The 18 optional H3 workflows are Bundled / Verified examples. If you do not use H3, unavailable H3 workflows or H3 `WARN` results in Doctor can be ignored.
 
 ---
 
@@ -439,7 +439,7 @@ The setup is genuinely complete when these are true, not merely when the service
 - [ ] One real job completes.
 - [ ] The result is visible and openable from the phone's Jobs page.
 
-**If you do not use H3, availability of the six bundled H3 workflows is not part of this success criterion.**
+**If you do not use H3, availability of the 18 optional H3 workflows is not part of this success criterion.**
 
 ---
 

@@ -23,8 +23,9 @@
 - [x] 提取必要 H3 节点、解除本机核心辅助模块依赖、隔离临时缓存；补充来源、许可证、固定版本资料下载与中英文说明。
 - [x] 完成最终分发回归与发布附件准备；CI 和合并记录见 [PR #18](https://github.com/evan-zzz-zhang/comfyui-remote-panel/pull/18)，版本与下载见 [v0.4.8 Release](https://github.com/evan-zzz-zhang/comfyui-remote-panel/releases/tag/v0.4.8)。
 
-后续验收边界：全新节点安装后的 GPU 生成、完整 BF16 模式/后端矩阵、逐项手机切后台/真实断网；
-Raw 自然语言理解与复杂角色识别作为模型能力限制保留，不纳入本阶段继续优化。
+本版已由项目负责人明确豁免全新节点安装后的 GPU smoke；未来安装器或依赖契约变化时再执行。
+完整 BF16 模式/后端矩阵、逐项手机切后台/真实断网仍是可选后续验收；Raw 自然语言理解与复杂角色识别
+作为模型能力限制保留，不纳入本阶段继续优化。
 
 ## v0.4.7 FL2VA Workflow Family & Inference Profile — Completed
 

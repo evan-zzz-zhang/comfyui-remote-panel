@@ -40,7 +40,7 @@ The optional [H3 companion distribution](h3-workflows/README.md) provides all 18
 - Detects existing Windows Portable ComfyUI launch scripts and preserves their real static arguments, including options such as `--enable-manager` and `--use-sage-attention`.
 - Recommends Tailscale Serve for phone access while keeping both the Panel and ComfyUI bound to localhost.
 - Public documentation is available in English and Simplified Chinese; the current Web Panel release keeps the accepted stable Chinese UI baseline.
-- Includes nine MiniMax H3 workflows as **Bundled / Verified examples**. Missing H3 nodes or models do not block you from using your own workflows.
+- Includes 18 MiniMax H3 workflows as **Bundled / Verified examples** across FL2VA and Ref2VA. Missing H3 nodes or models do not block you from using your own workflows.
 
 ## Quick Start — Windows
 

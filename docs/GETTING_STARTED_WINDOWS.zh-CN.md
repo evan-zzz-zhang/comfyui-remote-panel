@@ -30,7 +30,7 @@
 
 Comfy Remote 不负责安装 ComfyUI、模型或第三方 Custom Node。它是在“本机 ComfyUI 已经可用”的基础上提供远程控制和手机创作界面。
 
-**不要求 MiniMax H3。** 内置六个 H3 工作流只是 Bundled / Verified examples。如果你不用 H3，之后看到它们不可用或 Doctor 出现 H3 `WARN` 可以直接忽略。
+**不要求 MiniMax H3。** 18 个可选 H3 工作流只是 Bundled / Verified examples。如果你不用 H3，之后看到它们不可用或 Doctor 出现 H3 `WARN` 可以直接忽略。
 
 ---
 
@@ -447,7 +447,7 @@ Schema
 - [ ] 一次真实任务完成。
 - [ ] 手机任务页能看到并打开生成结果。
 
-**如果你不用 H3，六个内置 H3 工作流是否可用不属于这个成功标准。**
+**如果你不用 H3，18 个可选 H3 工作流是否可用不属于这个成功标准。**
 
 ---
 
