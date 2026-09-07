@@ -23,7 +23,7 @@
 
 ### Verification
 
-- The pre-distribution baseline passed 466 automated tests. Distribution regression checks additionally cover visual/API parity, archive reproducibility, source allowlisting, resource integrity and cache ownership; see the acceptance log for the final run.
+- 473 automated tests passed locally, with four Windows asyncio subprocess-cleanup warnings. Distribution regression checks cover visual/API parity, archive reproducibility, source allowlisting, resource integrity and cache ownership. Repository, frontend, wheel/sdist and release archive checks passed; see the acceptance log for details.
 - Qwen3.5 Ref2VA role replacement, simple-character Ollama and representative BF16 generation are recorded. Raw language understanding and complex-character recognition remain model limits. A full BF16 matrix, fresh-install GPU validation of the extracted node packs, and separately itemized real mobile background/network-loss checks are not claimed.
 
 ## v0.4.6 — FL2VA Multi-Backend Prompt Standardization

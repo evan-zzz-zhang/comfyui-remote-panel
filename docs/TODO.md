@@ -1,10 +1,10 @@
 # Comfy Remote Roadmap / TODO
 
-当前稳定开发基线：**v0.4.8 Ref2VA Workflow Family（In progress）**。
+当前稳定开发基线：**v0.4.8 Ref2VA Workflow Family & H3 Companion Workflows**。
 
 `v0.3 Public Readiness + Configurator 2.0` 已结束功能开发并完成合并；`v0.4 Creation Experience`、`v0.4 Recovery Lite`、`v0.4.1 Media Continuity`、`v0.4.2 H3 FL2VA Unified Modes`、`v0.4.3 Task Reconciliation Hardening`、`v0.4.4 Windows Environment Self-Healing`、`v0.4.5 Artifact History Sync & Ollama Model Setting` 与 `v0.4.6 FL2VA Multi-Backend Prompt Standardization` 均已完成当前范围收尾。
 
-## v0.4.8 Ref2VA Workflow Family — In progress
+## v0.4.8 Ref2VA Workflow Family & H3 Companion Workflows — Completed
 
 - [x] 建立 Ref2VA `original / lightx2v / v4step600 × raw / ollama / qwen35` 九个 canonical asset。
 - [x] 增加 Ref2VA family resolver、virtual entry、legacy 映射与一次性 enabled/disabled 状态继承。
@@ -18,10 +18,13 @@
 - [x] 完成容量复查的 3 项补修：并发待写入磁盘预留、最新配额与落库交接、取消时等待文件线程并按数据库归属清理；本地全量回归 466 项通过。
 - [x] 根据用户反馈收敛 Ref2VA Raw / Ollama 语义边界：Ollama 简单角色测试成功；Raw 自然语言理解和复杂角色识别暂列为模型能力限制，本阶段不继续优化，不记为复杂角色全量通过。
 - [x] 用户确认 BF16 实测能够生成；仅记录已反馈的代表性生成能力，不扩展为全部模式/后端组合验收。
-- [x] 完成全量 pytest、构建和仓库检查；CI 与 PR 收尾仍待完成。
+- [x] 完成本地全量 473 项 pytest、构建、仓库安全和前端检查；公开分支隔离克隆的历史内容检查通过。
 - [x] 整理 18 个工作流的面板配套包和原生 ComfyUI 图形文件，保留 canonical 资产为权威来源并校验图形/API 一致性。
 - [x] 提取必要 H3 节点、解除本机核心辅助模块依赖、隔离临时缓存；补充来源、许可证、固定版本资料下载与中英文说明。
-- [ ] 完成最终分发回归、CI、PR 合并与 v0.4.8 Release，清理已合并分支。
+- [x] 完成最终分发回归与发布附件准备；CI 和合并记录见 [PR #18](https://github.com/evan-zzz-zhang/comfyui-remote-panel/pull/18)，版本与下载见 [v0.4.8 Release](https://github.com/evan-zzz-zhang/comfyui-remote-panel/releases/tag/v0.4.8)。
+
+后续验收边界：全新节点安装后的 GPU 生成、完整 BF16 模式/后端矩阵、逐项手机切后台/真实断网；
+Raw 自然语言理解与复杂角色识别作为模型能力限制保留，不纳入本阶段继续优化。
 
 ## v0.4.7 FL2VA Workflow Family & Inference Profile — Completed
 
