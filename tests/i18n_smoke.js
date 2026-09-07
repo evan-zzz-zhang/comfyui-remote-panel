@@ -5,7 +5,10 @@ global.localStorage = {
   getItem: key => key === "comfy-remote-language" ? storedLanguage : null,
   setItem: (key, value) => { if (key === "comfy-remote-language") storedLanguage = value; },
 };
-global.navigator = { language: "en-US", languages: ["en-US"] };
+Object.defineProperty(globalThis, "navigator", {
+  value: { language: "en-US", languages: ["en-US"] },
+  configurable: true,
+});
 global.document = {
   body: null,
   documentElement: { lang: "" },

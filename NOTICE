@@ -10,3 +10,7 @@ https://github.com/Comfy-Org/workflow_templates
 The presets do not include model weights, LoRAs, user media, ComfyUI history,
 or generated output. Model names and download URLs are descriptive dependency
 metadata only. ComfyUI and model weights retain their respective licenses.
+
+The optional H3 companion node and visual-workflow distribution is described in
+h3-workflows/THIRD_PARTY_NOTICES.md. Its dependency licenses are retained, and
+official prompt resources are downloaded separately rather than redistributed.

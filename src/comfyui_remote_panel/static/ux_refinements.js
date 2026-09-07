@@ -198,7 +198,7 @@
       const item = state.workflowItems.get(preset.id);
       return !item || workflowIsShown(item);
     });
-    return candidates.find(preset => preset.id === "h3-fl2va-v4step600") || candidates[0] || null;
+    return candidates.find(preset => preset.id === "h3-fl2va-group") || candidates[0] || null;
   }
 
   function setLocalWorkflowStatus(id, status) {

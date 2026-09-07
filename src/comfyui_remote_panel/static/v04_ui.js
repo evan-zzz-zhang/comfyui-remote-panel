@@ -395,7 +395,7 @@
       const policy = snapshot.seed_policy || overrideValues.seed_policy || preset.seed_policy?.default || "randomize";
       const policyField = document.createElement("label");
       policyField.className = "field v04-seed-policy";
-      policyField.innerHTML = `<span>Seed 策略</span><select data-v04-seed-policy>
+      policyField.innerHTML = `<span>种子策略</span><select data-v04-seed-policy>
         <option value="randomize">随机</option>
         <option value="fixed">固定</option>
         <option value="increment">递增</option>

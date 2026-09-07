@@ -266,7 +266,7 @@ async function loadPresets() {
   state.presets = new Map(result.items.map(preset => [preset.id, preset]));
   const select = $("#preset-select");
   select.innerHTML = result.items.map(preset => `<option value="${escapeHtml(preset.id)}">${escapeHtml(preset.name)}</option>`).join("");
-  applyPreset(state.presets.has("h3-fl2va-v4step600") ? "h3-fl2va-v4step600" : result.items[0]?.id);
+  applyPreset(state.presets.has("h3-fl2va-group") ? "h3-fl2va-group" : result.items[0]?.id);
 }
 
 async function loadWorkflows() {
@@ -305,6 +305,22 @@ async function loadJobs(reset = true) {
     state.jobsPage = page; state.jobsHasMore = result.pagination.has_more; renderJobs();
   } catch (_) {}
 }
+async function reconcileLoadedJobs() {
+  const ids = [...state.jobs.keys()];
+  if (!ids.length) return;
+  const existing = new Set();
+  try {
+    for (let index = 0; index < ids.length; index += 100) {
+      const batch = ids.slice(index, index + 100);
+      const response = await fetch(`/api/jobs/existence?ids=${encodeURIComponent(batch.join(","))}`);
+      if (!response.ok) return;
+      const result = await response.json();
+      (result.ids || []).forEach(id => existing.add(id));
+    }
+    ids.forEach(id => { if (!existing.has(id)) state.jobs.delete(id); });
+    renderJobs();
+  } catch (_) {}
+}
 async function loadMetrics() {
   try { const response = await fetch("/api/metrics"); if (response.ok) renderMetrics(await response.json()); } catch (_) {}
 }
@@ -314,6 +330,7 @@ async function loadNewestJobs() {
     if (!response.ok) return;
     const result = await response.json();
     result.items.forEach(job => state.jobs.set(job.id, job));
+    await reconcileLoadedJobs();
     state.jobsHasMore = state.jobs.size < result.pagination.total;
     renderJobs();
   } catch (_) {}
@@ -325,7 +342,7 @@ function connectEvents() {
   source.onerror = () => startPolling();
   source.addEventListener("snapshot", event => {
     const snapshot = JSON.parse(event.data);
-    snapshot.jobs.forEach(job => state.jobs.set(job.id, job)); renderJobs(); renderMetrics(snapshot.metrics);
+    snapshot.jobs.forEach(job => state.jobs.set(job.id, job)); renderJobs(); renderMetrics(snapshot.metrics); void reconcileLoadedJobs();
   });
   source.addEventListener("job", event => upsertJob(JSON.parse(event.data)));
   source.addEventListener("job_deleted", event => removeJob(JSON.parse(event.data).id));

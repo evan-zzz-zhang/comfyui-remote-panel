@@ -1,6 +1,6 @@
 """Comfy Remote."""
 
-__version__ = "0.4.7"
+__version__ = "0.4.8"
 
 # v0.4 is layered as explicit runtime integration modules so the creation
 # policies stay isolated from the v0.3 compatibility core while the beta is
@@ -25,6 +25,8 @@ from .v046_phase_timing import install as _install_v046_phase_timing
 from .v046_force_stop_compat import install as _install_v046_force_stop_compat
 from .v046_sage_attention_status import install as _install_v046_sage_attention_status
 from .v046_frontend import install as _install_v046_frontend
+from .v048_ref2va import install as _install_v048_ref2va
+from .v048_frontend import install as _install_v048_frontend
 
 _install_v04()
 _install_v04_overrides()
@@ -46,6 +48,8 @@ _install_v046_phase_timing()
 _install_v046_force_stop_compat()
 _install_v046_sage_attention_status()
 _install_v046_frontend()
+_install_v048_ref2va()
+_install_v048_frontend()
 del (
     _install_v04,
     _install_v04_overrides,
@@ -67,4 +71,6 @@ del (
     _install_v046_force_stop_compat,
     _install_v046_sage_attention_status,
     _install_v046_frontend,
+    _install_v048_ref2va,
+    _install_v048_frontend,
 )

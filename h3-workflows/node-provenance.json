@@ -1,0 +1,107 @@
+[
+  {
+    "file": "ComfyRemoteH3PromptWriter/LICENSE",
+    "source_sha256_lf": "bff78b90b54234f14dfedc61387e2cb9479acea94a901fffe9deec53ac15a0ff",
+    "bundled_sha256": "bff78b90b54234f14dfedc61387e2cb9479acea94a901fffe9deec53ac15a0ff"
+  },
+  {
+    "file": "ComfyRemoteH3PromptWriter/__init__.py",
+    "origin": "Comfy Remote integration",
+    "bundled_sha256": "49f3a9349c48ec2cbe59a5513958854ac7b1f4d475e79a50a02a0dc795c10115"
+  },
+  {
+    "file": "ComfyRemoteH3PromptWriter/backend/__init__.py",
+    "origin": "Comfy Remote integration",
+    "bundled_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "file": "ComfyRemoteH3PromptWriter/backend/assembly.py",
+    "source_sha256_lf": "69e560f6003e9a41e085d51c0f5bb17dd2fba8d1f0ec2c2982ac699a6cb379fb",
+    "bundled_sha256": "69e560f6003e9a41e085d51c0f5bb17dd2fba8d1f0ec2c2982ac699a6cb379fb"
+  },
+  {
+    "file": "ComfyRemoteH3PromptWriter/backend/context.py",
+    "source_sha256_lf": "5461f684631df2cc7a508df9debc5003c603b67ad1442e433957a4909d3dfbff",
+    "bundled_sha256": "5461f684631df2cc7a508df9debc5003c603b67ad1442e433957a4909d3dfbff"
+  },
+  {
+    "file": "ComfyRemoteH3PromptWriter/backend/guides.py",
+    "source_sha256_lf": "dac3f06ee7d5778c122cc7bb5fe51bbd1e32d1bddf97592bb8aa34f1928f0bd5",
+    "bundled_sha256": "dac3f06ee7d5778c122cc7bb5fe51bbd1e32d1bddf97592bb8aa34f1928f0bd5"
+  },
+  {
+    "file": "ComfyRemoteH3PromptWriter/backend/h3_pipeline.py",
+    "source_sha256_lf": "105f988f53511985bd847be9df24a5c830ae1a7a341287cc522adae6029543b5",
+    "bundled_sha256": "105f988f53511985bd847be9df24a5c830ae1a7a341287cc522adae6029543b5"
+  },
+  {
+    "file": "ComfyRemoteH3PromptWriter/backend/media.py",
+    "source_sha256_lf": "1656a15a0f558f22a6400c69ad434b597383a480c2ebc17357f12af7acdc7864",
+    "bundled_sha256": "14b32b5dbe0efa452d684f4c5a6b0968d44593b18ea1a23125377654c24c4f04"
+  },
+  {
+    "file": "ComfyRemoteH3PromptWriter/backend/models/__init__.py",
+    "origin": "Comfy Remote integration",
+    "bundled_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "file": "ComfyRemoteH3PromptWriter/backend/models/contract.py",
+    "source_sha256_lf": "d4dab2463bee22cd95059ffcded23e702988ed4e8488e4065327634265252c39",
+    "bundled_sha256": "d4dab2463bee22cd95059ffcded23e702988ed4e8488e4065327634265252c39"
+  },
+  {
+    "file": "ComfyRemoteH3PromptWriter/backend/models/ollama_backend.py",
+    "source_sha256_lf": "bd77cba29287fd9e3d5f6a5daa534743a35e60782de574726682d63229ad58e6",
+    "bundled_sha256": "bd77cba29287fd9e3d5f6a5daa534743a35e60782de574726682d63229ad58e6"
+  },
+  {
+    "file": "ComfyRemoteH3PromptWriter/backend/prompt_audit.py",
+    "source_sha256_lf": "f04de4081c42f888b316d969af6b3ebe1b1a3e719f16541febd3a96f4db76e70",
+    "bundled_sha256": "f04de4081c42f888b316d969af6b3ebe1b1a3e719f16541febd3a96f4db76e70"
+  },
+  {
+    "file": "ComfyRemoteH3PromptWriter/backend/prompt_repair.py",
+    "source_sha256_lf": "eb8eb7200690c5c731fa45863e4edd6699e09dbcae248b1e6a174d1d32a711c9",
+    "bundled_sha256": "eb8eb7200690c5c731fa45863e4edd6699e09dbcae248b1e6a174d1d32a711c9"
+  },
+  {
+    "file": "ComfyRemoteH3PromptWriter/backend/system_prompts.py",
+    "source_sha256_lf": "0e806bac9776f21fc35594ad22126608a1a600a5a36e4acf7bf133b4e08a9dc8",
+    "bundled_sha256": "0e806bac9776f21fc35594ad22126608a1a600a5a36e4acf7bf133b4e08a9dc8"
+  },
+  {
+    "file": "ComfyRemoteH3PromptWriter/nodes.py",
+    "source_sha256_lf": "e7aea84d5605d7c060433fdb61d9704496d3ccb5ac5aceed91e0bc34ef34e239",
+    "bundled_sha256": "a484b01099db2975dfb01edfbe19e73d2667cc47cb08319f7af73a303283927e"
+  },
+  {
+    "file": "ComfyRemoteH3PromptWriter/ref2va_contract.py",
+    "source_sha256_lf": "3de4f263180b738defc88921bf0e7dbb017c34f8d0b8ad2226357486a551025e",
+    "bundled_sha256": "3de4f263180b738defc88921bf0e7dbb017c34f8d0b8ad2226357486a551025e"
+  },
+  {
+    "file": "H3OfficialSkillPromptWriter/LICENSE",
+    "source_sha256_lf": "780e58a2de7aa191d0f16072b4f63ea1935157859600d0967cdc0a0513ea2e7a",
+    "bundled_sha256": "1ec622d6239777d59abe6b9a6ee4872f59bcb387ba3ab7b45149e20cd39d0cf4"
+  },
+  {
+    "file": "H3OfficialSkillPromptWriter/__init__.py",
+    "source_sha256_lf": "c75fd437befac70550924097ac38bcb8f3aa92be8288e97befe671f2674bc0b7",
+    "bundled_sha256": "55b886af65d5079180d5ef1b4dd29974333220f0fbb334eee957405893cc8484"
+  },
+  {
+    "file": "H3Ref2VAQwen35/LICENSE",
+    "source_sha256_lf": "780e58a2de7aa191d0f16072b4f63ea1935157859600d0967cdc0a0513ea2e7a",
+    "bundled_sha256": "1ec622d6239777d59abe6b9a6ee4872f59bcb387ba3ab7b45149e20cd39d0cf4"
+  },
+  {
+    "file": "H3Ref2VAQwen35/__init__.py",
+    "source_sha256_lf": "3a85093a70675df57e0dcfd1c84851a23a77eccec44e9d2f45beac83221f1a4d",
+    "bundled_sha256": "30c3fe0b5d35e1ed62af4fee4d14cbe337f663e5efdfd03f13cc12ff17294510"
+  },
+  {
+    "file": "H3Ref2VAQwen35/ref2va_contract.py",
+    "source_sha256_lf": "3de4f263180b738defc88921bf0e7dbb017c34f8d0b8ad2226357486a551025e",
+    "bundled_sha256": "3de4f263180b738defc88921bf0e7dbb017c34f8d0b8ad2226357486a551025e"
+  }
+]

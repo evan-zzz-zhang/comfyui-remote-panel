@@ -21,6 +21,12 @@ ComfyUI workflow
 → Use on the Create page
 ```
 
+### H3 Ref2VA runtime notes
+
+- The Create page selects the virtual `h3-fl2va-group` entry by default; physical asset IDs remain implementation details.
+- When a Ref2VA job uses the source video's aspect, the selected ratio is derived from that video. A value such as `9:16` in a generated prompt is an aspect ratio, not a timestamp.
+- Ollama prompt standardization must use the current H3 Prompt Writer plugin. After updating that plugin, restart ComfyUI so its validator changes are loaded.
+
 Core rules:
 
 - `width`, `height`, and `batch_size` are not mandatory.
@@ -198,7 +204,7 @@ Policies such as `randomize / fixed / increment` are planned as a separate futur
 
 ## The role of H3
 
-The six bundled MiniMax H3 workflows are Bundled / Verified examples that provide a validated video-workflow experience and regression samples.
+The 18 canonical MiniMax H3 workflows cover FL2VA / Ref2VA, three generation modes and three prompt backends. Legacy IDs remain for compatibility. [H3 companion packages](../h3-workflows/README.md) provide panel assets, native ComfyUI visual graphs and the required workflow nodes; validation boundaries and installation instructions are documented there.
 
 **H3 is not an architectural requirement for Comfy Remote.**
 

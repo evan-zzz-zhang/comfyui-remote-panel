@@ -25,7 +25,14 @@ jobs:
       - run: node --check src/comfyui_remote_panel/static/workflow_ux.js
       - run: node --check src/comfyui_remote_panel/static/configurator_v2.js
       - run: node --check src/comfyui_remote_panel/static/configurator_v2_runtime.js
+      - run: node tests/frontend_contract_smoke.js
+      - run: node tests/h3_retry_contract_smoke.js
       - run: node --check src/comfyui_remote_panel/static/v04_ui.js
+      - run: node --check src/comfyui_remote_panel/static/h3_advanced_controller.js
+      - run: node --check src/comfyui_remote_panel/static/h3_ollama_service.js
+      - run: node --check src/comfyui_remote_panel/static/h3_creation_runtime.js
+      - run: node --check src/comfyui_remote_panel/static/h3_fl2va_adapter.js
+      - run: node --check src/comfyui_remote_panel/static/h3_ref2va_adapter.js
       - run: node --check src/comfyui_remote_panel/static/v041_ui.js
       - run: node --check src/comfyui_remote_panel/static/v042_ui.js
       - run: node --check src/comfyui_remote_panel/static/v042_patch.js
@@ -36,6 +43,7 @@ jobs:
       - run: node --check src/comfyui_remote_panel/static/v046_workflow_selection_guard.js
       - run: node --check src/comfyui_remote_panel/static/v046_force_stop_ui.js
       - run: node --check src/comfyui_remote_panel/static/v046_sage_attention_status.js
+      - run: node --check src/comfyui_remote_panel/static/v048_ref2va_ui.js
       - run: node --check src/comfyui_remote_panel/static/ux_refinements.js
       - run: node --check src/comfyui_remote_panel/static/recovery_lite.js
       - run: python scripts/check_repository.py

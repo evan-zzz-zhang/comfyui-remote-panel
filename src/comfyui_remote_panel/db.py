@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -20,6 +21,26 @@ def _artifact_kind_for_role(role: str) -> str:
         if role.startswith(kind + "_"):
             return kind
     return "image" if role in {"first", "last"} else "file"
+
+
+def _file_identity(path: str) -> str:
+    try:
+        return os.path.normcase(str(Path(path).resolve(strict=False)))
+    except OSError:
+        return os.path.normcase(os.path.abspath(path))
+
+
+def _deduplicate_file_sizes(rows: list[tuple[str, int]]) -> dict[str, tuple[Path, int]]:
+    unique: dict[str, tuple[Path, int]] = {}
+    for path, size_bytes in rows:
+        key = _file_identity(path)
+        size = max(0, int(size_bytes))
+        previous = unique.get(key)
+        if previous is None:
+            unique[key] = (Path(path), size)
+        else:
+            unique[key] = (previous[0], max(previous[1], size))
+    return unique
 
 
 class Database:
@@ -462,6 +483,19 @@ class Database:
                 files = [dict(v) for v in db.execute("SELECT role, path, size_bytes FROM job_files WHERE job_id = ? ORDER BY id", (job_id,))]
         return self._job_from_row(row, files)
 
+    async def existing_job_ids(self, job_ids: list[str]) -> set[str]:
+        unique_ids = list(dict.fromkeys(str(job_id) for job_id in job_ids if str(job_id)))
+        if not unique_ids:
+            return set()
+        marks = ",".join("?" for _ in unique_ids)
+        async with self._lock:
+            with self._connect() as db:
+                rows = db.execute(
+                    f"SELECT id FROM jobs WHERE id IN ({marks}) AND status != ?",
+                    (*unique_ids, HIDDEN_STATUS),
+                ).fetchall()
+        return {str(row[0]) for row in rows}
+
     async def list_jobs(self, page: int = 1, page_size: int = 20, statuses: set[str] | None = None) -> dict[str, Any]:
         conditions = ["status != ?"]
         params: list[Any] = [HIDDEN_STATUS]
@@ -562,12 +596,28 @@ class Database:
     async def tracked_size(self) -> int:
         async with self._lock:
             with self._connect() as db:
-                return int(db.execute("SELECT COALESCE(SUM(size_bytes), 0) FROM job_files").fetchone()[0])
+                rows = [
+                    (str(row[0]), int(row[1]))
+                    for row in db.execute(
+                        """SELECT path, size_bytes FROM job_files
+                           UNION ALL
+                           SELECT path, size_bytes FROM job_artifacts"""
+                    )
+                ]
+        return sum(size for _, size in _deduplicate_file_sizes(rows).values())
 
     async def tracked_paths(self) -> set[Path]:
         async with self._lock:
             with self._connect() as db:
-                return {Path(row[0]) for row in db.execute("SELECT path FROM job_files")}
+                rows = [
+                    (str(row[0]), 0)
+                    for row in db.execute(
+                        """SELECT path, size_bytes FROM job_files
+                           UNION ALL
+                           SELECT path, size_bytes FROM job_artifacts"""
+                    )
+                ]
+        return {path for path, _ in _deduplicate_file_sizes(rows).values()}
 
     async def tracked_files(self) -> list[dict[str, Any]]:
         async with self._lock:

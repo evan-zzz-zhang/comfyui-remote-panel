@@ -57,6 +57,14 @@ def test_unified_fl2va_exposes_v4_as_default_generation_mode():
     }
 
 
+def test_fl2va_virtual_metadata_has_stable_creation_name():
+    metadata = v042._virtual_metadata(load_presets())
+    assert metadata is not None
+    assert metadata["id"] == "h3-fl2va-group"
+    assert metadata["name"] == "MiniMax H3 FL2VA"
+    assert metadata["asset_role"] == "virtual"
+
+
 def test_standardizer_requires_prompt_even_when_frame_exists():
     preset = load_presets()["h3-fl2va-v4step600"]
     with pytest.raises(PresetError, match="提示词不能为空"):

@@ -21,6 +21,12 @@ ComfyUI 工作流
 → 创作页使用
 ```
 
+### H3 Ref2VA 运行说明
+
+- 创作页默认选择虚拟入口 `h3-fl2va-group`；具体物理资源 ID 只属于实现细节。
+- Ref2VA 使用参考视频画幅时，比例由视频本身推导。生成提示词中的 `9:16` 是画幅比例，不是时间戳。
+- Ollama 提示词标准化依赖当前版本的 H3 Prompt Writer 插件。更新插件后需要重启 ComfyUI，校验器修改才会加载。
+
 核心原则：
 
 - 不要求一定存在 `width`、`height`、`batch_size`。
@@ -198,7 +204,7 @@ v0.3 尚未引入独立 Seed Policy。
 
 ## H3 的位置
 
-内置六个 MiniMax H3 工作流是 Bundled / Verified examples，用于提供已验证的视频工作流体验和回归样本。
+内置 18 个 canonical MiniMax H3 工作流覆盖 FL2VA / Ref2VA、三种生成模式和三种提示词后端，旧 ID 保留兼容。[H3 配套包](../h3-workflows/README.zh-CN.md) 同时提供面板资产、原生 ComfyUI 图形工作流及必要节点；安装方式和验证边界见配套说明。
 
 **H3 不是 Comfy Remote 架构前提。**
 

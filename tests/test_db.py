@@ -1,10 +1,12 @@
 import json
 import sqlite3
 import time
+from pathlib import Path
 
 import pytest
 
 from comfyui_remote_panel.db import Database
+from comfyui_remote_panel.files import FileStore
 
 
 @pytest.mark.asyncio
@@ -55,6 +57,34 @@ async def test_succeeded_without_output_excludes_jobs_with_video(tmp_path):
 
     await db.update_job("missing", recovery_attempts=1, recovery_next_at=time.time() + 60)
     assert await db.succeeded_without_output() == []
+
+
+@pytest.mark.asyncio
+async def test_tracked_storage_unions_files_and_artifacts_without_double_counting(tmp_path):
+    db = Database(tmp_path / "jobs.db")
+    await db.initialize()
+    await db.create_job({
+        "id": "job", "preset_id": "preset", "status": "succeeded", "mode": "纯文字",
+        "prompt": "test", "duration_seconds": 5, "aspect_ratio": "9:16",
+        "megapixels": 0.4, "seed": 1,
+    }, [])
+    duplicate = tmp_path / "duplicate.mp4"
+    artifact_only = tmp_path / "artifact-only.png"
+    duplicate.write_bytes(b"x" * 10)
+    artifact_only.write_bytes(b"y" * 7)
+    await db.add_file("job", "output", duplicate, 10)
+    await db.add_artifact("job", "output", "preview", 1, artifact_only, "image", "image/png", "preview.png", 7)
+
+    assert await db.tracked_size() == 17
+    assert await db.tracked_paths() == {duplicate, artifact_only}
+
+    files = FileStore(tmp_path / "input", tmp_path / "output", tmp_path / "data")
+    files.initialize()
+    managed_artifact = files.output_root / "rp_123456789abc_result.mp4"
+    managed_artifact.write_bytes(b"artifact")
+    await db.add_artifact("job", "output", "result", 2, managed_artifact, "video", "video/mp4", "result.mp4", 8)
+
+    assert await files.scan_orphans(await db.tracked_paths()) == []
 
 
 @pytest.mark.asyncio
