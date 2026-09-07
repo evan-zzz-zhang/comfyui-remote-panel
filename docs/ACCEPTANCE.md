@@ -422,3 +422,21 @@ handoff, and cancellation-safe file cleanup that preserves persisted job inputs.
 补充：本次 `check_history.py` 扫描全部可达历史时未通过，报告历史中的
 `.venv.broken/pyvenv.cfg` 和 `tests/test_v046_sage_attention_status.py` 含 Windows 绝对路径；
 当前工作区 `check_repository.py` 通过。本轮未改写历史或处理既有提交身份信息。
+
+## 2026-09-07 H3 companion distribution / H3 配套分发验证
+
+- 本地全量回归 **473 passed**，保留 4 条 Windows asyncio 子进程清理 warning；仓库安全、前端语法/i18n/行为 smoke、sdist/wheel 构建通过。
+- 18 个脱敏 API 示例通过 ComfyUI 原生导入/导出；发布图形文件重编号、移除本机扩展元数据并固定示例种子后，18/18 节点、连线和参数与 canonical runtime 图一致。只导入/导出，没有提交生成任务。
+- 三个节点包在独立 CPU 进程中成功导入，共 22 个节点；没有导入 `comfy.ref2va_contract`。节点保持现有生成语义，分发适配仅涉及相对辅助模块、独立缓存与资料缺失提示。
+- 固定版本的 6 个官方资料下载项均核验到与本机使用内容一致（统一 LF 后 SHA256 一致）。第三方资料不纳入分发许可或 ZIP，用户单独下载。
+- 新增分发测试覆盖图形/API 一致性、断链拒绝、ZIP 可复现和源码清单、资料篡改拒绝、已有资料保护、导入缓存隔离及节点源码解析。
+- 对仅包含待发布分支和标签的隔离克隆执行 `check_history.py`，内容检查通过；保留既有非 noreply 提交元数据提示。此结果与本机 `--all` 引用扫描区分记录，没有重写历史。
+- 最终图形文件整理后的第二轮浏览器重导入遇到 ComfyUI 已离线（连接被拒绝），未主动启动服务。该轮以自动图形/API 一致性检查为证，不声称完成全新安装后的 GPU 验收。
+
+The local suite passed 473 tests (four Windows subprocess-cleanup warnings). Repository,
+frontend and package checks passed. All 18 synthetic API examples were natively imported/exported,
+then the sanitized visual files were checked against the canonical runtime graphs. Three extracted
+node packages imported in a CPU-only process without the private core helper. The six pinned
+official resource downloads matched normalized local content. Public-branch history content passed
+in an isolated clone; existing commit metadata was retained. ComfyUI was offline during the attempted
+second browser import of final sanitized files, so no fresh-install GPU acceptance is claimed.

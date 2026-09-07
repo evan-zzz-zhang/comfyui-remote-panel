@@ -5,3 +5,5 @@ recursive-include scripts *.py *.ps1
 recursive-include .github *.yml
 recursive-include constraints *.txt
 recursive-include tests *.py
+include h3-workflows/*.md h3-workflows/WORKFLOW_TEMPLATES_LICENSE
+recursive-include h3-workflows *.json *.py LICENSE

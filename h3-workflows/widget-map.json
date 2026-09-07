@@ -1,0 +1,135 @@
+{
+  "SaveVideo": [
+    "filename_prefix",
+    "format",
+    "codec"
+  ],
+  "ResolutionSelector": [
+    "aspect_ratio",
+    "megapixels",
+    "multiple"
+  ],
+  "VAELoader": [
+    "vae_name"
+  ],
+  "VAEDecodeAudio": [],
+  "VAEDecode": [],
+  "BasicScheduler": [
+    "scheduler",
+    "steps",
+    "denoise"
+  ],
+  "SamplerCustomAdvanced": [],
+  "BasicGuider": [],
+  "UNETLoader": [
+    "unet_name",
+    "weight_dtype"
+  ],
+  "CLIPLoader": [
+    "clip_name",
+    "type",
+    "device"
+  ],
+  "RandomNoise": [
+    "noise_seed",
+    null
+  ],
+  "CreateVideo": [
+    "fps",
+    "bit_depth"
+  ],
+  "ComfyMathExpression": [
+    "expression"
+  ],
+  "PrimitiveFloat": [
+    "value"
+  ],
+  "MiniMaxH3ImageToVideo": [
+    "prompt",
+    "width",
+    "height",
+    "length"
+  ],
+  "PrimitiveStringMultiline": [
+    "value"
+  ],
+  "LoraLoader": [
+    "lora_name",
+    "strength_model",
+    "strength_clip"
+  ],
+  "MiniMaxH3SigmaShift": [
+    "shift_video",
+    "shift_audio"
+  ],
+  "KSamplerSelect": [
+    "sampler_name"
+  ],
+  "H3PromptStandardizer": [
+    "ollama_model",
+    "seed",
+    null,
+    "unload_after"
+  ],
+  "PreviewAny": [],
+  "LazySwitchKJ": [
+    "switch"
+  ],
+  "H3AspectRouter": [
+    "aspect_source"
+  ],
+  "H3ReferenceFrames": [],
+  "LoadImage": [
+    "image",
+    null
+  ],
+  "H3SaveVideoWithPromptMetadata": [
+    "filename_prefix",
+    "format",
+    "codec"
+  ],
+  "H3InputResolverV4": [
+    "use_reference_aspect"
+  ],
+  "H3OptionalLoadImageV4": [
+    "image",
+    null
+  ],
+  "H3OfficialSkillPromptWriterQwen": [
+    "enable_standardization"
+  ],
+  "H3RunMetadataPack": [],
+  "H3Ref2VAOllamaConditioning": [
+    "creative_brief",
+    "width",
+    "height",
+    "duration_seconds",
+    "ollama_model",
+    "prompt_seed",
+    null,
+    "unload_after",
+    "aspect_source",
+    "ref_image_size"
+  ],
+  "LoadVideo": [
+    "file",
+    null
+  ],
+  "GetVideoComponents": [],
+  "MiniMaxH3ReferenceToVideo": [
+    "prompt",
+    "width",
+    "height",
+    "length",
+    "ref_image_size"
+  ],
+  "H3Ref2VAPromptPipelineQwen35V2": [
+    "enable_standardization"
+  ],
+  "H3Ref2VARunMetadataPackV2": [],
+  "H3Ref2VAReferenceVideoNormalize": [],
+  "H3Ref2VAAssetRegistryQwen35V2": [
+    "aspect_source",
+    "ref_image_size"
+  ]
+}

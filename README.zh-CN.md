@@ -4,13 +4,15 @@
 
 **从手机运行你本地的 ComfyUI 工作流。**
 
-> **当前状态：v0.4.8 Public Beta（Ref2VA 家族实现中）。**
+> **当前状态：v0.4.8 Public Beta。**
 >
 > 通用 ComfyUI API Workflow、手机创作、历史素材 Retry、H3 FL2VA 统一生成模式、已登记生成产物与历史同步、关闭/Ollama/ComfyUI 三态提示词标准化、受控强制关闭、SageAttention 运行状态、任务状态 reconciliation 加固、Windows 环境自愈安装、Windows Setup、Tailscale 远程访问、Doctor 诊断和 Recovery Lite 已可用。完整自动 watchdog、多主机和 Wake-on-LAN 尚未实现。
 
 Comfy Remote 是一个手机优先的 ComfyUI 远程创作面板。它运行在 ComfyUI 所在的 Windows 电脑上，把已经在本机验证过的 **ComfyUI API Workflow** 转成适合手机使用的创作界面：选择工作流、添加素材、填写提示词、提交任务、查看结果。
 
 当前 v0.4.8 基线在已验收的 v0.4.7 FL2VA 家族之上加入一个 Ref2VA 创作入口、三种生成模式、Raw/Ollama/Qwen3.5 三种 Prompt Backend、INT8/FP16-BF16 配置、代表视觉输入的提示词标准化与旧工作流兼容。仍然不会静默改写陌生工作流，也不会把 ComfyUI 直接暴露到网络。Ref2VA 已有 9/9 INT8 生成基线，用户另已确认 BF16 能够生成、Ollama 简单角色测试成功。Raw 语言理解与复杂角色识别暂列为模型能力限制，不据此宣称 BF16 全组合矩阵通过。
+
+可选的 [H3 配套分发包](h3-workflows/README.zh-CN.md) 同时提供全部 18 个工作流的面板资产与原生 ComfyUI 图形 JSON，以及必要节点和中英文安装说明。
 
 ## 能做什么
 

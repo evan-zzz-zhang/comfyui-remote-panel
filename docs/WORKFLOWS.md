@@ -204,7 +204,7 @@ Policies such as `randomize / fixed / increment` are planned as a separate futur
 
 ## The role of H3
 
-The six bundled MiniMax H3 workflows are Bundled / Verified examples that provide a validated video-workflow experience and regression samples.
+The 18 canonical MiniMax H3 workflows cover FL2VA / Ref2VA, three generation modes and three prompt backends. Legacy IDs remain for compatibility. [H3 companion packages](../h3-workflows/README.md) provide panel assets, native ComfyUI visual graphs and the required workflow nodes; validation boundaries and installation instructions are documented there.
 
 **H3 is not an architectural requirement for Comfy Remote.**
 

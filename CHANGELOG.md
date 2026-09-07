@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.4.8 — Ref2VA Workflow Family (implementation in progress)
+## v0.4.8 — Ref2VA Workflow Family & H3 Companion Workflows
 
 ### Highlights
 
@@ -9,6 +9,8 @@
 - Adds Raw, Ollama, and Qwen3.5 4B prompt routes with representative-image/video-first-frame capture and standardized-prompt history recovery.
 - Adds Auto, INT8, and FP16/BF16 model-profile metadata while retaining exact ComfyUI runtime selectors for variant lookup.
 - Keeps the three legacy Ref2VA workflow IDs, history snapshots, retained media, and Retry mapping intact. Ref2VA has a 9/9 INT8 generation baseline; the owner also confirmed BF16 generation and simple-character Ollama success. Complex-character recognition remains a model limitation, and a full BF16 combination matrix is not claimed.
+- Publishes all 18 canonical FL2VA/Ref2VA workflows as panel assets and native ComfyUI visual graphs, with separate, reproducible download packages and SHA256 checksums.
+- Includes the necessary workflow-only custom nodes with bundled Ref2VA helpers, isolated temporary media ownership, bilingual installation instructions and separately downloaded, version-pinned official prompt resources.
 
 ### Repair hardening completed
 
@@ -21,8 +23,8 @@
 
 ### Verification
 
-- 455 automated tests pass on Windows Python 3.12 in the local environment; repository safety, package build, frontend syntax/i18n checks, and frontend contract smoke checks pass.
-- Real GPU/mobile acceptance remains the existing v0.4.8 boundary: Qwen3.5 Ref2VA role-replacement acceptance is recorded, while Raw/Ollama role semantics and BF16 representative acceptance remain open.
+- The pre-distribution baseline passed 466 automated tests. Distribution regression checks additionally cover visual/API parity, archive reproducibility, source allowlisting, resource integrity and cache ownership; see the acceptance log for the final run.
+- Qwen3.5 Ref2VA role replacement, simple-character Ollama and representative BF16 generation are recorded. Raw language understanding and complex-character recognition remain model limits. A full BF16 matrix, fresh-install GPU validation of the extracted node packs, and separately itemized real mobile background/network-loss checks are not claimed.
 
 ## v0.4.6 — FL2VA Multi-Backend Prompt Standardization
 

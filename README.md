@@ -4,13 +4,15 @@
 
 **Run your local ComfyUI workflows from your phone.**
 
-> **Current status: v0.4.8 Public Beta (Ref2VA family implementation in progress).**
+> **Current status: v0.4.8 Public Beta.**
 >
 > Generic ComfyUI API Workflow support, mobile creation, retained-media Retry, H3 FL2VA unified generation modes, registered-output history sync, Off/Ollama/ComfyUI prompt standardization, guarded force-stop recovery, SageAttention runtime status, task reconciliation hardening, self-healing Windows installation, Windows Setup, Tailscale remote access, Doctor diagnostics, and Recovery Lite controls are available. Full automatic watchdog recovery, multi-host support, and Wake-on-LAN are not implemented.
 
 Comfy Remote is a mobile-first remote creation panel for ComfyUI. It runs on the Windows computer that hosts ComfyUI and turns locally verified **ComfyUI API Workflows** into a phone-friendly interface for selecting workflows, adding media, editing prompts, submitting jobs, and reviewing results.
 
 The current v0.4.8 baseline builds on the accepted v0.4.7 FL2VA family with one Ref2VA creation entry, three generation modes, Raw/Ollama/Qwen3.5 prompt backends, INT8/FP16-BF16 profile routing, representative-image prompt standardization, and legacy workflow compatibility. It still avoids silently rewriting arbitrary workflows or exposing ComfyUI directly to the network. Ref2VA has a 9/9 INT8 generation baseline, and the owner has confirmed BF16 generation and a simple-character Ollama test. Raw language understanding and complex-character recognition remain model limitations; this does not establish a full BF16 combination matrix.
+
+The optional [H3 companion distribution](h3-workflows/README.md) provides all 18 workflows as panel assets and native ComfyUI visual JSON, plus the required custom nodes and bilingual installation instructions.
 
 ## What it does
 
