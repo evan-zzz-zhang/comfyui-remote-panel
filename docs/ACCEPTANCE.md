@@ -440,3 +440,21 @@ node packages imported in a CPU-only process without the private core helper. Th
 official resource downloads matched normalized local content. Public-branch history content passed
 in an isolated clone; existing commit metadata was retained. ComfyUI was offline during the attempted
 second browser import of final sanitized files, so no fresh-install GPU acceptance is claimed.
+
+## 2026-09-07 最终真实生成验收与发布决策
+
+用户已完成当前 v0.4.8 工作流和节点的真实生成验收，未发现明显问题，并确认 BF16 能够实际生成。
+基于这次真实生成结果、此前 FL2VA/Ref2VA 设备矩阵、节点独立导入、18 个图形/API 一致性检查、
+全量测试和合并后 CI，项目负责人明确豁免本次 Public Beta 的全新干净安装 smoke；该项记录为
+“有意不执行（项目负责人接受）”，不记作干净安装通过。发布页保留安装前检查和模型/节点版本提醒，
+后续若发生依赖或安装器改动，再单独执行干净安装验收。
+
+## 2026-09-07 Final real-generation acceptance and release decision
+
+The owner completed real-generation acceptance for the v0.4.8 workflows and node distribution,
+reported no obvious issue, and confirmed that BF16 generates in practice. Based on that acceptance,
+the earlier FL2VA/Ref2VA device matrix, independent node import, 18 visual/API parity checks, the full
+test suite and post-merge CI, the owner explicitly waived the fresh clean-install smoke for this Public
+Beta. It is recorded as “intentionally not executed (owner accepted)” rather than clean-install pass.
+The release keeps preflight checks and model/node version reminders; a clean-install run can be added
+when the installer or dependency contract changes.

@@ -24,7 +24,7 @@
 ### Verification
 
 - 473 automated tests passed locally, with four Windows asyncio subprocess-cleanup warnings. Distribution regression checks cover visual/API parity, archive reproducibility, source allowlisting, resource integrity and cache ownership. Repository, frontend, wheel/sdist and release archive checks passed; see the acceptance log for details.
-- Qwen3.5 Ref2VA role replacement, simple-character Ollama and representative BF16 generation are recorded. Raw language understanding and complex-character recognition remain model limits. A full BF16 matrix, fresh-install GPU validation of the extracted node packs, and separately itemized real mobile background/network-loss checks are not claimed.
+- The owner completed real-generation acceptance for the released workflow/node set and reported no obvious issue. Qwen3.5 Ref2VA role replacement, simple-character Ollama and representative BF16 generation are recorded. Raw language understanding and complex-character recognition remain model limits. A full BF16 matrix is not claimed; the owner intentionally waived fresh-install GPU validation of the extracted node packs for this Public Beta, with a rerun reserved for installer or dependency changes.
 
 ## v0.4.6 — FL2VA Multi-Backend Prompt Standardization
 
